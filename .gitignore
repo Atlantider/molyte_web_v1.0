@@ -75,6 +75,17 @@ logs/
 .env.local
 .env.*.local
 
+# Configuration files with secrets (IMPORTANT: Never commit these!)
+deployment/polling_worker_config_tencent.yaml
+deployment/polling_worker_config_aliyun.yaml
+deployment/polling_worker_config.yaml
+backend/.env
+backend/.env.production
+frontend/.env.production
+*_config_secret.yaml
+*_secret.yaml
+*.secret.yaml
+
 # Temporary files
 *.tmp
 *.temp
