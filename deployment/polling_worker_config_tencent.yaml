@@ -1,0 +1,126 @@
+# 轮询 Worker 配置文件（腾讯云版本）
+
+# 腾讯云 API 配置
+api:
+  # 腾讯云后端 API 地址
+  base_url: "https://www.molyte.xyz/api/v1"
+  
+  # Worker 认证 Token（在腾讯云后端创建专用的 Worker 用户）
+  worker_token: "your-worker-token-here"
+  
+  # 轮询间隔（秒）
+  poll_interval: 30
+  
+  # 请求超时（秒）
+  timeout: 60
+
+# 腾讯云 COS 配置
+cos:
+  # SecretId（在腾讯云控制台 -> 访问管理 -> API密钥管理 中获取）
+  secret_id: "your-secret-id"
+  
+  # SecretKey
+  secret_key: "your-secret-key"
+  
+  # COS 地域（ap-beijing, ap-shanghai, ap-guangzhou 等）
+  region: "ap-guangzhou"
+  
+  # Bucket 名称（格式：bucket-appid）
+  bucket: "molyte-results-1234567890"
+  
+  # 结果文件路径前缀
+  result_prefix: "results/"
+
+# 本地计算环境配置（校园网集群）
+local:
+  # Molyte 工作目录
+  work_base_path: "/public/home/xiaoji/molyte_web/data/md_work"
+  
+  # QC 工作目录
+  qc_work_base_path: "/public/home/xiaoji/molyte_web/data/qc_jobs"
+  
+  # 初始盐文件路径
+  initial_salts_path: "/public/home/xiaoji/molyte_web/data/initial_salts"
+  
+  # LigParGen 路径
+  ligpargen_path: "/public/software/anaconda3/envs/molyte/bin"
+  
+  # Packmol 路径
+  packmol_path: "/public/software/packmol-20.16.0/packmol"
+  
+  # Moltemplate 路径
+  ltemplify_path: "/public/software/moltemplate_2025-2-02/moltemplate/ltemplify.py"
+  moltemplate_path: "/public/software/moltemplate_2025-2-02/moltemplate/scripts/moltemplate.sh"
+  
+  # 电荷文件保存路径
+  charge_save_path: "/public/home/xiaoji/molyte_web/data/charges"
+  
+  # Conda 环境
+  conda_env: "molyte"
+  conda_activate: "/public/software/anaconda3/bin/activate"
+
+# Worker 配置
+worker:
+  # Worker 名称（用于标识）
+  name: "campus-worker-01"
+  
+  # 最大并发任务数
+  max_concurrent_jobs: 3
+  
+  # 任务类型（支持的任务类型）
+  supported_job_types:
+    - "MD"
+    - "QC"
+  
+  # 日志配置
+  log_file: "/tmp/polling_worker.log"
+  log_level: "INFO"
+  
+  # 心跳间隔（秒）
+  heartbeat_interval: 60
+
+# Slurm 配置
+slurm:
+  # 默认分区
+  default_partition: "cpu"
+  
+  # 任务状态检查间隔（秒）
+  status_check_interval: 60
+  
+  # 最大重试次数
+  max_retries: 3
+
+# 文件上传配置
+upload:
+  # 需要上传的文件类型
+  result_files:
+    - "*.data"
+    - "*.log"
+    - "*.dump"
+    - "*.xlsx"
+    - "*.png"
+    - "*.json"
+    - "*.fchk"
+    - "*.cube"
+  
+  # 单个文件最大大小（MB）
+  max_file_size: 500
+  
+  # 压缩大文件
+  compress_large_files: true
+  compress_threshold: 50  # MB
+
+# 错误处理
+error_handling:
+  # 任务失败后重试次数
+  max_task_retries: 2
+  
+  # 重试延迟（秒）
+  retry_delay: 300
+  
+  # 网络错误重试次数
+  network_retry: 5
+  
+  # 网络错误重试延迟（秒）
+  network_retry_delay: 10
+

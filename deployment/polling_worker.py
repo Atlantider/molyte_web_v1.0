@@ -28,9 +28,9 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 try:
-    import oss2
+    from qcloud_cos import CosConfig, CosS3Client
 except ImportError:
-    print("请安装 OSS SDK: pip install oss2")
+    print("请安装腾讯云 COS SDK: pip install cos-python-sdk-v5")
     sys.exit(1)
 
 
@@ -81,18 +81,38 @@ class PollingWorker:
         self.logger = logging.getLogger('PollingWorker')
     
     def _init_oss_client(self):
-        """初始化 OSS 客户端"""
-        oss_config = self.config['oss']
-        auth = oss2.Auth(
-            oss_config['access_key_id'],
-            oss_config['access_key_secret']
-        )
-        self.oss_bucket = oss2.Bucket(
-            auth,
-            oss_config['endpoint'],
-            oss_config['bucket_name']
-        )
-        self.logger.info("OSS 客户端已初始化")
+        """初始化 COS 客户端（腾讯云对象存储）"""
+        # 支持两种配置：阿里云 OSS 或腾讯云 COS
+        if 'cos' in self.config:
+            # 腾讯云 COS
+            cos_config = self.config['cos']
+            config = CosConfig(
+                Region=cos_config['region'],
+                SecretId=cos_config['secret_id'],
+                SecretKey=cos_config['secret_key'],
+                Scheme='https'
+            )
+            self.cos_client = CosS3Client(config)
+            self.cos_bucket = cos_config['bucket']
+            self.storage_type = 'cos'
+            self.logger.info(f"腾讯云 COS 客户端已初始化 (Bucket: {self.cos_bucket})")
+        elif 'oss' in self.config:
+            # 阿里云 OSS（向后兼容）
+            import oss2
+            oss_config = self.config['oss']
+            auth = oss2.Auth(
+                oss_config['access_key_id'],
+                oss_config['access_key_secret']
+            )
+            self.oss_bucket = oss2.Bucket(
+                auth,
+                oss_config['endpoint'],
+                oss_config['bucket_name']
+            )
+            self.storage_type = 'oss'
+            self.logger.info("阿里云 OSS 客户端已初始化")
+        else:
+            raise ValueError("配置文件中必须包含 'cos' 或 'oss' 配置")
     
     def _init_api_client(self):
         """初始化 API 客户端"""
@@ -357,13 +377,19 @@ class PollingWorker:
             self._update_job_status(job_id, 'FAILED', job_info['type'], error_message=str(e))
 
     def _upload_results_to_oss(self, job_id: int, work_dir: Path) -> List[str]:
-        """上传结果文件到 OSS"""
+        """上传结果文件到对象存储（COS 或 OSS）"""
         uploaded_files = []
 
         try:
             # 获取需要上传的文件
             result_patterns = self.config['upload']['result_files']
             max_size = self.config['upload']['max_file_size'] * 1024 * 1024  # MB to bytes
+
+            # 获取结果文件前缀
+            if self.storage_type == 'cos':
+                result_prefix = self.config['cos']['result_prefix']
+            else:
+                result_prefix = self.config['oss']['result_prefix']
 
             for pattern in result_patterns:
                 for file_path in work_dir.glob(pattern):
@@ -376,13 +402,25 @@ class PollingWorker:
                         self.logger.warning(f"文件 {file_path.name} 超过大小限制，跳过")
                         continue
 
-                    # 上传到 OSS
-                    oss_key = f"{self.config['oss']['result_prefix']}{job_id}/{file_path.name}"
+                    # 构建对象存储 Key
+                    object_key = f"{result_prefix}{job_id}/{file_path.name}"
 
-                    self.logger.info(f"上传文件: {file_path.name} -> {oss_key}")
-                    self.oss_bucket.put_object_from_file(oss_key, str(file_path))
+                    self.logger.info(f"上传文件: {file_path.name} -> {object_key}")
 
-                    uploaded_files.append(oss_key)
+                    # 根据存储类型上传
+                    if self.storage_type == 'cos':
+                        # 腾讯云 COS
+                        with open(file_path, 'rb') as f:
+                            self.cos_client.put_object(
+                                Bucket=self.cos_bucket,
+                                Body=f,
+                                Key=object_key
+                            )
+                    else:
+                        # 阿里云 OSS
+                        self.oss_bucket.put_object_from_file(object_key, str(file_path))
+
+                    uploaded_files.append(object_key)
 
             return uploaded_files
 
