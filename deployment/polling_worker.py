@@ -376,14 +376,100 @@ class PollingWorker:
             self.logger.error(f"处理任务 {job_id} 完成失败: {e}", exc_info=True)
             self._update_job_status(job_id, 'FAILED', job_info['type'], error_message=str(e))
 
+    def _extract_last_frame(self, work_dir: Path, job_id: int) -> Optional[Path]:
+        """从 LAMMPS 轨迹文件中提取最后一帧"""
+        try:
+            # 查找 dump 文件
+            dump_files = list(work_dir.glob("*.dump"))
+            if not dump_files:
+                self.logger.warning(f"未找到轨迹文件: {work_dir}")
+                return None
+
+            dump_file = dump_files[0]
+            self.logger.info(f"提取最后一帧: {dump_file.name}")
+
+            # 读取 dump 文件，找到最后一帧
+            last_frame_lines = []
+            current_frame = []
+            in_frame = False
+
+            with open(dump_file, 'r') as f:
+                for line in f:
+                    if line.startswith('ITEM: TIMESTEP'):
+                        # 新的一帧开始
+                        if current_frame:
+                            last_frame_lines = current_frame
+                        current_frame = [line]
+                        in_frame = True
+                    elif in_frame:
+                        current_frame.append(line)
+
+                # 最后一帧
+                if current_frame:
+                    last_frame_lines = current_frame
+
+            if not last_frame_lines:
+                self.logger.warning("未找到有效帧")
+                return None
+
+            # 保存为 PDB 格式（简化版）
+            output_file = work_dir / f"final_frame_{job_id}.pdb"
+
+            # 解析 LAMMPS dump 并转换为 PDB
+            atoms = []
+            atom_section = False
+            for line in last_frame_lines:
+                if line.startswith('ITEM: ATOMS'):
+                    atom_section = True
+                    continue
+                if atom_section and not line.startswith('ITEM:'):
+                    parts = line.split()
+                    if len(parts) >= 5:  # id type x y z
+                        atoms.append(parts)
+
+            # 写入 PDB 文件
+            with open(output_file, 'w') as f:
+                f.write("REMARK   Final frame extracted from LAMMPS trajectory\n")
+                f.write(f"REMARK   Job ID: {job_id}\n")
+                for i, atom in enumerate(atoms, 1):
+                    # PDB 格式: ATOM serial name resName chainID resSeq x y z occupancy tempFactor element
+                    atom_id = atom[0] if len(atom) > 0 else str(i)
+                    atom_type = atom[1] if len(atom) > 1 else "C"
+                    x = float(atom[2]) if len(atom) > 2 else 0.0
+                    y = float(atom[3]) if len(atom) > 3 else 0.0
+                    z = float(atom[4]) if len(atom) > 4 else 0.0
+
+                    f.write(f"ATOM  {i:5d}  {atom_type:3s} MOL A   1    "
+                           f"{x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00          {atom_type:2s}\n")
+                f.write("END\n")
+
+            self.logger.info(f"最后一帧已保存: {output_file.name}")
+            return output_file
+
+        except Exception as e:
+            self.logger.error(f"提取最后一帧失败: {e}", exc_info=True)
+            return None
+
     def _upload_results_to_oss(self, job_id: int, work_dir: Path) -> List[str]:
         """上传结果文件到对象存储（COS 或 OSS）"""
         uploaded_files = []
 
         try:
-            # 获取需要上传的文件
-            result_patterns = self.config['upload']['result_files']
+            # 1. 处理轨迹文件：提取最后一帧
+            if self.config['upload'].get('trajectory_handling', {}).get('enabled', True):
+                if self.config['upload']['trajectory_handling'].get('extract_last_frame', True):
+                    last_frame_file = self._extract_last_frame(work_dir, job_id)
+                    if last_frame_file:
+                        # 将最后一帧添加到上传列表
+                        self.logger.info(f"将上传最后一帧: {last_frame_file.name}")
+
+            # 2. 获取需要上传的文件
+            essential_patterns = self.config['upload']['essential_files']
+            optional_patterns = self.config['upload'].get('optional_large_files', [])
+            excluded_patterns = self.config['upload'].get('excluded_files', [])
+
             max_size = self.config['upload']['max_file_size'] * 1024 * 1024  # MB to bytes
+            compress_threshold = self.config['upload'].get('compress_threshold', 50) * 1024 * 1024
 
             # 获取结果文件前缀
             if self.storage_type == 'cos':
@@ -391,21 +477,39 @@ class PollingWorker:
             else:
                 result_prefix = self.config['oss']['result_prefix']
 
-            for pattern in result_patterns:
+            # 3. 上传必要文件
+            all_patterns = essential_patterns.copy()
+            if self.config['upload']['strategy'].get('upload_optional_on_demand', False):
+                # 如果配置了按需上传，这里不上传可选文件
+                pass
+            else:
+                all_patterns.extend(optional_patterns)
+
+            for pattern in all_patterns:
                 for file_path in work_dir.glob(pattern):
                     if not file_path.is_file():
+                        continue
+
+                    # 检查是否在排除列表中
+                    excluded = False
+                    for exclude_pattern in excluded_patterns:
+                        if file_path.match(exclude_pattern):
+                            self.logger.info(f"跳过排除的文件: {file_path.name}")
+                            excluded = True
+                            break
+                    if excluded:
                         continue
 
                     # 检查文件大小
                     file_size = file_path.stat().st_size
                     if file_size > max_size:
-                        self.logger.warning(f"文件 {file_path.name} 超过大小限制，跳过")
+                        self.logger.warning(f"文件 {file_path.name} ({file_size/1024/1024:.1f}MB) 超过大小限制，跳过")
                         continue
 
                     # 构建对象存储 Key
                     object_key = f"{result_prefix}{job_id}/{file_path.name}"
 
-                    self.logger.info(f"上传文件: {file_path.name} -> {object_key}")
+                    self.logger.info(f"上传文件: {file_path.name} ({file_size/1024/1024:.1f}MB)")
 
                     # 根据存储类型上传
                     if self.storage_type == 'cos':
@@ -421,7 +525,9 @@ class PollingWorker:
                         self.oss_bucket.put_object_from_file(object_key, str(file_path))
 
                     uploaded_files.append(object_key)
+                    self.logger.info(f"✅ 上传成功: {file_path.name}")
 
+            self.logger.info(f"共上传 {len(uploaded_files)} 个文件")
             return uploaded_files
 
         except Exception as e:
