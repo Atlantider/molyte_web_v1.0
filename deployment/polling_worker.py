@@ -121,6 +121,13 @@ class PollingWorker:
             'Authorization': f'Bearer {self.config["api"]["worker_token"]}',
             'Content-Type': 'application/json'
         }
+        # SSL 验证设置（默认启用，可在配置中禁用）
+        self.verify_ssl = self.config['api'].get('verify_ssl', True)
+        if not self.verify_ssl:
+            self.logger.warning("⚠️  SSL 证书验证已禁用！仅用于开发/测试环境")
+            # 禁用 SSL 警告
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         self.logger.info(f"API 客户端已初始化: {self.api_base_url}")
     
     def run(self):
@@ -206,7 +213,8 @@ class PollingWorker:
                 endpoint,
                 headers=self.api_headers,
                 params=params,
-                timeout=self.config['api']['timeout']
+                timeout=self.config['api']['timeout'],
+                verify=self.verify_ssl
             )
             
             if response.status_code == 200:
@@ -567,7 +575,8 @@ class PollingWorker:
                 endpoint,
                 headers=self.api_headers,
                 json=data,
-                timeout=self.config['api']['timeout']
+                timeout=self.config['api']['timeout'],
+                verify=self.verify_ssl
             )
 
             if response.status_code == 200:

@@ -91,14 +91,15 @@ async def get_pending_jobs(
 ):
     """
     获取待处理的任务
-    
+
     Worker 轮询此接口获取新任务
     """
-    # 验证是否是 Worker 用户
-    if current_user.user_type != "admin":
+    # 验证是否是管理员用户（Worker 用户应该是 ADMIN 角色）
+    from app.models.user import UserRole
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only worker users can fetch pending jobs"
+            detail="Only admin/worker users can fetch pending jobs"
         )
     
     job_type = job_type.upper()
