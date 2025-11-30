@@ -108,7 +108,7 @@ export default function Dashboard() {
         .reduce((sum, job) => sum + calculateCPUHours(job), 0);
 
       // 从用户配置中获取总机时配额
-      const totalHours = user?.total_cpu_hours || 200;
+      const totalHours = (user as any)?.total_cpu_hours || 200;
 
       setStats({
         projectCount: projects.length,

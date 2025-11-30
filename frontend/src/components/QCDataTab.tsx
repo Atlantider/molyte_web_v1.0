@@ -1319,13 +1319,13 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
                     {comparisonType !== 'functional' && (
                       <div>
                         <Text type="secondary">泛函：</Text>
-                        <Tag color="blue" size="small">{job.functional}</Tag>
+                        <Tag color="blue" style={{ fontSize: 12 }}>{job.functional}</Tag>
                       </div>
                     )}
                     {comparisonType !== 'basis_set' && (
                       <div>
                         <Text type="secondary">基组：</Text>
-                        <Tag color="green" size="small">{job.basis_set}</Tag>
+                        <Tag color="green" style={{ fontSize: 12 }}>{job.basis_set}</Tag>
                       </div>
                     )}
                     {comparisonType !== 'solvent' && (() => {
@@ -1336,8 +1336,8 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
                         <div>
                           <Text type="secondary">溶剂：</Text>
                           <Space size="small">
-                            <Tag color="purple" size="small">{model.toUpperCase()}</Tag>
-                            {solvent && <Tag color="cyan" size="small">{solvent}</Tag>}
+                            <Tag color="purple" style={{ fontSize: 12 }}>{model.toUpperCase()}</Tag>
+                            {solvent && <Tag color="cyan" style={{ fontSize: 12 }}>{solvent}</Tag>}
                           </Space>
                         </div>
                       );
@@ -1427,7 +1427,7 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
       ['分子名称', 'SMILES', '泛函', '基组', '溶剂模型', '溶剂', 'HOMO (eV)', 'LUMO (eV)', 'Gap (eV)', '总能量 (Hartree)', '偶极矩 (Debye)'],
       ...comparisonResults.map(job => {
         const solventConfig = job.solvent_config || job.config?.solvent_config;
-        const results = job.results || {};
+        const result = job.results && job.results.length > 0 ? job.results[0] : null;
         return [
           job.molecule_name,
           job.smiles,
@@ -1435,11 +1435,11 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
           job.basis_set,
           solventConfig?.model || 'gas',
           solventConfig?.solvent_name || '',
-          results.homo_ev?.toFixed(4) || '',
-          results.lumo_ev?.toFixed(4) || '',
-          (results.homo_ev !== undefined && results.lumo_ev !== undefined) ? (results.lumo_ev - results.homo_ev).toFixed(4) : '',
-          results.energy_au?.toFixed(6) || '',
-          results.dipole_moment?.toFixed(4) || '',
+          result?.homo_ev?.toFixed(4) || '',
+          result?.lumo_ev?.toFixed(4) || '',
+          (result?.homo_ev !== undefined && result?.lumo_ev !== undefined) ? (result.lumo_ev - result.homo_ev).toFixed(4) : '',
+          result?.energy_au?.toFixed(6) || '',
+          result?.dipole_moment?.toFixed(4) || '',
         ];
       })
     ].map(row => row.join(',')).join('\n');

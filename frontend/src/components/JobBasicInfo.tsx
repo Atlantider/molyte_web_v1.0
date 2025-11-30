@@ -520,9 +520,9 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
                   {/* 阳离子 */}
                   {electrolyte.cations?.map((mol, idx) => {
                     const charge = mol.smiles?.includes('+') ? 1 : 0;
-                    const recommended = job.config.qc_use_recommended_params !== false;
-                    const recFunctional = recommended ? 'B3LYP' : (job.config.qc_functional || 'B3LYP');
-                    const recBasisSet = recommended ? '6-31+G(d,p)' : (job.config.qc_basis_set || '6-31++G(d,p)');
+                    const recommended = job.config?.qc_use_recommended_params !== false;
+                    const recFunctional = recommended ? 'B3LYP' : (job.config?.qc_functional || 'B3LYP');
+                    const recBasisSet = recommended ? '6-31+G(d,p)' : (job.config?.qc_basis_set || '6-31++G(d,p)');
                     return (
                       <div key={`cation-${idx}`} style={{
                         padding: '8px 12px',
@@ -554,9 +554,9 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
                   {/* 阴离子 */}
                   {electrolyte.anions?.map((mol, idx) => {
                     const charge = mol.smiles?.includes('-') ? -1 : 0;
-                    const recommended = job.config.qc_use_recommended_params !== false;
-                    const recFunctional = recommended ? 'B3LYP' : (job.config.qc_functional || 'B3LYP');
-                    const recBasisSet = recommended ? '6-31++G(d,p)' : (job.config.qc_basis_set || '6-31++G(d,p)');
+                    const recommended = job.config?.qc_use_recommended_params !== false;
+                    const recFunctional = recommended ? 'B3LYP' : (job.config?.qc_functional || 'B3LYP');
+                    const recBasisSet = recommended ? '6-31++G(d,p)' : (job.config?.qc_basis_set || '6-31++G(d,p)');
                     return (
                       <div key={`anion-${idx}`} style={{
                         padding: '8px 12px',
@@ -587,9 +587,9 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
 
                   {/* 溶剂 */}
                   {electrolyte.solvents?.map((mol, idx) => {
-                    const recommended = job.config.qc_use_recommended_params !== false;
-                    const recFunctional = job.config.qc_functional || 'B3LYP';
-                    const recBasisSet = job.config.qc_basis_set || '6-31++G(d,p)';
+                    const recommended = job.config?.qc_use_recommended_params !== false;
+                    const recFunctional = job.config?.qc_functional || 'B3LYP';
+                    const recBasisSet = job.config?.qc_basis_set || '6-31++G(d,p)';
                     return (
                       <div key={`solvent-${idx}`} style={{
                         padding: '8px 12px',

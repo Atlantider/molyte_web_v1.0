@@ -402,7 +402,7 @@ export default function ElectrolyteFormOptimized({
                     showSearch
                     size="small"
                     filterOption={(input, option) =>
-                      (option?.children as string)?.toLowerCase().includes(input.toLowerCase())
+                      (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
                     }
                   >
                     {availableCations
@@ -442,7 +442,7 @@ export default function ElectrolyteFormOptimized({
                       </Card>
                     ))}
                     {selectedCations.length === 0 && (
-                      <Alert message="请选择阳离子" type="warning" showIcon size="small" />
+                      <Alert message="请选择阳离子" type="warning" showIcon style={{ padding: '4px 8px' }} />
                     )}
                   </div>
                 </div>
@@ -497,7 +497,7 @@ export default function ElectrolyteFormOptimized({
                       </Card>
                     ))}
                     {selectedAnions.length === 0 && (
-                      <Alert message="请选择阴离子" type="warning" showIcon size="small" />
+                      <Alert message="请选择阴离子" type="warning" showIcon style={{ padding: '4px 8px' }} />
                     )}
                   </div>
                 </div>

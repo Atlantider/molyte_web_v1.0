@@ -32,3 +32,6 @@ kombu==5.2.4
 # pytest-asyncio==0.21.1
 # httpx==0.25.2
 
+requests>=2.31.0
+pandas>=2.0
+pandas>=2.0

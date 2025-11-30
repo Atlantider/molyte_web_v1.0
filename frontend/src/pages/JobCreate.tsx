@@ -237,12 +237,12 @@ export default function JobCreate() {
     if (values.qc_enabled) {
       jobData.qc_options = {
         enabled: true,
-        functionals: values.qc_functionals || ['B3LYP'],
-        basis_sets: values.qc_basis_sets || ['6-31++g(d,p)'],
-        solvent_models: values.qc_solvent_models || ['pcm'],
-        solvents: values.qc_solvents || ['Water'],
+        functional: values.qc_functionals?.[0] || 'B3LYP',
+        basis_set: values.qc_basis_sets?.[0] || '6-31++g(d,p)',
+        solvent_model: values.qc_solvent_models?.[0] || 'pcm',
+        solvent_name: values.qc_solvents?.[0] || 'Water',
         molecules: [], // 将由后端从电解质配方中提取
-      };
+      } as any;
     }
 
     return jobData;
@@ -817,7 +817,7 @@ export default function JobCreate() {
                       if (solventModels.includes('gas')) {
                         solventCombinations += 1;
                       }
-                      const nonGasModels = solventModels.filter(m => m !== 'gas');
+                      const nonGasModels = solventModels.filter((m: string) => m !== 'gas');
                       solventCombinations += nonGasModels.length * solvents.length;
 
                       const totalJobs = moleculesToCalc.length * functionals.length * basisSets.length * solventCombinations;

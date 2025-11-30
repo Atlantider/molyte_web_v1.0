@@ -594,10 +594,16 @@ export default function ElectrolyteFormNew({
                               })),
                             }))}
                             onSelect={handleSolventSelect}
-                            filterOption={(inputValue, option) =>
-                              option?.label?.toString().toLowerCase().includes(inputValue.toLowerCase()) ||
-                              option?.value?.toString().toLowerCase().includes(inputValue.toLowerCase()) || false
-                            }
+                            filterOption={(inputValue, option) => {
+                              // 只搜索子选项，不搜索分组标签
+                              if (!option || 'options' in option) {
+                                return false; // 这是分组项或空值，不直接匹配
+                              }
+                              const optionAny = option as any;
+                              const label = optionAny?.label?.toString().toLowerCase() || '';
+                              const value = optionAny?.value?.toString().toLowerCase() || '';
+                              return label.includes(inputValue.toLowerCase()) || value.includes(inputValue.toLowerCase());
+                            }}
                           />
                         </Form.Item>
                       </Col>

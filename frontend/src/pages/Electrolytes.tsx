@@ -1111,8 +1111,12 @@ export default function Electrolytes() {
                         type="primary"
                         size="small"
                         onClick={async () => {
-                          if (importResult.success_electrolyte_ids && importResult.success_electrolyte_ids.length > 0) {
-                            setSelectedIds(importResult.success_electrolyte_ids);
+                          // 从导入结果中提取成功的配方ID
+                          const successIds = importResult.electrolyte_results
+                            ?.filter(r => r.status === 'success' && r.id)
+                            .map(r => r.id) || [];
+                          if (successIds.length > 0) {
+                            setSelectedIds(successIds);
 
                             // 加载分区和配额信息
                             try {
@@ -1145,10 +1149,10 @@ export default function Electrolytes() {
                       <Button
                         size="small"
                         onClick={() => {
-                          setBatchImportModalVisible(false);
+                          setBatchImportVisible(false);
                           setImportStep(0);
                           setImportResult(null);
-                          fetchElectrolytes();
+                          loadData();
                         }}
                       >
                         完成并刷新列表

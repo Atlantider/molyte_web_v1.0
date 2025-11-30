@@ -156,7 +156,7 @@ export default function QCJobs() {
   const [selectedSolventModel, setSelectedSolventModel] = useState('gas');
   const [autoSpin, setAutoSpin] = useState(true);
   const [calculatedSpin, setCalculatedSpin] = useState<number | null>(null);
-  const [smilesOptions, setSmilesOptions] = useState<{ value: string; label: string }[]>([]);
+  const [smilesOptions, setSmilesOptions] = useState<{ value: string; label: string; charge?: number }[]>([]);
   const [partitions, setPartitions] = useState<PartitionInfo[]>([]);
   const [useRecommendedParams, setUseRecommendedParams] = useState(true);
   const [recommendationReason, setRecommendationReason] = useState<string>('');
