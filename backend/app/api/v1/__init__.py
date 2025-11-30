@@ -2,7 +2,7 @@
 API v1 router
 """
 from fastapi import APIRouter
-from app.api.v1 import auth, users, projects, electrolytes, jobs, slurm, admin, research, billing, visibility, qc, user_preferences, batch_import
+from app.api.v1 import auth, users, projects, electrolytes, jobs, slurm, admin, research, billing, visibility, qc, user_preferences, batch_import, worker
 
 api_router = APIRouter()
 
@@ -20,3 +20,4 @@ api_router.include_router(billing.router, tags=["Billing"])
 api_router.include_router(visibility.router, prefix="/visibility", tags=["Visibility"])
 api_router.include_router(user_preferences.router, prefix="/user-preferences", tags=["User Preferences"])
 api_router.include_router(batch_import.router, prefix="/batch-import", tags=["Batch Import"])
+api_router.include_router(worker.router, tags=["Worker"])
