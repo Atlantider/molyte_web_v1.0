@@ -1,0 +1,1085 @@
+/**
+ * MSD 分析组件 - Nature 期刊风格
+ * 使用 ECharts 实现专业的科学论文级别图表
+ */
+import React, { useState, useEffect, useRef } from 'react';
+import { Card, Spin, Alert, Button, Space, message, Row, Col, Empty, Typography } from 'antd';
+import { ReloadOutlined, DownloadOutlined, CalculatorOutlined, LineChartOutlined } from '@ant-design/icons';
+import ReactECharts from 'echarts-for-react';
+import type { EChartsOption } from 'echarts';
+import axios from 'axios';
+
+const { Text } = Typography;
+
+interface MSDData {
+  id: number;
+  species: string;
+  time: number[];
+  msd_x: number[];
+  msd_y: number[];
+  msd_z: number[];
+  msd_total: number[];
+  labels: {
+    time: string;
+    x: string;
+    y: string;
+    z: string;
+    total: string;
+  };
+  diffusion_coefficient: number;
+  ionic_conductivity?: number;  // 离子电导率 (S/cm)
+  mobility?: number;  // 离子迁移率 (cm²/(V·s))
+  charge?: number;  // 离子电荷数
+  created_at: string;
+}
+
+interface MSDCalculatorNatureProps {
+  jobId: number;
+}
+
+// Nature 期刊风格配色（低饱和度）
+const NATURE_COLORS = [
+  '#1f77b4', // 深蓝
+  '#2ca02c', // 青绿
+  '#ff7f0e', // 暗橙
+  '#9467bd', // 紫色
+  '#8c564b', // 棕色
+  '#e377c2', // 粉色
+  '#7f7f7f', // 灰色
+  '#bcbd22', // 黄绿
+  '#17becf', // 青色
+];
+
+// Dashboard 样式常量（与 Solvation 保持一致）
+const DASHBOARD_STYLES = {
+  pageBackground: '#F5F7FB',
+  cardBackground: '#FFFFFF',
+  cardBorderRadius: 12,
+  cardShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
+  cardShadowHover: '0 8px 24px rgba(15, 23, 42, 0.12)',
+  cardPadding: 24,
+  gutter: 24,
+  titleColor: '#111827',
+  titleFontSize: 16,
+  titleFontWeight: 600,
+  chartHeight: 360,
+};
+
+// 响应式CSS样式
+const RESPONSIVE_STYLES = `
+  .dashboard-card {
+    transition: all 0.3s ease;
+  }
+  .dashboard-card:hover {
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    transform: translateY(-2px);
+  }
+  .msd-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+  }
+  .msd-charts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+  .msd-row-card {
+    border: 1px solid #e8e8e8 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+    transition: all 0.3s ease !important;
+  }
+  .msd-row-card:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+    border-color: #d9d9d9 !important;
+  }
+  .msd-row-card .ant-card-head {
+    min-height: 52px;
+    padding: 0 ${DASHBOARD_STYLES.cardPadding}px;
+    border-bottom: 1px solid #e8e8e8;
+    background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
+  }
+  .msd-row-card .ant-card-head-title {
+    padding: 14px 0;
+  }
+  .msd-row-card .ant-card-body {
+    padding: ${DASHBOARD_STYLES.cardPadding}px !important;
+  }
+  .chart-container {
+    background: linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%);
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    padding: 8px;
+  }
+  .msd-notes-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-top: 20px;
+  }
+  @media (max-width: 1400px) {
+    .msd-stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .msd-charts-grid {
+      grid-template-columns: 1fr;
+    }
+    .msd-notes-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .msd-row-card .ant-col:first-child {
+      border-right: none !important;
+      border-bottom: 1px solid #f0f0f0 !important;
+    }
+  }
+  @media (max-width: 768px) {
+    .msd-stats-grid {
+      grid-template-columns: 1fr;
+    }
+    .msd-notes-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+`;
+
+const MSDCalculatorNature: React.FC<MSDCalculatorNatureProps> = ({ jobId }) => {
+  const [msdData, setMsdData] = useState<MSDData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [calculating, setCalculating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [triggeringPostprocess, setTriggeringPostprocess] = useState(false);
+
+  const chartRef = useRef<any>(null);
+
+  // 加载 MSD 数据
+  const loadMSDData = async (autoTrigger: boolean = false) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await axios.get(`/api/v1/jobs/${jobId}/msd_results`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setMsdData(response.data);
+
+      // 如果没有数据且允许自动触发，则自动触发后处理
+      if (response.data.length === 0 && autoTrigger) {
+        message.info('未找到 MSD 数据，正在自动运行分析...');
+        await triggerPostprocess();
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || '加载 MSD 数据失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 触发后处理任务（包含 RDF 和 MSD）
+  const triggerPostprocess = async () => {
+    setTriggeringPostprocess(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await axios.post(`/api/v1/jobs/${jobId}/trigger_postprocess`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      message.success('MSD 分析任务已触发，正在后台运行...');
+
+      // 每隔 2 秒检查一次，最多检查 30 次（60 秒）
+      let attempts = 0;
+      const maxAttempts = 30;
+      const checkInterval = setInterval(async () => {
+        attempts++;
+        try {
+          const checkResponse = await axios.get(`/api/v1/jobs/${jobId}/msd_results`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (checkResponse.data.length > 0) {
+            // 找到数据了，停止检查并刷新
+            clearInterval(checkInterval);
+            message.success('MSD 分析完成！');
+            setMsdData(checkResponse.data);
+            setTriggeringPostprocess(false);
+          }
+        } catch (e) {
+          console.error('Failed to check MSD results:', e);
+        }
+
+        // 达到最大尝试次数，停止检查
+        if (attempts >= maxAttempts) {
+          clearInterval(checkInterval);
+          message.warning('MSD 分析可能需要更长时间，请稍后手动刷新');
+          setTriggeringPostprocess(false);
+        }
+      }, 2000);
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || '触发后处理失败');
+      setTriggeringPostprocess(false);
+    }
+  };
+
+  // 计算 MSD（保留旧的计算接口，但推荐使用 triggerPostprocess）
+  const calculateMSD = async () => {
+    setCalculating(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      await axios.post(`/api/v1/jobs/${jobId}/calculate_msd`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      message.success('MSD 计算完成');
+      await loadMSDData();
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || 'MSD 计算失败');
+    } finally {
+      setCalculating(false);
+    }
+  };
+
+  useEffect(() => {
+    // 首次加载时自动触发后处理（如果没有数据）
+    loadMSDData(true);
+  }, [jobId]);
+
+  // 导出图表
+  const exportChart = (filename: string) => {
+    if (chartRef.current) {
+      const echartInstance = chartRef.current.getEchartsInstance();
+      const url = echartInstance.getDataURL({
+        type: 'png',
+        pixelRatio: 3, // 3x 分辨率，论文级别
+        backgroundColor: '#fff',
+      });
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+    }
+  };
+
+  // 导出MSD数据为CSV
+  const exportMSDData = () => {
+    if (!msdData || msdData.length === 0) {
+      message.warning('没有可导出的数据');
+      return;
+    }
+
+    try {
+      // 创建CSV内容
+      let csvContent = 'data:text/csv;charset=utf-8,';
+
+      // 添加标题行
+      csvContent += 'Species,Time (ps),MSD_X (Ų),MSD_Y (Ų),MSD_Z (Ų),MSD_Total (Ų),';
+      csvContent += 'Diffusion Coefficient (cm²/s),Ionic Conductivity (S/cm),Mobility (cm²/(V·s)),Charge\n';
+
+      // 为每个物种添加数据
+      msdData.forEach(data => {
+        const maxLength = data.time.length;
+        for (let i = 0; i < maxLength; i++) {
+          const row = [
+            data.species,
+            data.time[i]?.toFixed(6) || '',
+            data.msd_x[i]?.toFixed(6) || '',
+            data.msd_y[i]?.toFixed(6) || '',
+            data.msd_z[i]?.toFixed(6) || '',
+            data.msd_total[i]?.toFixed(6) || '',
+            i === 0 ? (data.diffusion_coefficient?.toExponential(4) || '') : '',
+            i === 0 ? (data.ionic_conductivity?.toExponential(4) || '') : '',
+            i === 0 ? (data.mobility?.toExponential(4) || '') : '',
+            i === 0 ? (data.charge || '') : '',
+          ];
+          csvContent += row.join(',') + '\n';
+        }
+        // 添加空行分隔不同物种
+        csvContent += '\n';
+      });
+
+      // 创建下载链接
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `msd_data_job_${jobId}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      message.success('MSD数据已导出');
+    } catch (error) {
+      console.error('导出失败:', error);
+      message.error('导出失败，请重试');
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <div style={{ textAlign: 'center', padding: '50px' }}>
+          <Spin size="large" />
+          <p style={{ marginTop: 16 }}>加载 MSD 数据...</p>
+        </div>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <Alert
+          message="错误"
+          description={error}
+          type="error"
+          showIcon
+          action={
+            <Button size="small" onClick={() => loadMSDData(false)}>
+              重试
+            </Button>
+          }
+        />
+      </Card>
+    );
+  }
+
+  if (msdData.length === 0 && !loading && !triggeringPostprocess) {
+    return (
+      <Card>
+        <Alert
+          message="无 MSD 数据"
+          description="该任务尚未计算 MSD，请点击下方按钮开始计算。"
+          type="info"
+          showIcon
+          action={
+            <Button
+              type="primary"
+              icon={<CalculatorOutlined />}
+              onClick={triggerPostprocess}
+              loading={calculating || triggeringPostprocess}
+            >
+              运行 MSD 分析
+            </Button>
+          }
+        />
+      </Card>
+    );
+  }
+
+  if (triggeringPostprocess) {
+    return (
+      <Card>
+        <div style={{ textAlign: 'center', padding: '50px' }}>
+          <Spin size="large" />
+          <p style={{ marginTop: 16 }}>正在运行 MSD 分析，请稍候...</p>
+          <p style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
+            这可能需要几秒到几十秒的时间
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+
+
+  // 计算后半段扩散系数
+  const calculateHalfDiffusion = (time: number[], msd: number[]): number | null => {
+    if (time.length < 10) return null;
+    const halfIndex = Math.floor(time.length / 2);
+    const timeHalf = time.slice(halfIndex);
+    const msdHalf = msd.slice(halfIndex);
+
+    // 线性拟合: MSD = 6Dt
+    const n = timeHalf.length;
+    const sumT = timeHalf.reduce((a, b) => a + b, 0);
+    const sumMSD = msdHalf.reduce((a, b) => a + b, 0);
+    const sumT2 = timeHalf.reduce((a, b) => a + b * b, 0);
+    const sumTMSD = timeHalf.reduce((a, b, i) => a + b * msdHalf[i], 0);
+
+    const slope = (n * sumTMSD - sumT * sumMSD) / (n * sumT2 - sumT * sumT);
+    const D = slope / 6.0 * 1e-1; // Ų/fs -> cm²/s
+
+    return D;
+  };
+
+  // 判断是阳离子还是阴离子
+  const isCation = (species: string): boolean => {
+    const cations = ['Li', 'Na', 'K', 'Mg', 'Ca', 'Zn', 'Al'];
+    return cations.some(c => species.includes(c));
+  };
+
+  // 分离阳离子和阴离子数据
+  const cationData = msdData.filter(d => isCation(d.species));
+  const anionData = msdData.filter(d => !isCation(d.species));
+
+  // Nature 期刊统一样式常量
+  const CHART_FONT_FAMILY = 'Arial, Helvetica, sans-serif';
+  const CHART_LABEL_SIZE = 11;
+  const CHART_LEGEND_SIZE = 11;
+
+  // 为单个物种生成 MSD 图表配置
+  const generateMSDOption = (data: MSDData, colorIndex: number): EChartsOption => {
+    const color = NATURE_COLORS[colorIndex % NATURE_COLORS.length];
+    const maxMSD = Math.max(...data.msd_total);
+    const msdYMax = Math.ceil(maxMSD * 1.1);
+
+    return {
+      backgroundColor: 'transparent',
+      grid: {
+        left: '12%',
+        right: '4%',
+        top: '12%',
+        bottom: '18%',
+        containLabel: false,
+      },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'cross',
+          lineStyle: { color: '#999', width: 1, type: 'dashed' },
+        },
+        backgroundColor: 'rgba(255, 255, 255, 0.96)',
+        borderColor: '#e0e0e0',
+        borderWidth: 1,
+        textStyle: { color: '#333', fontSize: CHART_LABEL_SIZE, fontFamily: CHART_FONT_FAMILY },
+        formatter: (params: any) => {
+          if (!params || params.length === 0) return '';
+          const time = params[0].value[0];
+          let html = `<div style="font-weight: 600; margin-bottom: 6px; color: #111827;">Time: ${time.toFixed(0)} fs</div>`;
+          params.forEach((param: any) => {
+            const msd = param.value[1];
+            html += `<div style="margin: 3px 0; display: flex; align-items: center; gap: 8px;">
+              <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: ${param.color};"></span>
+              <span>${param.seriesName}: <strong>${msd.toFixed(2)} Ų</strong></span>
+            </div>`;
+          });
+          return html;
+        },
+      },
+      xAxis: {
+        type: 'value',
+        name: 'Time / fs',
+        nameLocation: 'middle',
+        nameGap: 32,
+        nameTextStyle: {
+          fontSize: 13,
+          fontWeight: 600,
+          fontFamily: CHART_FONT_FAMILY,
+          color: '#333'
+        },
+        axisLine: { lineStyle: { color: '#333', width: 2 } },
+        axisTick: { inside: true, length: 5, lineStyle: { color: '#333', width: 2 } },
+        axisLabel: { fontSize: CHART_LABEL_SIZE, fontWeight: 500, color: '#333', fontFamily: CHART_FONT_FAMILY },
+        splitLine: { show: true, lineStyle: { color: '#e8e8e8', width: 1, type: 'dashed' } },
+      },
+      yAxis: {
+        type: 'value',
+        name: 'MSD / Ų',
+        nameLocation: 'middle',
+        nameGap: 45,
+        nameTextStyle: {
+          fontSize: 13,
+          fontWeight: 600,
+          fontFamily: CHART_FONT_FAMILY,
+          color: '#333'
+        },
+        max: msdYMax,
+        axisLine: { lineStyle: { color: '#333', width: 2 } },
+        axisTick: { inside: true, length: 5, lineStyle: { color: '#333', width: 2 } },
+        axisLabel: { fontSize: CHART_LABEL_SIZE, fontWeight: 500, color: '#333', fontFamily: CHART_FONT_FAMILY },
+        splitLine: { show: true, lineStyle: { color: '#e8e8e8', width: 1, type: 'dashed' } },
+      },
+      legend: {
+        top: 8,
+        left: 'center',
+        textStyle: {
+          fontSize: CHART_LEGEND_SIZE,
+          fontFamily: CHART_FONT_FAMILY,
+          color: '#333'
+        },
+        itemWidth: 28,
+        itemHeight: 2,
+        itemGap: 20,
+      },
+      series: [
+        {
+          name: 'X',
+          type: 'line',
+          data: data.time.map((t, i) => [t, data.msd_x[i]]),
+          smooth: false,
+          symbol: 'none',
+          lineStyle: { width: 1.5, color: color, opacity: 0.65 },
+        },
+        {
+          name: 'Y',
+          type: 'line',
+          data: data.time.map((t, i) => [t, data.msd_y[i]]),
+          smooth: false,
+          symbol: 'none',
+          lineStyle: { width: 1.5, color: color, opacity: 0.65, type: 'dashed' },
+        },
+        {
+          name: 'Z',
+          type: 'line',
+          data: data.time.map((t, i) => [t, data.msd_z[i]]),
+          smooth: false,
+          symbol: 'none',
+          lineStyle: { width: 1.5, color: color, opacity: 0.65, type: 'dotted' },
+        },
+        {
+          name: 'Total',
+          type: 'line',
+          data: data.time.map((t, i) => [t, data.msd_total[i]]),
+          smooth: false,
+          symbol: 'none',
+          lineStyle: { width: 2.8, color: color },
+        },
+      ],
+    };
+  };
+
+  // 卡片样式（与 Solvation 保持一致）
+  const dashboardCardStyle: React.CSSProperties = {
+    background: DASHBOARD_STYLES.cardBackground,
+    borderRadius: DASHBOARD_STYLES.cardBorderRadius,
+    boxShadow: DASHBOARD_STYLES.cardShadow,
+    border: 'none',
+    transition: 'all 0.3s ease',
+  };
+
+  // 统计信息卡片组件
+  const StatisticsCard = ({ data, colorIndex }: { data: MSDData; colorIndex: number }) => {
+    const halfD = calculateHalfDiffusion(data.time, data.msd_total);
+    const fullD = data.diffusion_coefficient;
+    const color = NATURE_COLORS[colorIndex % NATURE_COLORS.length];
+
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* 物种标识 */}
+        <div style={{
+          padding: 16,
+          background: `linear-gradient(135deg, ${color}15 0%, ${color}08 100%)`,
+          borderRadius: 8,
+          borderLeft: `4px solid ${color}`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 8, height: 24, backgroundColor: color, borderRadius: 4 }} />
+            <Text strong style={{ fontSize: DASHBOARD_STYLES.titleFontSize, color: DASHBOARD_STYLES.titleColor, fontWeight: DASHBOARD_STYLES.titleFontWeight }}>
+              {data.species}
+            </Text>
+          </div>
+        </div>
+
+        {/* 扩散系数 */}
+        <div style={{
+          backgroundColor: '#f8fafc',
+          padding: 16,
+          borderRadius: 8,
+          border: '1px solid #e8e8e8',
+          flex: 1,
+        }}>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12, fontWeight: 600 }}>
+            扩散系数 (Diffusion Coefficient)
+          </div>
+          <Row gutter={12}>
+            <Col span={12}>
+              <div style={{
+                textAlign: 'center',
+                padding: '12px 8px',
+                backgroundColor: '#fff',
+                borderRadius: 6,
+                border: '1px solid #e8e8e8',
+              }}>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>全部数据</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: color }}>
+                  {(fullD * 1e7).toFixed(2)}
+                </div>
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>×10⁻⁷ cm²/s</div>
+              </div>
+            </Col>
+            <Col span={12}>
+              <div style={{
+                textAlign: 'center',
+                padding: '12px 8px',
+                backgroundColor: '#fff',
+                borderRadius: 6,
+                border: '1px solid #e8e8e8',
+              }}>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>后半段</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: halfD !== null ? color : '#ccc' }}>
+                  {halfD !== null ? (halfD * 1e7).toFixed(2) : 'N/A'}
+                </div>
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>×10⁻⁷ cm²/s</div>
+              </div>
+            </Col>
+          </Row>
+          {halfD !== null && (
+            <div style={{
+              marginTop: 12,
+              padding: 8,
+              fontSize: 11,
+              color: '#64748b',
+              textAlign: 'center',
+              backgroundColor: '#fff',
+              borderRadius: 6,
+              border: '1px solid #e8e8e8',
+            }}>
+              差异: <strong>{Math.abs((fullD - halfD) / fullD * 100).toFixed(1)}%</strong>
+            </div>
+          )}
+        </div>
+
+        {/* 传输性质 - 离子电导率和迁移率 */}
+        {(data.ionic_conductivity || data.mobility) && (
+          <div style={{
+            backgroundColor: '#f0fdf4',
+            padding: 16,
+            borderRadius: 8,
+            border: '1px solid #bbf7d0',
+          }}>
+            <div style={{ fontSize: 12, color: '#166534', marginBottom: 12, fontWeight: 600 }}>
+              传输性质 (Transport Properties)
+            </div>
+            <Row gutter={12}>
+              {data.ionic_conductivity && (
+                <Col span={12}>
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '12px 8px',
+                    backgroundColor: '#fff',
+                    borderRadius: 6,
+                    border: '1px solid #dcfce7',
+                  }}>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>离子电导率</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: '#16a34a' }}>
+                      {(data.ionic_conductivity * 1e3).toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>mS/cm</div>
+                  </div>
+                </Col>
+              )}
+              {data.mobility && (
+                <Col span={data.ionic_conductivity ? 12 : 24}>
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '12px 8px',
+                    backgroundColor: '#fff',
+                    borderRadius: 6,
+                    border: '1px solid #dcfce7',
+                  }}>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>离子迁移率</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: '#0891b2' }}>
+                      {(data.mobility * 1e4).toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>×10⁻⁴ cm²/(V·s)</div>
+                  </div>
+                </Col>
+              )}
+            </Row>
+            {data.charge && (
+              <div style={{
+                marginTop: 8,
+                padding: 6,
+                fontSize: 11,
+                color: '#64748b',
+                textAlign: 'center',
+                backgroundColor: '#fff',
+                borderRadius: 6,
+                border: '1px solid #dcfce7',
+              }}>
+                离子电荷: <strong>{data.charge > 0 ? '+' : ''}{data.charge}</strong>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 其他统计 */}
+        <Row gutter={8}>
+          <Col span={12}>
+            <div style={{ padding: 12, backgroundColor: '#f8fafc', borderRadius: 6, textAlign: 'center', border: '1px solid #e8e8e8' }}>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>数据点数</div>
+              <div style={{ fontSize: 18, fontWeight: 600, color: '#334155' }}>{data.time.length}</div>
+            </div>
+          </Col>
+          <Col span={12}>
+            <div style={{ padding: 12, backgroundColor: '#f8fafc', borderRadius: 6, textAlign: 'center', border: '1px solid #e8e8e8' }}>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>最大 MSD</div>
+              <div style={{ fontSize: 18, fontWeight: 600, color: '#334155' }}>{Math.max(...data.msd_total).toFixed(1)}</div>
+            </div>
+          </Col>
+        </Row>
+
+        <div style={{ padding: 12, backgroundColor: '#f8fafc', borderRadius: 6, textAlign: 'center', border: '1px solid #e8e8e8' }}>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>时间范围</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>
+            {(data.time[0] / 1000).toFixed(1)} - {(data.time[data.time.length - 1] / 1000).toFixed(1)} ps
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 渲染单个物种的 MSD 行（图表 + 统计信息）
+  const renderSpeciesRow = (data: MSDData, colorIndex: number, isCat: boolean) => {
+    const color = NATURE_COLORS[colorIndex % NATURE_COLORS.length];
+    const chartHeight = DASHBOARD_STYLES.chartHeight;
+
+    return (
+      <Card
+        key={data.id}
+        className="dashboard-card msd-row-card"
+        style={{ ...dashboardCardStyle, marginBottom: DASHBOARD_STYLES.gutter }}
+        styles={{ body: { padding: 0 } }}
+      >
+        <Row>
+          {/* 左侧：MSD 图表 */}
+          <Col xs={24} lg={16} style={{ borderRight: '1px solid #f0f0f0' }}>
+            <div style={{ padding: DASHBOARD_STYLES.cardPadding }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <LineChartOutlined style={{ fontSize: 20, color: color }} />
+                  <Text strong style={{ fontSize: DASHBOARD_STYLES.titleFontSize, color: DASHBOARD_STYLES.titleColor, fontWeight: DASHBOARD_STYLES.titleFontWeight }}>
+                    {isCat ? '阳离子 (Cation)' : '阴离子 (Anion)'}: {data.species}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#64748b', marginLeft: 8 }}>
+                    Mean Square Displacement
+                  </Text>
+                </div>
+                <Button
+                  icon={<DownloadOutlined />}
+                  size="small"
+                  type="text"
+                  onClick={() => exportChart(`msd_${data.species}_job_${jobId}.png`)}
+                  style={{ borderRadius: 6 }}
+                >
+                  导出
+                </Button>
+              </div>
+              <div style={{
+                background: 'linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%)',
+                border: '1px solid #e8e8e8',
+                borderRadius: 8,
+                padding: 8,
+              }}>
+                <ReactECharts
+                  ref={colorIndex === 0 ? chartRef : undefined}
+                  option={generateMSDOption(data, colorIndex)}
+                  style={{ width: '100%', height: chartHeight }}
+                  opts={{ renderer: 'canvas' }}
+                />
+              </div>
+            </div>
+          </Col>
+
+          {/* 右侧：统计信息 */}
+          <Col xs={24} lg={8}>
+            <div style={{ padding: DASHBOARD_STYLES.cardPadding, minHeight: chartHeight + 80, display: 'flex', flexDirection: 'column' }}>
+              <StatisticsCard data={data} colorIndex={colorIndex} />
+            </div>
+          </Col>
+        </Row>
+      </Card>
+    );
+  };
+
+  return (
+    <div style={{
+      background: DASHBOARD_STYLES.pageBackground,
+      padding: DASHBOARD_STYLES.gutter,
+      minHeight: '100%',
+      borderRadius: 8,
+    }}>
+      <style>{RESPONSIVE_STYLES}</style>
+
+      {/* 操作按钮 */}
+      <Card className="dashboard-card" style={{ ...dashboardCardStyle, marginBottom: DASHBOARD_STYLES.gutter }}>
+        <Row justify="space-between" align="middle">
+          <Col>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <LineChartOutlined style={{ fontSize: 24, color: '#1890ff' }} />
+              <div>
+                <Text strong style={{ fontSize: DASHBOARD_STYLES.titleFontSize + 2, color: DASHBOARD_STYLES.titleColor, fontWeight: DASHBOARD_STYLES.titleFontWeight }}>
+                  MSD 分析 (MSD Analysis)
+                </Text>
+                <div style={{ marginTop: 4 }}>
+                  <Text style={{ fontSize: 12, color: '#64748b' }}>
+                    共 {msdData.length} 个物种：{cationData.length} 阳离子，{anionData.length} 阴离子
+                  </Text>
+                </div>
+              </div>
+            </div>
+          </Col>
+          <Col>
+            <Space>
+              <Button icon={<DownloadOutlined />} onClick={exportMSDData} style={{ borderRadius: 6 }}>
+                导出数据
+              </Button>
+              <Button icon={<ReloadOutlined />} onClick={() => loadMSDData(false)} loading={loading} style={{ borderRadius: 6 }}>
+                刷新
+              </Button>
+              <Button type="primary" icon={<CalculatorOutlined />} onClick={triggerPostprocess} loading={calculating || triggeringPostprocess} style={{ borderRadius: 6 }}>
+                重新计算
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
+
+      {/* 错误提示 */}
+      {error && (
+        <Alert
+          message="错误"
+          description={error}
+          type="error"
+          showIcon
+          closable
+          style={{ marginBottom: DASHBOARD_STYLES.gutter, borderRadius: DASHBOARD_STYLES.cardBorderRadius }}
+        />
+      )}
+
+      {/* 加载状态 */}
+      {loading && (
+        <Card className="dashboard-card" style={dashboardCardStyle}>
+          <div style={{ textAlign: 'center', padding: 60 }}>
+            <Spin size="large" tip="加载 MSD 数据中..." />
+          </div>
+        </Card>
+      )}
+
+      {/* 主内容区域 */}
+      {!loading && msdData && msdData.length > 0 && (
+        <>
+          {/* 第一部分：统计信息卡片网格 */}
+          {(() => {
+            const totalConductivity = msdData.reduce((sum, d) => sum + (d.ionic_conductivity || 0), 0);
+            const cationD = cationData[0]?.diffusion_coefficient;
+            const anionD = anionData[0]?.diffusion_coefficient;
+            const tPlus = cationD && anionD ? Math.abs(cationD) / (Math.abs(cationD) + Math.abs(anionD)) : null;
+
+            return (
+              <div className="msd-stats-grid" style={{ marginBottom: DASHBOARD_STYLES.gutter }}>
+                {/* 总离子电导率 */}
+                <div className="dashboard-card" style={dashboardCardStyle}>
+                  <div style={{ padding: DASHBOARD_STYLES.cardPadding }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{
+                        width: 48, height: 48, borderRadius: 12,
+                        background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <CalculatorOutlined style={{ fontSize: 24, color: '#fff' }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: '#6b7280' }}>总离子电导率 (σ)</div>
+                        <div style={{ fontSize: 28, fontWeight: 700, color: '#16a34a' }}>
+                          {totalConductivity > 0 ? (totalConductivity * 1e3).toFixed(2) : 'N/A'}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>mS/cm</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 阳离子迁移数 */}
+                <div className="dashboard-card" style={dashboardCardStyle}>
+                  <div style={{ padding: DASHBOARD_STYLES.cardPadding }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{
+                        width: 48, height: 48, borderRadius: 12,
+                        background: 'linear-gradient(135deg, #0891b2 0%, #0e7490 100%)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <span style={{ fontSize: 18, color: '#fff', fontWeight: 700 }}>t⁺</span>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: '#6b7280' }}>阳离子迁移数</div>
+                        <div style={{ fontSize: 28, fontWeight: 700, color: '#0891b2' }}>
+                          {tPlus !== null ? tPlus.toFixed(3) : 'N/A'}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>无量纲</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 阴离子迁移数 */}
+                <div className="dashboard-card" style={dashboardCardStyle}>
+                  <div style={{ padding: DASHBOARD_STYLES.cardPadding }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{
+                        width: 48, height: 48, borderRadius: 12,
+                        background: 'linear-gradient(135deg, #9333ea 0%, #7e22ce 100%)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <span style={{ fontSize: 18, color: '#fff', fontWeight: 700 }}>t⁻</span>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: '#6b7280' }}>阴离子迁移数</div>
+                        <div style={{ fontSize: 28, fontWeight: 700, color: '#9333ea' }}>
+                          {tPlus !== null ? (1 - tPlus).toFixed(3) : 'N/A'}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>无量纲</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 物种数量 */}
+                <div className="dashboard-card" style={dashboardCardStyle}>
+                  <div style={{ padding: DASHBOARD_STYLES.cardPadding }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{
+                        width: 48, height: 48, borderRadius: 12,
+                        background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <LineChartOutlined style={{ fontSize: 24, color: '#fff' }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: '#6b7280' }}>分析物种数</div>
+                        <div style={{ fontSize: 28, fontWeight: 700, color: '#1890ff' }}>
+                          {msdData.length}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                          {cationData.length} 阳离子 / {anionData.length} 阴离子
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 第二部分：MSD 图表网格 - 先阳离子后阴离子 */}
+          <div className="msd-charts-grid" style={{ marginBottom: DASHBOARD_STYLES.gutter }}>
+            {[...cationData, ...anionData].map((data, index) => {
+              const color = NATURE_COLORS[index % NATURE_COLORS.length];
+              const isCat = isCation(data.species);
+              return (
+                <Card
+                  key={data.id}
+                  className="dashboard-card msd-row-card"
+                  style={dashboardCardStyle}
+                  title={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <LineChartOutlined style={{ color: color, fontSize: 16 }} />
+                      <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+                        {data.species} - {isCat ? '阳离子 (Cation)' : '阴离子 (Anion)'}
+                      </span>
+                    </div>
+                  }
+                  extra={
+                    <Button
+                      icon={<DownloadOutlined />}
+                      size="small"
+                      type="text"
+                      style={{ borderRadius: 6 }}
+                      onClick={() => exportChart(`msd_${data.species}_job_${jobId}.png`)}
+                    />
+                  }
+                >
+                  <div className="chart-container">
+                    <ReactECharts
+                      ref={index === 0 ? chartRef : undefined}
+                      option={generateMSDOption(data, index)}
+                      style={{ width: '100%', height: DASHBOARD_STYLES.chartHeight }}
+                      opts={{ renderer: 'canvas' }}
+                    />
+                  </div>
+                  {/* 扩散系数和传输性质 */}
+                  <Row gutter={16} style={{ marginTop: 16 }}>
+                    <Col span={8}>
+                      <div style={{
+                        textAlign: 'center',
+                        padding: '12px 8px',
+                        backgroundColor: `${color}10`,
+                        borderRadius: 8,
+                        border: `1px solid ${color}30`,
+                      }}>
+                        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>扩散系数 D</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: color }}>
+                          {(data.diffusion_coefficient * 1e7).toFixed(2)}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#94a3b8' }}>×10⁻⁷ cm²/s</div>
+                      </div>
+                    </Col>
+                    <Col span={8}>
+                      <div style={{
+                        textAlign: 'center',
+                        padding: '12px 8px',
+                        backgroundColor: '#f0fdf4',
+                        borderRadius: 8,
+                        border: '1px solid #bbf7d0',
+                      }}>
+                        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>离子电导率 σ</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: '#16a34a' }}>
+                          {data.ionic_conductivity ? (data.ionic_conductivity * 1e3).toFixed(2) : 'N/A'}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#94a3b8' }}>mS/cm</div>
+                      </div>
+                    </Col>
+                    <Col span={8}>
+                      <div style={{
+                        textAlign: 'center',
+                        padding: '12px 8px',
+                        backgroundColor: '#f0f9ff',
+                        borderRadius: 8,
+                        border: '1px solid #bae6fd',
+                      }}>
+                        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>离子迁移率 μ</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: '#0891b2' }}>
+                          {data.mobility ? (data.mobility * 1e4).toFixed(2) : 'N/A'}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#94a3b8' }}>×10⁻⁴ cm²/(V·s)</div>
+                      </div>
+                    </Col>
+                  </Row>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* 说明信息 - 四列布局 */}
+          <div className="msd-notes-grid">
+            <Card className="dashboard-card" style={{ ...dashboardCardStyle, background: 'linear-gradient(135deg, #fef3c7 0%, #fef9c3 100%)', border: '1px solid #fde68a' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#b45309', marginBottom: 8 }}>扩散系数 D</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#d97706', marginBottom: 4 }}>MSD = 6Dt</div>
+                <div style={{ fontSize: 11, color: '#78716c' }}>Einstein 关系式</div>
+              </div>
+            </Card>
+            <Card className="dashboard-card" style={{ ...dashboardCardStyle, background: 'linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)', border: '1px solid #bbf7d0' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#166534', marginBottom: 8 }}>离子电导率 σ</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#16a34a', marginBottom: 4 }}>σ = nq²D/(k<sub>B</sub>T)</div>
+                <div style={{ fontSize: 11, color: '#78716c' }}>Nernst-Einstein 方程</div>
+              </div>
+            </Card>
+            <Card className="dashboard-card" style={{ ...dashboardCardStyle, background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)', border: '1px solid #bfdbfe' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#1e40af', marginBottom: 8 }}>离子迁移率 μ</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#2563eb', marginBottom: 4 }}>μ = qD/(k<sub>B</sub>T)</div>
+                <div style={{ fontSize: 11, color: '#78716c' }}>单位 cm²/(V·s)</div>
+              </div>
+            </Card>
+            <Card className="dashboard-card" style={{ ...dashboardCardStyle, background: 'linear-gradient(135deg, #f3e8ff 0%, #faf5ff 100%)', border: '1px solid #e9d5ff' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#7e22ce', marginBottom: 8 }}>迁移数 t⁺</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#9333ea', marginBottom: 4 }}>t⁺ = D⁺/(D⁺+D⁻)</div>
+                <div style={{ fontSize: 11, color: '#78716c' }}>阳离子贡献比例</div>
+              </div>
+            </Card>
+          </div>
+        </>
+      )}
+
+      {/* 无数据提示 */}
+      {!loading && (!msdData || msdData.length === 0) && (
+        <Card className="dashboard-card" style={dashboardCardStyle}>
+          <Empty
+            description='暂无 MSD 数据，请点击"重新计算"按钮'
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
+        </Card>
+      )}
+    </div>
+  );
+};
+
+export default MSDCalculatorNature;
+

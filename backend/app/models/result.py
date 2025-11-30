@@ -1,0 +1,150 @@
+"""
+Result models (Summary, RDF, MSD, Solvation)
+"""
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Index
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import JSONB
+from app.database import Base
+
+
+class ResultSummary(Base):
+    """Result summary model"""
+    __tablename__ = "result_summary"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    
+    # System information
+    total_atoms = Column(Integer)
+    total_molecules = Column(Integer)
+    
+    # Final state
+    final_density = Column(Float)
+    final_temperature = Column(Float)
+    final_pressure = Column(Float)
+    
+    # Energy
+    total_energy = Column(Float)
+    potential_energy = Column(Float)
+    kinetic_energy = Column(Float)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # Relationships
+    md_job = relationship("MDJob", back_populates="result_summary")
+    
+    def __repr__(self):
+        return f"<ResultSummary(id={self.id}, md_job_id={self.md_job_id})>"
+
+
+class RDFResult(Base):
+    """Radial distribution function result model"""
+    __tablename__ = "rdf_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    center_species = Column(String, nullable=False)
+    shell_species = Column(String, nullable=False)
+
+    # RDF data
+    r_values = Column(JSONB)
+    g_r_values = Column(JSONB)
+    coordination_number_values = Column(JSONB)  # 配位数数组
+
+    # Analysis results
+    first_peak_position = Column(Float)
+    first_peak_height = Column(Float)
+    coordination_number = Column(Float)  # 最终配位数（向后兼容）
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    md_job = relationship("MDJob", back_populates="rdf_results")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_rdf_md_job_id', 'md_job_id'),
+        Index('idx_rdf_species', 'center_species', 'shell_species'),
+    )
+
+    def __repr__(self):
+        return f"<RDFResult(id={self.id}, {self.center_species}-{self.shell_species})>"
+
+
+class MSDResult(Base):
+    """Mean square displacement result model"""
+    __tablename__ = "msd_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    species = Column(String, nullable=False, index=True)
+
+    # MSD data (arrays stored as JSON)
+    t_values = Column(JSONB)  # Time array (fs) - 使用数据库中的列名
+    msd_x_values = Column(JSONB)  # MSD in x direction (Å²)
+    msd_y_values = Column(JSONB)  # MSD in y direction (Å²)
+    msd_z_values = Column(JSONB)  # MSD in z direction (Å²)
+    msd_total_values = Column(JSONB)  # Total MSD (Å²)
+
+    # Labels for plotting
+    labels = Column(JSONB)  # {'time': 'fs', 'x': 'Li_x', 'y': 'Li_y', 'z': 'Li_z', 'total': 'Li_total'}
+
+    # Analysis results
+    diffusion_coefficient = Column('diffusion_coeff', Float)  # Diffusion coefficient (cm²/s) - 使用数据库中的列名
+
+    # Transport properties (新增)
+    ionic_conductivity = Column(Float)  # 离子电导率 (S/cm)
+    mobility = Column(Float)  # 离子迁移率 (cm²/(V·s))
+    charge = Column(Integer)  # 离子电荷数
+
+    # Legacy columns (keep for compatibility)
+    fit_range = Column(JSONB)
+    file_path = Column(String)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    md_job = relationship("MDJob", back_populates="msd_results")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_msd_md_job_id', 'md_job_id'),
+        Index('idx_msd_species', 'species'),
+    )
+
+    def __repr__(self):
+        return f"<MSDResult(id={self.id}, species={self.species})>"
+
+
+class SolvationStructure(Base):
+    """Solvation structure model - 溶剂化结构模型"""
+    __tablename__ = "solvation_structures"
+
+    id = Column(Integer, primary_key=True, index=True)
+    md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    center_ion = Column(String, nullable=False)  # 中心离子，如 'Li'
+    structure_type = Column(String)  # 结构类型，如 'first_shell', 'typical_cluster'
+
+    # 配位信息
+    coordination_num = Column(Integer)  # 配位数
+    composition = Column(JSONB)  # 溶剂壳组成，如 {"EC": 3, "DMC": 1, "FSI": 0}
+
+    # 文件信息
+    file_path = Column(String)  # xyz/pdb 文件路径
+    snapshot_frame = Column(Integer)  # 快照帧号
+    description = Column(String)  # 描述信息
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    md_job = relationship("MDJob", back_populates="solvation_structures")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_solvation_md_job_id', 'md_job_id'),
+    )
+
+    def __repr__(self):
+        return f"<SolvationStructure(id={self.id}, center_ion={self.center_ion}, cn={self.coordination_num})>"
+

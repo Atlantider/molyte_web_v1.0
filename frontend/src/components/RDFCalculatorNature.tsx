@@ -1,0 +1,1258 @@
+/**
+ * RDF 分析组件 - Nature 期刊风格
+ * 使用 ECharts 实现专业的科学论文级别图表
+ */
+import { useState, useEffect, useRef } from 'react';
+import {
+  Card,
+  Space,
+  message,
+  Spin,
+  Typography,
+  Tag,
+  Empty,
+  Button,
+  Row,
+  Col,
+  Statistic,
+  Slider,
+} from 'antd';
+import { ReloadOutlined, DownloadOutlined, BarChartOutlined, PieChartOutlined, SettingOutlined } from '@ant-design/icons';
+import ReactECharts from 'echarts-for-react';
+import type { EChartsOption } from 'echarts';
+
+const { Text } = Typography;
+
+interface SavedRDFResult {
+  id: number;
+  center_species: string;
+  shell_species: string;
+  r: number[];
+  g_r: number[];
+  coordination_number_values: number[];
+  first_peak_position: number | null;
+  first_peak_height: number | null;
+  coordination_number: number | null;
+  created_at: string;
+}
+
+interface RDFCalculatorProps {
+  jobId: number;
+}
+
+// Nature 期刊风格配色（低饱和度）
+const NATURE_COLORS = [
+  '#1f77b4', // 深蓝
+  '#2ca02c', // 青绿
+  '#ff7f0e', // 暗橙
+  '#9467bd', // 紫色
+  '#8c564b', // 棕色
+  '#e377c2', // 粉色
+  '#7f7f7f', // 灰色
+  '#bcbd22', // 黄绿
+  '#17becf', // 青色
+];
+
+// Dashboard 样式常量（与 Solvation 和 MSD 保持一致）
+const DASHBOARD_STYLES = {
+  pageBackground: '#F5F7FB',
+  cardBackground: '#FFFFFF',
+  cardBorderRadius: 12,
+  cardShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
+  cardShadowHover: '0 8px 24px rgba(15, 23, 42, 0.12)',
+  cardPadding: 24,
+  gutter: 24,
+  titleColor: '#111827',
+  titleFontSize: 16,
+  titleFontWeight: 600,
+  chartHeight: 420,
+};
+
+// 响应式CSS样式
+const RESPONSIVE_STYLES = `
+  .dashboard-card {
+    transition: all 0.3s ease;
+  }
+  .dashboard-card:hover {
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    transform: translateY(-2px);
+  }
+  .rdf-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+  }
+  .rdf-charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .rdf-chart-card {
+    border: 1px solid #e8e8e8 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+    transition: all 0.3s ease !important;
+  }
+  .rdf-chart-card:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+    border-color: #d9d9d9 !important;
+  }
+  .rdf-chart-card .ant-card-head {
+    min-height: 52px;
+    padding: 0 ${DASHBOARD_STYLES.cardPadding}px;
+    border-bottom: 1px solid #e8e8e8;
+    background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
+  }
+  .rdf-chart-card .ant-card-head-title {
+    padding: 14px 0;
+  }
+  .rdf-chart-card .ant-card-body {
+    padding: ${DASHBOARD_STYLES.cardPadding}px !important;
+  }
+  .chart-container {
+    background: linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%);
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    padding: 12px;
+  }
+  @media (max-width: 1400px) {
+    .rdf-stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .rdf-charts-grid {
+      grid-template-columns: 1fr;
+    }
+    .rdf-main-row > .ant-col:first-child {
+      margin-bottom: ${DASHBOARD_STYLES.gutter}px;
+    }
+  }
+  @media (max-width: 768px) {
+    .rdf-stats-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+`;
+
+export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
+  const [savedResults, setSavedResults] = useState<SavedRDFResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedRdfIds, setSelectedRdfIds] = useState<number[]>([]);
+  const [hoveredSeries, setHoveredSeries] = useState<string | null>(null);
+  const [triggeringPostprocess, setTriggeringPostprocess] = useState(false);
+
+  // 截断距离状态（用于配位数统计）
+  const [cnCutoff, setCnCutoff] = useState(3.0);
+
+  const rdfChartRef = useRef<any>(null);
+  const cnChartRef = useRef<any>(null);
+  const pieChartRef = useRef<any>(null);
+
+  // Nature 期刊统一样式常量
+  const CHART_FONT_FAMILY = 'Arial, Helvetica, sans-serif';
+  const CHART_LABEL_SIZE = 11;
+  const CHART_LEGEND_SIZE = 11;
+
+  // 加载 RDF 结果
+  const loadRDFResults = async (autoTrigger: boolean = false) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/v1/jobs/${jobId}/rdf_results`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error('Failed to load RDF results');
+      }
+      const data = await response.json();
+      setSavedResults(data);
+      setSelectedRdfIds(data.map((r: SavedRDFResult) => r.id));
+
+      // 如果没有数据且允许自动触发，则自动触发后处理
+      if (data.length === 0 && autoTrigger) {
+        message.info('未找到 RDF 数据，正在自动运行分析...');
+        await triggerPostprocess();
+      }
+    } catch (error: any) {
+      console.error('Failed to load RDF results:', error);
+      message.error('加载 RDF 结果失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 触发后处理任务
+  const triggerPostprocess = async () => {
+    setTriggeringPostprocess(true);
+    try {
+      const response = await fetch(`/api/v1/jobs/${jobId}/trigger_postprocess`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+        },
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to trigger postprocessing');
+      }
+      const data = await response.json();
+      message.success('RDF 分析任务已触发，正在后台运行...');
+
+      // 每隔 3 秒检查一次，最多检查 10 次（30 秒）
+      let attempts = 0;
+      const maxAttempts = 10;
+      const checkInterval = setInterval(async () => {
+        attempts++;
+        try {
+          const checkResponse = await fetch(`/api/v1/jobs/${jobId}/rdf_results`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+            },
+          });
+          if (checkResponse.ok) {
+            const checkData = await checkResponse.json();
+            if (checkData.length > 0) {
+              // 找到数据了，停止检查并刷新
+              clearInterval(checkInterval);
+              message.success('RDF 分析完成！');
+              setSavedResults(checkData);
+              setSelectedRdfIds(checkData.map((r: SavedRDFResult) => r.id));
+              setTriggeringPostprocess(false);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to check RDF results:', e);
+        }
+
+        // 达到最大尝试次数，停止检查
+        if (attempts >= maxAttempts) {
+          clearInterval(checkInterval);
+          message.warning('RDF 分析可能需要更长时间，请稍后手动刷新');
+          setTriggeringPostprocess(false);
+        }
+      }, 3000);
+    } catch (error: any) {
+      console.error('Failed to trigger postprocessing:', error);
+      message.error(`触发后处理失败: ${error.message}`);
+      setTriggeringPostprocess(false);
+    }
+  };
+
+  useEffect(() => {
+    // 首次加载时自动触发后处理（如果没有数据）
+    loadRDFResults(true);
+  }, [jobId]);
+
+  // 切换选择
+  const toggleSelection = (id: number) => {
+    setSelectedRdfIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  // 全选/取消全选
+  const toggleSelectAll = () => {
+    if (selectedRdfIds.length === savedResults.length) {
+      setSelectedRdfIds([]);
+    } else {
+      setSelectedRdfIds(savedResults.map(r => r.id));
+    }
+  };
+
+  // 导出图片
+  const exportChart = (chartRef: any, filename: string) => {
+    if (chartRef.current) {
+      const echartInstance = chartRef.current.getEchartsInstance();
+      const url = echartInstance.getDataURL({
+        type: 'png',
+        pixelRatio: 3, // 3x 分辨率，论文级别
+        backgroundColor: '#fff',
+      });
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+    }
+  };
+
+  // 导出RDF数据为CSV
+  const exportRDFData = () => {
+    if (!savedResults || savedResults.length === 0) {
+      message.warning('没有可导出的数据');
+      return;
+    }
+
+    try {
+      // 创建CSV内容
+      let csvContent = 'data:text/csv;charset=utf-8,';
+
+      // 添加标题行
+      csvContent += 'Center Species,Shell Species,r (Å),g(r),Coordination Number,';
+      csvContent += 'First Peak Position (Å),First Peak Height,Final Coordination Number\n';
+
+      // 为每个RDF对添加数据
+      savedResults.forEach(result => {
+        const maxLength = result.r.length;
+        for (let i = 0; i < maxLength; i++) {
+          const row = [
+            result.center_species,
+            result.shell_species,
+            result.r[i]?.toFixed(6) || '',
+            result.g_r[i]?.toFixed(6) || '',
+            result.coordination_number_values?.[i]?.toFixed(6) || '',
+            i === 0 ? (result.first_peak_position?.toFixed(4) || '') : '',
+            i === 0 ? (result.first_peak_height?.toFixed(4) || '') : '',
+            i === 0 ? (result.coordination_number?.toFixed(4) || '') : '',
+          ];
+          csvContent += row.join(',') + '\n';
+        }
+        // 添加空行分隔不同RDF对
+        csvContent += '\n';
+      });
+
+      // 创建下载链接
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `rdf_data_job_${jobId}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      message.success('RDF数据已导出');
+    } catch (error) {
+      console.error('导出失败:', error);
+      message.error('导出失败，请重试');
+    }
+  };
+
+  // 卡片样式
+  const dashboardCardStyle: React.CSSProperties = {
+    background: DASHBOARD_STYLES.cardBackground,
+    borderRadius: DASHBOARD_STYLES.cardBorderRadius,
+    boxShadow: DASHBOARD_STYLES.cardShadow,
+    border: 'none',
+    transition: 'all 0.3s ease',
+  };
+
+  if (loading) {
+    return (
+      <div style={{
+        background: DASHBOARD_STYLES.pageBackground,
+        padding: DASHBOARD_STYLES.gutter,
+        minHeight: '100%',
+        borderRadius: 8,
+      }}>
+        <Card className="dashboard-card" style={dashboardCardStyle}>
+          <div style={{ textAlign: 'center', padding: 60 }}>
+            <Spin size="large" tip="加载 RDF 数据..." />
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (savedResults.length === 0) {
+    return (
+      <div style={{
+        background: DASHBOARD_STYLES.pageBackground,
+        padding: DASHBOARD_STYLES.gutter,
+        minHeight: '100%',
+        borderRadius: 8,
+      }}>
+        <Card className="dashboard-card" style={dashboardCardStyle}>
+          <Empty
+            description="暂无 RDF 数据"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          >
+            <Button icon={<ReloadOutlined />} onClick={() => loadRDFResults(false)} style={{ borderRadius: 6 }}>
+              重新加载
+            </Button>
+          </Empty>
+        </Card>
+      </div>
+    );
+  }
+
+  // 准备数据
+  const selectedData = savedResults.filter(r => selectedRdfIds.includes(r.id));
+
+  // 计算配位数统计 @ cnCutoff Å（动态截断距离）
+  const coordinationStats = selectedData.map((result, index) => {
+    let cn_at_cutoff = 0;
+    for (let i = 0; i < result.r.length; i++) {
+      if (result.r[i] >= cnCutoff) {
+        cn_at_cutoff = result.coordination_number_values?.[i] || 0;
+        break;
+      }
+    }
+    return {
+      id: result.id,
+      label: result.shell_species,
+      fullLabel: `${result.center_species} → ${result.shell_species}`,
+      color: NATURE_COLORS[index % NATURE_COLORS.length],
+      cn_at_cutoff,
+      first_peak_position: result.first_peak_position,
+      first_peak_height: result.first_peak_height,
+    };
+  });
+
+  const totalCN = coordinationStats.reduce((sum, stat) => sum + stat.cn_at_cutoff, 0);
+
+  // 计算 RDF 的 Y 轴最大值（自动适应数据）
+  const maxGr = Math.max(...selectedData.flatMap(r => r.g_r));
+  const rdfYMax = Math.ceil(maxGr * 1.1); // 增加 10% 的余量
+
+  // 计算 CN 的 Y 轴最大值（自动适应数据）
+  const maxCN = Math.max(...selectedData.flatMap(r => r.coordination_number_values || []));
+  const cnYMax = Math.ceil(maxCN * 1.1); // 增加 10% 的余量
+
+  // RDF 图表配置 (Nature 风格)
+  const rdfOption: EChartsOption = {
+    backgroundColor: 'transparent',
+    grid: {
+      left: '12%',
+      right: '4%',
+      top: '10%',
+      bottom: '18%',
+      containLabel: false,
+    },
+    xAxis: {
+      type: 'value',
+      name: 'Distance / Å',
+      nameLocation: 'middle',
+      nameGap: 35,
+      nameTextStyle: {
+        fontSize: 13,
+        fontWeight: 600,
+        fontFamily: CHART_FONT_FAMILY,
+        color: '#333',
+      },
+      min: 0,
+      max: 10,
+      axisLine: {
+        lineStyle: {
+          color: '#333',
+          width: 2,
+        },
+      },
+      axisTick: {
+        inside: true,
+        length: 5,
+        lineStyle: {
+          width: 2,
+          color: '#333',
+        },
+      },
+      axisLabel: {
+        fontSize: CHART_LABEL_SIZE,
+        fontFamily: CHART_FONT_FAMILY,
+        fontWeight: 500,
+        color: '#333',
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: '#e8e8e8',
+          width: 1,
+          type: 'dashed',
+        },
+      },
+    },
+    yAxis: {
+      type: 'value',
+      name: 'g(r) / a.u.',
+      nameLocation: 'middle',
+      nameGap: 50,
+      nameTextStyle: {
+        fontSize: 13,
+        fontWeight: 600,
+        fontFamily: CHART_FONT_FAMILY,
+        color: '#333',
+      },
+      min: 0,
+      max: rdfYMax,
+      axisLine: {
+        lineStyle: {
+          color: '#333',
+          width: 2,
+        },
+      },
+      axisTick: {
+        inside: true,
+        length: 5,
+        lineStyle: {
+          width: 2,
+          color: '#333',
+        },
+      },
+      axisLabel: {
+        fontSize: CHART_LABEL_SIZE,
+        fontFamily: CHART_FONT_FAMILY,
+        fontWeight: 500,
+        color: '#333',
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: '#e8e8e8',
+          width: 1,
+          type: 'dashed',
+        },
+      },
+    },
+    legend: {
+      top: 60,
+      right: 16,
+      orient: 'vertical',
+      icon: 'line',
+      textStyle: {
+        fontSize: CHART_LEGEND_SIZE,
+        fontFamily: CHART_FONT_FAMILY,
+        color: '#333',
+      },
+      formatter: (name: string) => {
+        return name.replace('Li_Li → ', '');
+      },
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+        lineStyle: {
+          color: '#999',
+          width: 1,
+          type: 'dashed',
+        },
+      },
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      borderColor: '#e0e0e0',
+      borderWidth: 1,
+      textStyle: {
+        fontSize: CHART_LABEL_SIZE,
+        fontFamily: CHART_FONT_FAMILY,
+        color: '#333',
+      },
+      formatter: (params: any) => {
+        if (!Array.isArray(params) || params.length === 0) return '';
+        const r = params[0].axisValue;
+        let html = `<div style="font-weight: 600; margin-bottom: 6px; color: #111827;">r = ${r.toFixed(2)} Å</div>`;
+        params.forEach((param: any) => {
+          html += `<div style="margin: 3px 0; display: flex; align-items: center; gap: 8px;">`;
+          html += `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};"></span>`;
+          html += `<span>${param.seriesName.replace('Li_Li → ', '')}: <strong>${param.value[1].toFixed(3)}</strong></span>`;
+          html += `</div>`;
+        });
+        return html;
+      },
+    },
+    dataZoom: [
+      {
+        type: 'slider',
+        xAxisIndex: 0,
+        start: 0,
+        end: 100,
+        height: 20,
+        bottom: 5,
+        handleSize: '80%',
+        textStyle: {
+          fontSize: 10,
+          fontFamily: CHART_FONT_FAMILY,
+        },
+      },
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+      },
+    ],
+    toolbox: {
+      feature: {
+        dataZoom: {
+          yAxisIndex: 'none',
+        },
+        restore: {},
+      },
+      right: 16,
+      top: 8,
+    },
+    series: selectedData.map((result, index) => ({
+      name: `${result.center_species} → ${result.shell_species}`,
+      type: 'line',
+      data: result.r.map((r, i) => [r, result.g_r[i]]),
+      symbol: 'none',
+      lineStyle: {
+        width: hoveredSeries === result.id.toString() ? 2.8 : 1.8,
+        color: NATURE_COLORS[index % NATURE_COLORS.length],
+        opacity: hoveredSeries === null ? 1 : (hoveredSeries === result.id.toString() ? 1 : 0.25),
+      },
+      emphasis: {
+        focus: 'series',
+        lineStyle: {
+          width: 2.8,
+        },
+      },
+    })),
+  };
+
+  // CN 图表配置 (Nature 风格)
+  const cnOption: EChartsOption = {
+    backgroundColor: 'transparent',
+    grid: {
+      left: '12%',
+      right: '4%',
+      top: '10%',
+      bottom: '18%',
+      containLabel: false,
+    },
+    xAxis: {
+      type: 'value',
+      name: 'Distance / Å',
+      nameLocation: 'middle',
+      nameGap: 35,
+      nameTextStyle: {
+        fontSize: 13,
+        fontWeight: 600,
+        fontFamily: CHART_FONT_FAMILY,
+        color: '#333',
+      },
+      min: 0,
+      max: 10,
+      axisLine: {
+        lineStyle: {
+          color: '#333',
+          width: 2,
+        },
+      },
+      axisTick: {
+        inside: true,
+        length: 5,
+        lineStyle: {
+          width: 2,
+          color: '#333',
+        },
+      },
+      axisLabel: {
+        fontSize: CHART_LABEL_SIZE,
+        fontFamily: CHART_FONT_FAMILY,
+        fontWeight: 500,
+        color: '#333',
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: '#e8e8e8',
+          width: 1,
+          type: 'dashed',
+        },
+      },
+    },
+    yAxis: {
+      type: 'value',
+      name: 'N(r)',
+      nameLocation: 'middle',
+      nameGap: 50,
+      nameTextStyle: {
+        fontSize: 13,
+        fontWeight: 600,
+        fontFamily: CHART_FONT_FAMILY,
+        color: '#333',
+      },
+      min: 0,
+      max: cnYMax,
+      axisLine: {
+        lineStyle: {
+          color: '#333',
+          width: 2,
+        },
+      },
+      axisTick: {
+        inside: true,
+        length: 5,
+        lineStyle: {
+          width: 2,
+          color: '#333',
+        },
+      },
+      axisLabel: {
+        fontSize: CHART_LABEL_SIZE,
+        fontFamily: CHART_FONT_FAMILY,
+        fontWeight: 500,
+        color: '#333',
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: '#e8e8e8',
+          width: 1,
+          type: 'dashed',
+        },
+      },
+    },
+    legend: {
+      top: 60,
+      left: 80,
+      orient: 'vertical',
+      icon: 'line',
+      textStyle: {
+        fontSize: CHART_LEGEND_SIZE,
+        fontFamily: CHART_FONT_FAMILY,
+        color: '#333',
+      },
+      formatter: (name: string) => {
+        return name.replace('Li_Li → ', '');
+      },
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+        lineStyle: {
+          color: '#999',
+          width: 1,
+          type: 'dashed',
+        },
+      },
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      borderColor: '#e0e0e0',
+      borderWidth: 1,
+      textStyle: {
+        fontSize: CHART_LABEL_SIZE,
+        fontFamily: CHART_FONT_FAMILY,
+        color: '#333',
+      },
+      formatter: (params: any) => {
+        if (!Array.isArray(params) || params.length === 0) return '';
+        const r = params[0].axisValue;
+        let html = `<div style="font-weight: 600; margin-bottom: 6px; color: #111827;">r = ${r.toFixed(2)} Å</div>`;
+        params.forEach((param: any) => {
+          html += `<div style="margin: 3px 0; display: flex; align-items: center; gap: 8px;">`;
+          html += `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};"></span>`;
+          html += `<span>${param.seriesName.replace('Li_Li → ', '')}: <strong>${param.value[1].toFixed(2)}</strong></span>`;
+          html += `</div>`;
+        });
+        return html;
+      },
+    },
+    dataZoom: [
+      {
+        type: 'slider',
+        xAxisIndex: 0,
+        start: 0,
+        end: 100,
+        height: 20,
+        bottom: 5,
+        handleSize: '80%',
+        textStyle: {
+          fontSize: 10,
+          fontFamily: CHART_FONT_FAMILY,
+        },
+      },
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+      },
+    ],
+    toolbox: {
+      feature: {
+        dataZoom: {
+          yAxisIndex: 'none',
+        },
+        restore: {},
+      },
+      right: 16,
+      top: 8,
+    },
+    series: selectedData.map((result, index) => ({
+      name: `${result.center_species} → ${result.shell_species}`,
+      type: 'line',
+      data: result.r.map((r, i) => [r, result.coordination_number_values?.[i] || 0]),
+      symbol: 'none',
+      lineStyle: {
+        width: hoveredSeries === result.id.toString() ? 2.8 : 1.8,
+        color: NATURE_COLORS[index % NATURE_COLORS.length],
+        opacity: hoveredSeries === null ? 1 : (hoveredSeries === result.id.toString() ? 1 : 0.25),
+      },
+      emphasis: {
+        focus: 'series',
+        lineStyle: {
+          width: 2.8,
+        },
+      },
+    })),
+  };
+
+  // 饼图配置
+  const pieOption: EChartsOption = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      borderColor: '#e0e0e0',
+      borderWidth: 1,
+      textStyle: {
+        fontSize: CHART_LABEL_SIZE,
+        fontFamily: CHART_FONT_FAMILY,
+        color: '#333',
+      },
+      formatter: (params: any) => {
+        return `<div style="font-weight: 600; color: #111827;">${params.name}</div><div style="margin-top: 4px;">CN: <strong>${params.value.toFixed(2)}</strong> (${params.percent.toFixed(1)}%)</div>`;
+      },
+    },
+    legend: {
+      orient: 'vertical',
+      left: 'left',
+      top: 'middle',
+      textStyle: {
+        fontSize: CHART_LEGEND_SIZE,
+        fontFamily: CHART_FONT_FAMILY,
+        color: '#333',
+      },
+      formatter: (name: string) => {
+        const stat = coordinationStats.find(s => s.label === name);
+        return `${name}: ${stat?.cn_at_cutoff.toFixed(2) || 0}`;
+      },
+    },
+    series: [
+      {
+        name: 'Coordination',
+        type: 'pie',
+        radius: ['40%', '70%'],
+        center: ['60%', '50%'],
+        avoidLabelOverlap: true,
+        itemStyle: {
+          borderRadius: 6,
+          borderColor: '#fff',
+          borderWidth: 2,
+        },
+        label: {
+          show: true,
+          formatter: '{b}\n{d}%',
+          fontSize: CHART_LABEL_SIZE,
+          fontFamily: CHART_FONT_FAMILY,
+          color: '#333',
+        },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: 13,
+            fontWeight: 'bold',
+          },
+        },
+        data: coordinationStats.map(stat => ({
+          name: stat.label,
+          value: stat.cn_at_cutoff,
+          itemStyle: {
+            color: stat.color,
+          },
+        })),
+      },
+    ],
+  };
+
+  return (
+    <div style={{
+      background: DASHBOARD_STYLES.pageBackground,
+      padding: DASHBOARD_STYLES.gutter,
+      minHeight: '100%',
+      borderRadius: 8,
+    }}>
+      <style>{RESPONSIVE_STYLES}</style>
+
+      {/* 第一部分：统计信息卡片网格 */}
+      <div className="rdf-stats-grid" style={{ marginBottom: DASHBOARD_STYLES.gutter }}>
+        {/* RDF 对数量 */}
+        <div className="dashboard-card" style={dashboardCardStyle}>
+          <div style={{ padding: DASHBOARD_STYLES.cardPadding }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 12,
+                background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <BarChartOutlined style={{ fontSize: 24, color: '#fff' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>RDF 对数量</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: '#1890ff' }}>
+                  {savedResults.length}
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>已选中 {selectedRdfIds.length} 个</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 总配位数 @ cutoff */}
+        <div className="dashboard-card" style={dashboardCardStyle}>
+          <div style={{ padding: DASHBOARD_STYLES.cardPadding }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 12,
+                background: 'linear-gradient(135deg, #52c41a 0%, #389e0d 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <PieChartOutlined style={{ fontSize: 24, color: '#fff' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>总配位数 @ {cnCutoff.toFixed(1)}Å</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: '#52c41a' }}>
+                  {totalCN.toFixed(2)}
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>N(r={cnCutoff.toFixed(1)}Å)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 平均峰位 */}
+        <div className="dashboard-card" style={dashboardCardStyle}>
+          <div style={{ padding: DASHBOARD_STYLES.cardPadding }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 12,
+                background: 'linear-gradient(135deg, #722ed1 0%, #531dab 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span style={{ fontSize: 16, color: '#fff', fontWeight: 700 }}>r₁</span>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>平均第一峰位</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: '#722ed1' }}>
+                  {coordinationStats.length > 0
+                    ? (coordinationStats.reduce((sum, s) => sum + (s.first_peak_position || 0), 0) / coordinationStats.length).toFixed(2)
+                    : 'N/A'}
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>Å</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 截断距离滑块 + 操作按钮 */}
+        <div className="dashboard-card" style={dashboardCardStyle}>
+          <div style={{ padding: DASHBOARD_STYLES.cardPadding }}>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+              <SettingOutlined style={{ marginRight: 4 }} />
+              截断距离 (Cutoff)
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <Slider
+                style={{ flex: 1 }}
+                min={1.5}
+                max={8.0}
+                step={0.1}
+                value={cnCutoff}
+                onChange={(v) => setCnCutoff(v)}
+                tooltip={{ formatter: (v) => `${v?.toFixed(1)} Å` }}
+              />
+              <Tag color="blue" style={{ margin: 0 }}>{cnCutoff.toFixed(1)} Å</Tag>
+            </div>
+            <Space style={{ width: '100%' }}>
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={exportRDFData}
+                style={{ borderRadius: 6, flex: 1 }}
+                size="small"
+              >
+                导出
+              </Button>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={() => loadRDFResults(false)}
+                style={{ borderRadius: 6, flex: 1 }}
+                size="small"
+              >
+                刷新
+              </Button>
+            </Space>
+          </div>
+        </div>
+      </div>
+
+      {/* RDF 选择器 */}
+      <Card
+        className="dashboard-card rdf-chart-card"
+        style={{ ...dashboardCardStyle, marginBottom: DASHBOARD_STYLES.gutter }}
+        title={
+          <Space size={8}>
+            <BarChartOutlined style={{ color: DASHBOARD_STYLES.titleColor }} />
+            <span style={{ fontSize: 14, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+              选择要显示的 RDF 曲线 (Select RDF Pairs)
+            </span>
+          </Space>
+        }
+      >
+        {savedResults.length === 0 ? (
+          <Empty
+            description={
+              <Space direction="vertical" size={16} style={{ marginTop: 16 }}>
+                <Text type="secondary">
+                  暂无 RDF 数据。请先运行后处理任务来分析 RDF 结果。
+                </Text>
+                <Button
+                  type="primary"
+                  icon={<ReloadOutlined />}
+                  loading={triggeringPostprocess}
+                  onClick={triggerPostprocess}
+                  size="large"
+                  style={{ borderRadius: 6 }}
+                >
+                  运行 RDF 分析
+                </Button>
+              </Space>
+            }
+          />
+        ) : (
+          <Space wrap size="small">
+            {savedResults.map((result, index) => (
+              <Tag.CheckableTag
+                key={result.id}
+                checked={selectedRdfIds.includes(result.id)}
+                onChange={() => toggleSelection(result.id)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '13px',
+                  border: `2px solid ${NATURE_COLORS[index % NATURE_COLORS.length]}`,
+                  borderRadius: '6px',
+                  backgroundColor: selectedRdfIds.includes(result.id)
+                    ? NATURE_COLORS[index % NATURE_COLORS.length] + '20'
+                    : 'transparent',
+                  transition: 'all 0.3s ease',
+                }}
+              >
+                <Space size={4}>
+                  <div
+                    style={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      backgroundColor: NATURE_COLORS[index % NATURE_COLORS.length]
+                    }}
+                  />
+                  <Text strong>{result.center_species}</Text>
+                  <Text>→</Text>
+                  <Text strong>{result.shell_species}</Text>
+                </Space>
+              </Tag.CheckableTag>
+            ))}
+          </Space>
+        )}
+      </Card>
+
+      {/* 第二部分：图表网格 - g(r) 和 N(r) 并排 */}
+      {selectedRdfIds.length > 0 && (
+        <>
+          <div className="rdf-charts-grid" style={{ marginBottom: DASHBOARD_STYLES.gutter }}>
+            {/* RDF 图表 */}
+            <Card
+              className="dashboard-card rdf-chart-card"
+              style={dashboardCardStyle}
+              title={
+                <Space size={8}>
+                  <BarChartOutlined style={{ color: '#1f77b4', fontSize: 16 }} />
+                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+                    径向分布函数 g(r)
+                  </span>
+                </Space>
+              }
+              extra={
+                <Button
+                  icon={<DownloadOutlined />}
+                  size="small"
+                  type="text"
+                  onClick={() => exportChart(rdfChartRef, 'rdf_plot.png')}
+                  style={{ borderRadius: 6 }}
+                />
+              }
+            >
+              <div className="chart-container">
+                <ReactECharts
+                  ref={rdfChartRef}
+                  option={rdfOption}
+                  style={{ height: `${DASHBOARD_STYLES.chartHeight}px`, width: '100%' }}
+                  notMerge={true}
+                  lazyUpdate={true}
+                  onEvents={{
+                    mouseover: (params: any) => {
+                      if (params.componentType === 'series') {
+                        const result = selectedData[params.seriesIndex];
+                        setHoveredSeries(result.id.toString());
+                      }
+                    },
+                    mouseout: () => {
+                      setHoveredSeries(null);
+                    },
+                  }}
+                />
+              </div>
+            </Card>
+
+            {/* CN 图表 */}
+            <Card
+              className="dashboard-card rdf-chart-card"
+              style={dashboardCardStyle}
+              title={
+                <Space size={8}>
+                  <BarChartOutlined style={{ color: '#52c41a', fontSize: 16 }} />
+                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+                    配位数 N(r)
+                  </span>
+                </Space>
+              }
+              extra={
+                <Button
+                  icon={<DownloadOutlined />}
+                  size="small"
+                  type="text"
+                  onClick={() => exportChart(cnChartRef, 'cn_plot.png')}
+                  style={{ borderRadius: 6 }}
+                />
+              }
+            >
+              <div className="chart-container">
+                <ReactECharts
+                  ref={cnChartRef}
+                  option={cnOption}
+                  style={{ height: `${DASHBOARD_STYLES.chartHeight}px`, width: '100%' }}
+                  notMerge={true}
+                  lazyUpdate={true}
+                  onEvents={{
+                    mouseover: (params: any) => {
+                      if (params.componentType === 'series') {
+                        const result = selectedData[params.seriesIndex];
+                        setHoveredSeries(result.id.toString());
+                      }
+                    },
+                    mouseout: () => {
+                      setHoveredSeries(null);
+                    },
+                  }}
+                />
+              </div>
+            </Card>
+          </div>
+
+          {/* 第三部分：饼图和详细数据并排 */}
+          <div className="rdf-charts-grid" style={{ marginBottom: DASHBOARD_STYLES.gutter }}>
+            {/* 饼图 */}
+            <Card
+              className="dashboard-card rdf-chart-card"
+              style={dashboardCardStyle}
+              title={
+                <Space size={8}>
+                  <PieChartOutlined style={{ color: '#722ed1', fontSize: 16 }} />
+                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+                    配位数分布 @ {cnCutoff.toFixed(1)} Å (CN Distribution)
+                  </span>
+                </Space>
+              }
+              extra={
+                <Button
+                  icon={<DownloadOutlined />}
+                  size="small"
+                  type="text"
+                  onClick={() => exportChart(pieChartRef, 'cn_pie.png')}
+                  style={{ borderRadius: 6 }}
+                />
+              }
+            >
+              <div className="chart-container">
+                <ReactECharts
+                  ref={pieChartRef}
+                  option={pieOption}
+                  style={{ height: '320px', width: '100%' }}
+                  notMerge={true}
+                  lazyUpdate={true}
+                />
+              </div>
+            </Card>
+
+            {/* 详细统计 */}
+            <Card
+              className="dashboard-card rdf-chart-card"
+              style={dashboardCardStyle}
+              title={
+                <Space size={8}>
+                  <BarChartOutlined style={{ color: '#fa8c16', fontSize: 16 }} />
+                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+                    详细数据 (Detailed Statistics)
+                  </span>
+                </Space>
+              }
+            >
+              <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                {coordinationStats.map((stat) => (
+                  <div
+                    key={stat.id}
+                    style={{
+                      padding: 12,
+                      borderLeft: `4px solid ${stat.color}`,
+                      background: `linear-gradient(135deg, ${stat.color}08 0%, ${stat.color}03 100%)`,
+                      borderRadius: 6,
+                      border: '1px solid #e8e8e8',
+                      borderLeftWidth: '4px',
+                    }}
+                  >
+                    <Row justify="space-between" align="middle">
+                      <Col span={10}>
+                        <Space size={8}>
+                          <div
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: '50%',
+                              backgroundColor: stat.color
+                            }}
+                          />
+                          <Text strong style={{ fontSize: 13, color: '#334155' }}>
+                            {stat.fullLabel}
+                          </Text>
+                        </Space>
+                      </Col>
+                      <Col span={14}>
+                        <Row gutter={8}>
+                          <Col span={8} style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: 10, color: '#94a3b8' }}>CN @ {cnCutoff.toFixed(1)}Å</div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: stat.color }}>
+                              {stat.cn_at_cutoff.toFixed(2)}
+                            </div>
+                          </Col>
+                          <Col span={8} style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: 10, color: '#94a3b8' }}>峰位</div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>
+                              {stat.first_peak_position?.toFixed(2)} Å
+                            </div>
+                          </Col>
+                          <Col span={8} style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: 10, color: '#94a3b8' }}>峰高</div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>
+                              {stat.first_peak_height?.toFixed(2)}
+                            </div>
+                          </Col>
+                        </Row>
+                      </Col>
+                    </Row>
+                  </div>
+                ))}
+              </Space>
+            </Card>
+          </div>
+
+          {/* 说明信息 */}
+          <Card className="dashboard-card" style={{ ...dashboardCardStyle, background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)', border: '1px solid #bae6fd' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ width: 4, height: 40, backgroundColor: '#1890ff', borderRadius: 2, flexShrink: 0 }} />
+              <div>
+                <Text strong style={{ fontSize: 13, color: '#0369a1' }}>分析说明</Text>
+                <div style={{ marginTop: 4, fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+                  径向分布函数 g(r) 描述了粒子间的空间分布概率。配位数 N(r) 表示在距离 r 内的平均配位粒子数。
+                  第一峰位置对应最近邻距离，峰高反映局部结构有序度。
+                </div>
+              </div>
+            </div>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+

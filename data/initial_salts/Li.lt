@@ -1,0 +1,37 @@
+Li {
+
+  write_once("In Init") {
+    atom_style full
+    units        real
+    pair_style   lj/cut/coul/long 10.0
+    bond_style   harmonic
+    angle_style  harmonic
+    dihedral_style opls
+    improper_style cvff
+    kspace_style pppm 0.0001
+    pair_modify  mix arithmetic
+  }
+ 
+   write_once("Data Masses") {
+    @atom:Li  6.941
+  }
+ 
+   write_once("In Settings") {
+    pair_coeff @atom:Li  @atom:Li  0.10314    1.4424             #10.1021/acs.jpcc.6b03709 
+    #pair_coeff @atom:Li  @atom:Li  0.0005    2.87             #Halide, Ammonium, and Alkali Metal Ion Parameters for Modeling Aqueous Solutions
+  }
+  
+  write("Data Atoms") {
+    $atom:id1 $mol:id1 @atom:Li 1 0.000 0.00000 0.00000   # Li Ion
+  }
+  write_once("In List_salt") {
+    group        Li           type   @atom:Li
+    variable     Li_list      index  "Li"
+  }
+
+   write_once("In Charges"){
+    set type @atom:Li  charge 1
+  } #(end of atom charges)
+ 
+  
+} # end of "Li-ion" type definition

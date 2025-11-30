@@ -1,0 +1,499 @@
+/* 用户指南页面样式 */
+.guide-container {
+  min-height: 100vh;
+  background: #f5f7fb;
+}
+
+/* 顶部导航栏 */
+.guide-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: linear-gradient(135deg, #1a1f36 0%, #0d1025 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.guide-header-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.guide-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+
+.guide-logo:hover {
+  opacity: 0.8;
+}
+
+.guide-logo-icon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20px;
+}
+
+.guide-logo-text {
+  font-size: 24px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.guide-nav {
+  display: flex;
+  gap: 32px;
+}
+
+.guide-nav a {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.3s;
+  position: relative;
+}
+
+.guide-nav a:hover {
+  color: #fff;
+}
+
+.guide-nav a::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  transition: width 0.3s;
+}
+
+.guide-nav a:hover::after {
+  width: 100%;
+}
+
+.guide-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.guide-back-btn {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.guide-back-btn:hover {
+  color: #fff !important;
+}
+
+.guide-action-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.guide-action-btn:hover {
+  background: linear-gradient(135deg, #7c8ff5 0%, #8b5cb5 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+/* Hero Section */
+.guide-hero {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 80px 24px;
+  text-align: center;
+}
+
+.guide-hero-content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.guide-hero-icon {
+  width: 80px;
+  height: 80px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  font-size: 40px;
+  color: #fff;
+  backdrop-filter: blur(10px);
+}
+
+.guide-hero-title {
+  color: #fff !important;
+  font-size: 48px !important;
+  font-weight: 700 !important;
+  margin-bottom: 16px !important;
+}
+
+.guide-hero-subtitle {
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-size: 18px !important;
+  margin-bottom: 0 !important;
+}
+
+/* 快速导航 */
+.guide-quick-nav {
+  max-width: 1200px;
+  margin: -40px auto 48px;
+  padding: 0 24px;
+  position: relative;
+  z-index: 10;
+}
+
+.quick-nav-card {
+  text-align: center;
+  border-radius: 16px;
+  border: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s;
+}
+
+.quick-nav-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+}
+
+.quick-nav-card .ant-card-body {
+  padding: 32px 24px;
+}
+
+.quick-nav-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  font-size: 28px;
+  color: #fff;
+}
+
+.quick-nav-icon.icon-blue {
+  background: linear-gradient(135deg, #667eea 0%, #5a67d8 100%);
+}
+
+.quick-nav-icon.icon-purple {
+  background: linear-gradient(135deg, #9f7aea 0%, #764ba2 100%);
+}
+
+.quick-nav-icon.icon-green {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+}
+
+.quick-nav-icon.icon-orange {
+  background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+}
+
+.quick-nav-card h4 {
+  margin-bottom: 8px !important;
+}
+
+/* 主内容区域 */
+.guide-main {
+  padding-bottom: 80px;
+}
+
+/* 内容区块 */
+.guide-section {
+  max-width: 1200px;
+  margin: 0 auto 48px;
+  padding: 0 24px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.section-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #fff;
+}
+
+.section-header h2 {
+  margin: 0 !important;
+  font-weight: 600 !important;
+}
+
+/* 卡片样式 */
+.guide-card {
+  border-radius: 16px;
+  border: none;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.guide-card .ant-card-body {
+  padding: 32px;
+}
+
+.guide-paragraph {
+  font-size: 16px;
+  line-height: 1.8;
+  color: #4a5568;
+}
+
+/* 功能卡片 */
+.feature-item {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 24px;
+  height: 100%;
+  transition: all 0.3s;
+}
+
+.feature-item:hover {
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.feature-item-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #fff;
+  margin-bottom: 16px;
+}
+
+.feature-item h4 {
+  margin-bottom: 8px !important;
+  font-weight: 600 !important;
+}
+
+.feature-item p {
+  color: #718096;
+  margin-bottom: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* 理论卡片 */
+.theory-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #fff 100%);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  border-left: 4px solid #667eea;
+}
+
+.theory-card h4 {
+  color: #667eea;
+  margin-bottom: 12px !important;
+}
+
+.theory-card p {
+  margin-bottom: 12px;
+  line-height: 1.8;
+}
+
+/* 公式展示 */
+.formula-box {
+  background: #1a1f36;
+  color: #fff;
+  padding: 16px 24px;
+  border-radius: 8px;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  text-align: center;
+  margin: 16px 0;
+}
+
+/* 结果解读卡片 */
+.result-card {
+  border-radius: 12px;
+  overflow: hidden;
+  height: 100%;
+}
+
+.result-card-header {
+  padding: 20px 24px;
+  color: #fff;
+}
+
+.result-card-header.rdf {
+  background: linear-gradient(135deg, #667eea 0%, #5a67d8 100%);
+}
+
+.result-card-header.msd {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+}
+
+.result-card-header h3 {
+  color: #fff !important;
+  margin: 0 0 4px 0 !important;
+}
+
+.result-card-header p {
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  font-size: 14px;
+}
+
+.result-card-body {
+  padding: 24px;
+}
+
+.result-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.result-item:last-child {
+  border-bottom: none;
+}
+
+.result-item-icon {
+  color: #667eea;
+  font-size: 18px;
+  margin-top: 2px;
+}
+
+.result-item-content h5 {
+  margin: 0 0 4px 0 !important;
+  font-weight: 600 !important;
+}
+
+.result-item-content p {
+  margin: 0;
+  color: #718096;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* FAQ 样式 */
+.faq-collapse {
+  background: transparent;
+  border: none;
+}
+
+.faq-collapse .ant-collapse-item {
+  background: #fff;
+  border-radius: 12px !important;
+  margin-bottom: 12px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.faq-collapse .ant-collapse-header {
+  font-weight: 500;
+  font-size: 15px;
+  padding: 16px 24px !important;
+}
+
+.faq-collapse .ant-collapse-content-box {
+  padding: 0 24px 16px !important;
+  color: #4a5568;
+  line-height: 1.8;
+}
+
+/* 工作流程 */
+.workflow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.workflow-step {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.workflow-step-number {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.workflow-step-content {
+  flex: 1;
+  background: #f8fafc;
+  padding: 20px 24px;
+  border-radius: 12px;
+}
+
+.workflow-step-content h4 {
+  margin: 0 0 8px 0 !important;
+  font-weight: 600 !important;
+}
+
+.workflow-step-content p {
+  margin: 0;
+  color: #718096;
+  line-height: 1.6;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .guide-nav {
+    display: none;
+  }
+
+  .guide-hero-title {
+    font-size: 32px !important;
+  }
+
+  .guide-hero-subtitle {
+    font-size: 16px !important;
+  }
+
+  .guide-quick-nav {
+    margin-top: -20px;
+  }
+
+  .workflow-step {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+}
+

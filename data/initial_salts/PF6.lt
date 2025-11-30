@@ -1,0 +1,70 @@
+PF6  {
+
+  
+  write_once("Data Masses") {
+    @atom:P 30.974
+    @atom:F 18.998
+  }
+  
+  write_once("In Settings") {
+    	bond_coeff   @bond:PF           740.4226    1.606 
+	    angle_coeff  @angle:FPF1        278.25559   90.0
+	    angle_coeff  @angle:FPF2        69.504186   180.0
+    	pair_coeff   @atom:F @atom:F    0.028716    2.9347        #10.1021/acs.jpcc.6b03709 
+    	pair_coeff   @atom:P @atom:P    0.13169     3.695
+  }
+ 
+    write_once("In Charges"){
+    set type @atom:P  charge  1.07
+    set type @atom:F  charge  -0.345
+	
+  } #(end of atom charges)
+  
+
+  write("Data Atoms") {
+    	$atom:P1 $mol:id1 @atom:P  1.07    2.933  -0.008   0.000
+	    $atom:F2 $mol:id1 @atom:F -0.345   4.518   0.538   1.118
+	    $atom:F3 $mol:id1 @atom:F -0.345   1.348  -0.553  -1.118
+	    $atom:F4 $mol:id1 @atom:F -0.345   2.648  -1.611   1.187
+    	$atom:F5 $mol:id1 @atom:F -0.345   3.219   1.595  -1.186
+    	$atom:F6 $mol:id1 @atom:F -0.345   4.144  -1.099  -1.183
+    	$atom:F7 $mol:id1 @atom:F -0.345   1.722   1.084   1.184
+	  }
+    
+  write_once("In List_salt") {
+    group        PF6           type   @atom:P @atom:F  
+    variable     PF6_list      index  "P F"
+  }
+    write("Data Bonds") {
+    	$bond:id1   @bond:PF $atom:P1 $atom:F2
+    	$bond:id2   @bond:PF $atom:P1 $atom:F3
+    	$bond:id3   @bond:PF $atom:P1 $atom:F4
+    	$bond:id4   @bond:PF $atom:P1 $atom:F5
+    	$bond:id5   @bond:PF $atom:P1 $atom:F6
+    	$bond:id6   @bond:PF $atom:P1 $atom:F7	
+  }
+ 
+   write("Data Angles") {
+    $angle:id1  @angle:FPF1 $atom:F2 $atom:P1 $atom:F4
+    $angle:id2  @angle:FPF1 $atom:F2 $atom:P1 $atom:F5
+    $angle:id3  @angle:FPF1 $atom:F2 $atom:P1 $atom:F6
+    $angle:id4  @angle:FPF1 $atom:F2 $atom:P1 $atom:F7
+	
+    $angle:id5  @angle:FPF1 $atom:F3 $atom:P1 $atom:F4
+    $angle:id6  @angle:FPF1 $atom:F3 $atom:P1 $atom:F5
+    $angle:id7  @angle:FPF1 $atom:F3 $atom:P1 $atom:F6
+    $angle:id8  @angle:FPF1 $atom:F3 $atom:P1 $atom:F7
+	
+    $angle:id9  @angle:FPF1 $atom:F5 $atom:P1 $atom:F6
+    $angle:id10 @angle:FPF1 $atom:F6 $atom:P1 $atom:F4
+    $angle:id11 @angle:FPF1 $atom:F4 $atom:P1 $atom:F7
+    $angle:id12 @angle:FPF1 $atom:F7 $atom:P1 $atom:F5
+	
+    $angle:id10 @angle:FPF2 $atom:F2 $atom:P1 $atom:F3
+    $angle:id11 @angle:FPF2 $atom:F4 $atom:P1 $atom:F5
+    $angle:id12 @angle:FPF2 $atom:F7 $atom:P1 $atom:F6
+	
+  }
+ 
+  
+} # end of "PF6-ion" type definition

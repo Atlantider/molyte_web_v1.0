@@ -1,0 +1,232 @@
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0e1a 0%, #1a1f36 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 背景装饰 */
+.login-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(102, 126, 234, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(118, 75, 162, 0.15) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* 返回首页按钮 */
+.back-home-btn {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  color: rgba(255, 255, 255, 0.8) !important;
+  font-size: 15px;
+  font-weight: 500;
+  padding: 8px 16px;
+  height: auto;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: all 0.3s;
+  z-index: 10;
+}
+
+.back-home-btn:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateX(-4px);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 450px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.98);
+  position: relative;
+  z-index: 1;
+}
+
+.login-card .ant-card-head {
+  border-bottom: none;
+  padding-top: 32px;
+  padding-bottom: 0;
+}
+
+.login-card .ant-card-head-title {
+  padding: 0;
+}
+
+.login-card .ant-card-body {
+  padding: 0 32px 32px;
+}
+
+/* Logo 区域 */
+.login-card-header {
+  text-align: center;
+}
+
+.login-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.login-logo-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 24px;
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.35);
+}
+
+.login-logo-text {
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+}
+
+.login-subtitle {
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 400;
+  margin: 0;
+}
+
+/* Tabs 样式优化 */
+.login-card .ant-tabs-nav {
+  margin-bottom: 24px;
+}
+
+.login-card .ant-tabs-tab {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* 输入框样式 */
+.login-card .ant-input-affix-wrapper {
+  border-radius: 10px;
+  padding: 12px 16px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.3s;
+}
+
+.login-card .ant-input-affix-wrapper:hover,
+.login-card .ant-input-affix-wrapper:focus,
+.login-card .ant-input-affix-wrapper-focused {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* 按钮样式 */
+.login-card .ant-btn-primary {
+  height: 48px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.35);
+  transition: all 0.3s;
+}
+
+.login-card .ant-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.45);
+}
+
+/* 链接样式 */
+.login-card a {
+  color: #667eea;
+  transition: color 0.3s;
+}
+
+.login-card a:hover {
+  color: #764ba2;
+}
+
+/* Alert 样式 */
+.login-card .ant-alert {
+  border-radius: 10px;
+}
+
+/* 密码强度指示器 */
+.password-strength {
+  margin-top: -8px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.password-strength-bar {
+  margin-bottom: 8px;
+}
+
+.password-strength-info {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.password-requirements {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.password-requirements .requirement {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.password-requirements .requirement .anticon {
+  font-size: 12px;
+  color: #ff4d4f;
+}
+
+.password-requirements .requirement.met {
+  color: #52c41a;
+}
+
+.password-requirements .requirement.met .anticon {
+  color: #52c41a;
+}
+
+/* 复选框样式 */
+.login-card .ant-checkbox-wrapper {
+  font-size: 13px;
+  color: #666;
+}
+
+.login-card .ant-checkbox-wrapper a {
+  color: #667eea;
+}
+
+.login-card .ant-checkbox-wrapper a:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+

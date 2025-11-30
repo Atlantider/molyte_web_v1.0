@@ -1,0 +1,8 @@
+REMARK   Materials Studio PDB file
+REMARK   Created:  Tue Mar 01 07:24:23 +0800 2022
+ATOM      1  B1  MOL     2       5.606   2.411   8.394  1.00  0.00           B3-  
+ATOM      2  F1  MOL     2       5.071   1.479   8.774  1.00  0.00           F1-  
+ATOM      3  F2  MOL     2       6.271   2.831   9.220  1.00  0.00           F1-  
+ATOM      4  F3  MOL     2       4.835   3.195   8.092  1.00  0.00           F1-  
+ATOM      5  F4  MOL     2       6.743   2.270   7.539  1.00  0.00           F1-  
+TER       6 

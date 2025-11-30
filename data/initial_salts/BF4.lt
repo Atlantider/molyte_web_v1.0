@@ -1,0 +1,62 @@
+BF4 {
+
+  ### LAMMPS commands for initialization
+  ### (These can be overridden later.)
+  ###J. Chem. Theory Comput. 2017, 13, 12, 6131–6145 09132022-jixiao
+
+  write_once("In Init") {
+    atom_style full
+  }
+
+  write_once("In Settings") {
+    pair_coeff @atom:b @atom:b 0.095 3.5814
+    pair_coeff @atom:f @atom:f 0.060 3.1181
+  }
+
+  write_once("In Settings") {
+    bond_coeff @bond:type1 386.59 1.39
+  }
+
+  write_once("In Settings") {
+    angle_coeff @angle:type1 80.0000 109.47
+  }
+
+
+  ### DATA sections
+
+
+  write_once("Data Masses") {
+    @atom:b 10.811
+    @atom:f 18.998400
+  }
+
+  write_once("In List_salt") {
+    group        BF4           type   @atom:b @atom:f  
+    variable     BF4_list      index  "B F"
+  }
+
+  write("Data Atoms") {
+    $atom:b $mol:m1 @atom:b 1.1304967731 5.605999947 2.411000013 8.394000053
+    $atom:f_1 $mol:m1 @atom:f -0.5313643895 5.071000099 1.478999972 8.774000168
+    $atom:f_2 $mol:m1 @atom:f -0.5355122271 6.270999908 2.83100009 9.220000267
+    $atom:f_3 $mol:m1 @atom:f -0.5314739208 4.835000038 3.194999933 8.092000008
+    $atom:f_4 $mol:m1 @atom:f -0.5321462357 6.743000031 2.269999981 7.539000034
+  }
+
+  write("Data Bonds") {
+    $bond:id1 @bond:type1 $atom:b $atom:f_2
+    $bond:id2 @bond:type1 $atom:b $atom:f_1
+    $bond:id3 @bond:type1 $atom:b $atom:f_3
+    $bond:id4 @bond:type1 $atom:b $atom:f_4
+  }
+
+  write("Data Angles") {
+    $angle:id1 @angle:type1 $atom:f_2 $atom:b $atom:f_1
+    $angle:id2 @angle:type1 $atom:f_2 $atom:b $atom:f_3
+    $angle:id3 @angle:type1 $atom:f_2 $atom:b $atom:f_4
+    $angle:id4 @angle:type1 $atom:f_1 $atom:b $atom:f_3
+    $angle:id5 @angle:type1 $atom:f_1 $atom:b $atom:f_4
+    $angle:id6 @angle:type1 $atom:f_3 $atom:b $atom:f_4
+  }
+
+} # end of "BF4" type definition
