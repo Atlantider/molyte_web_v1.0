@@ -5,13 +5,14 @@
 ## 前置准备
 
 ### 1. 阿里云账号
-- 注册阿里云账号
-- 完成实名认证
-- 充值（建议至少 500 元）
+- ✅ 已有阿里云账号
+- 确保账号已完成实名认证
+- 建议充值至少 500 元
 
-### 2. 域名（可选但推荐）
-- 购买域名（如 molyte.com）
-- 完成域名备案（如果服务器在中国大陆）
+### 2. 域名
+- ✅ 已有域名：www.molyte.xyz
+- 确保域名已解析到阿里云 ECS 公网 IP
+- 如果服务器在中国大陆，需要完成域名备案
 
 ## 资源购买
 
@@ -233,7 +234,7 @@ npm install
 
 # 修改 API 地址
 vim src/api/client.ts
-# 将 baseURL 改为: https://your-domain.com/api/v1
+# 将 baseURL 改为: https://www.molyte.xyz/api/v1
 
 # 构建
 npm run build
@@ -250,7 +251,7 @@ vim /etc/nginx/sites-available/molyte
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com;  # 替换为您的域名或 IP
+    server_name www.molyte.xyz molyte.xyz;
 
     # 前端静态文件
     location / {
@@ -301,10 +302,10 @@ apt install -y certbot python3-certbot-nginx
 #### 4.2 获取 SSL 证书
 
 ```bash
-certbot --nginx -d your-domain.com
+certbot --nginx -d www.molyte.xyz -d molyte.xyz
 ```
 
-按提示完成配置。
+按提示完成配置，选择自动重定向 HTTP 到 HTTPS。
 
 ### 阶段 5：创建 Worker 用户
 
