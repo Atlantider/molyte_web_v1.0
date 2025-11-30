@@ -201,9 +201,9 @@ class PollingWorker:
             self.logger.error(f"获取新任务失败: {e}", exc_info=True)
     
     def _fetch_pending_jobs(self, job_type: str) -> List[Dict]:
-        """从阿里云获取待处理任务"""
+        """从腾讯云获取待处理任务"""
         try:
-            endpoint = f"{self.api_base_url}/jobs/pending"
+            endpoint = f"{self.api_base_url}/workers/jobs/pending"
             params = {
                 'job_type': job_type.upper(),
                 'limit': 10
@@ -552,9 +552,9 @@ class PollingWorker:
         error_message: Optional[str] = None,
         result_files: Optional[List[str]] = None
     ):
-        """更新任务状态到阿里云"""
+        """更新任务状态到腾讯云"""
         try:
-            endpoint = f"{self.api_base_url}/jobs/{job_id}/status"
+            endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/status"
 
             data = {
                 'status': status,
