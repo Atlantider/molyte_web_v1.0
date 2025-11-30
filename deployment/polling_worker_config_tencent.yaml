@@ -92,23 +92,60 @@ slurm:
 
 # 文件上传配置
 upload:
-  # 需要上传的文件类型
-  result_files:
-    - "*.data"
-    - "*.log"
-    - "*.dump"
-    - "*.xlsx"
-    - "*.png"
-    - "*.json"
-    - "*.fchk"
-    - "*.cube"
-  
-  # 单个文件最大大小（MB）
-  max_file_size: 500
-  
-  # 压缩大文件
+  # 需要上传的文件类型（分优先级）
+  # 优先级 1: 必须上传的小文件
+  essential_files:
+    - "*.data"          # LAMMPS 数据文件
+    - "*.log"           # 日志文件
+    - "*.xlsx"          # 分析结果
+    - "*.png"           # 图表
+    - "*.json"          # JSON 结果
+    - "*.fchk"          # Gaussian 检查点
+
+  # 优先级 2: 可选的大文件（Cube 等）
+  optional_large_files:
+    - "*.cube"          # Gaussian Cube 文件（可能很大）
+
+  # 明确排除的文件（不上传）
+  excluded_files:
+    - "*.dump"          # LAMMPS 轨迹文件（太大，不上传）
+    - "*.trj"           # 轨迹文件（太大，不上传）
+    - "*.dcd"           # 二进制轨迹（太大，不上传）
+    - "*.xtc"           # 压缩轨迹（太大，不上传）
+    - "*_traj_*"        # 任何轨迹相关文件
+
+  # 文件大小限制
+  max_file_size: 2048        # 单个文件最大 2GB
+  multipart_threshold: 100   # 超过 100MB 使用分片上传
+  part_size: 10              # 分片大小 10MB
+
+  # 压缩配置
   compress_large_files: true
-  compress_threshold: 50  # MB
+  compress_threshold: 50     # 超过 50MB 自动压缩
+  compress_format: "gzip"    # 压缩格式: gzip, bz2, xz
+
+  # 轨迹文件特殊处理
+  trajectory_handling:
+    enabled: true
+    # 不上传完整轨迹文件
+    upload_full_trajectory: false
+    # 只提取并上传最后一帧作为 PDB/XYZ
+    extract_last_frame: true
+    last_frame_format: "pdb"  # pdb, xyz, data
+    # 保留本地轨迹文件（用户可以手动下载）
+    keep_local_trajectory: true
+    local_retention_days: 30  # 本地保留 30 天
+
+  # 上传策略
+  strategy:
+    # 总是上传 essential_files
+    upload_essential: true
+    # 只在用户请求时上传 optional_large_files
+    upload_optional_on_demand: true
+    # 删除本地文件前确认云端上传成功
+    verify_upload: true
+    # 上传失败重试次数
+    max_retries: 3
 
 # 错误处理
 error_handling:
