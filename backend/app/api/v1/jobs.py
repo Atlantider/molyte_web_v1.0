@@ -1234,6 +1234,23 @@ def submit_md_job(
         db.refresh(job)
 
         logger.info(f"MD job {job.id} submitted by {current_user.username}, status=SUBMITTED, waiting for Worker")
+
+        # 同时提交关联的 QC 任务（如果有）
+        if job.config and job.config.get("qc_enabled"):
+            qc_jobs = db.query(QCJob).filter(
+                QCJob.md_job_id == job.id,
+                QCJob.status == QCJobStatus.CREATED
+            ).all()
+
+            if qc_jobs:
+                for qc_job in qc_jobs:
+                    qc_job.status = QCJobStatus.SUBMITTED
+                    qc_job.config = qc_job.config or {}
+                    qc_job.config["submitted_at"] = datetime.now().isoformat()
+                    qc_job.config["submitted_by"] = current_user.username
+                db.commit()
+                logger.info(f"Auto-submitted {len(qc_jobs)} QC jobs for MD job {job.id}")
+
         return job
 
     except Exception as e:
