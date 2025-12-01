@@ -604,8 +604,11 @@ async def upload_qc_result(
     """
     from app.models.qc import QCResult
 
+    logger.info(f"Received QC result upload request for job {job_id} from user {current_user.username}")
+
     # 验证是否是 Worker 用户（ADMIN 角色）
     if not is_worker_user(current_user):
+        logger.warning(f"Non-worker user {current_user.username} attempted to upload QC result")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only worker users can upload QC results"
@@ -614,10 +617,13 @@ async def upload_qc_result(
     # 获取 QC 任务
     job = db.query(QCJob).filter(QCJob.id == job_id).first()
     if not job:
+        logger.error(f"QC Job {job_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"QC Job {job_id} not found"
         )
+
+    logger.info(f"QC result data: energy={result_data.energy_au}, homo={result_data.homo}, lumo={result_data.lumo}")
 
     # 检查是否已有结果
     existing_result = db.query(QCResult).filter(QCResult.qc_job_id == job_id).first()
@@ -628,7 +634,7 @@ async def upload_qc_result(
             if value is not None:
                 setattr(existing_result, field, value)
         db.commit()
-        logger.info(f"Updated QC result for job {job_id}")
+        logger.info(f"Updated QC result for job {job_id}, result_id={existing_result.id}")
         return {"status": "ok", "message": "Result updated", "result_id": existing_result.id}
     else:
         # 创建新结果
@@ -657,7 +663,7 @@ async def upload_qc_result(
         db.add(new_result)
         db.commit()
         db.refresh(new_result)
-        logger.info(f"Created QC result for job {job_id}: id={new_result.id}")
+        logger.info(f"Created QC result for job {job_id}: id={new_result.id}, energy={new_result.energy_au}")
         return {"status": "ok", "message": "Result created", "result_id": new_result.id}
 
 

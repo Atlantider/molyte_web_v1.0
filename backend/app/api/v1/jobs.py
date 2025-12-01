@@ -2790,7 +2790,7 @@ async def get_solvation_structure_file(
     Args:
         format: "file" 返回文件下载, "content" 返回 JSON 包含 XYZ 内容
     """
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, Response
     from app.models.result import SolvationStructure
     from app.services.solvation import get_structure_xyz_content
     from app.dependencies import check_resource_permission
@@ -2812,32 +2812,52 @@ async def get_solvation_structure_file(
     if not structure:
         raise HTTPException(status_code=404, detail="Solvation structure not found")
 
-    if not structure.file_path:
-        raise HTTPException(status_code=404, detail="Structure file not available")
+    # 优先使用数据库中的 xyz_content（混合云架构下，文件在校园网本地）
+    if structure.xyz_content:
+        if format == "content":
+            # 返回 XYZ 内容用于 3D 可视化
+            return {
+                "id": structure.id,
+                "center_ion": structure.center_ion,
+                "coordination_num": structure.coordination_num,
+                "composition": structure.composition,
+                "xyz_content": structure.xyz_content,
+                "filename": f"{structure.center_ion}_{structure.id}.xyz",
+            }
+        else:
+            # 返回文件下载
+            return Response(
+                content=structure.xyz_content,
+                media_type="chemical/x-xyz",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{structure.center_ion}_{structure.id}.xyz"'
+                }
+            )
 
-    file_path = Path(structure.file_path)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Structure file not found on disk")
+    # 如果没有 xyz_content，尝试从本地文件读取（仅在本地部署时有效）
+    if structure.file_path:
+        file_path = Path(structure.file_path)
+        if file_path.exists():
+            if format == "content":
+                xyz_content = get_structure_xyz_content(str(file_path))
+                if not xyz_content:
+                    raise HTTPException(status_code=500, detail="Failed to read structure file")
+                return {
+                    "id": structure.id,
+                    "center_ion": structure.center_ion,
+                    "coordination_num": structure.coordination_num,
+                    "composition": structure.composition,
+                    "xyz_content": xyz_content,
+                    "filename": file_path.name,
+                }
+            else:
+                return FileResponse(
+                    path=str(file_path),
+                    media_type="chemical/x-xyz",
+                    filename=file_path.name
+                )
 
-    if format == "content":
-        # 返回 XYZ 内容用于 3D 可视化
-        xyz_content = get_structure_xyz_content(str(file_path))
-        if not xyz_content:
-            raise HTTPException(status_code=500, detail="Failed to read structure file")
-        return {
-            "id": structure.id,
-            "center_ion": structure.center_ion,
-            "coordination_num": structure.coordination_num,
-            "composition": structure.composition,
-            "xyz_content": xyz_content,
-            "filename": file_path.name,
-        }
-
-    return FileResponse(
-        path=str(file_path),
-        media_type="chemical/x-xyz",
-        filename=file_path.name
-    )
+    raise HTTPException(status_code=404, detail="Structure file not available")
 
 
 @router.get("/{job_id}/solvation/system-structure")
