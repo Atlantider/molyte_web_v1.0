@@ -545,6 +545,8 @@ def update_molecule_cache(db: Session, job: QCJob, result: QCResult):
         cache.esp_min_kcal = result.esp_min_kcal
         cache.esp_max_kcal = result.esp_max_kcal
         cache.esp_image_path = result.esp_image_path
+        cache.homo_image_path = result.homo_image_path
+        cache.lumo_image_path = result.lumo_image_path
         cache.preferred_qc_result_id = result.id
         cache.calculation_count += 1
         cache.updated_at = datetime.now()
@@ -562,6 +564,8 @@ def update_molecule_cache(db: Session, job: QCJob, result: QCResult):
             esp_min_kcal=result.esp_min_kcal,
             esp_max_kcal=result.esp_max_kcal,
             esp_image_path=result.esp_image_path,
+            homo_image_path=result.homo_image_path,
+            lumo_image_path=result.lumo_image_path,
             preferred_qc_result_id=result.id,
             calculation_count=1
         )

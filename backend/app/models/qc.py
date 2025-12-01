@@ -217,9 +217,11 @@ class MoleculeQCCache(Base):
     esp_min_kcal = Column(Float)
     esp_max_kcal = Column(Float)
     
-    # ESP图像路径
+    # 图像路径
     esp_image_path = Column(Text)
-    
+    homo_image_path = Column(Text)  # HOMO轨道图片
+    lumo_image_path = Column(Text)  # LUMO轨道图片
+
     # 统计
     calculation_count = Column(Integer, default=1)
     

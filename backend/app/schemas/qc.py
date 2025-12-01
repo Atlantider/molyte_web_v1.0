@@ -342,6 +342,8 @@ class MoleculeQCCacheBase(BaseModel):
     esp_min_kcal: Optional[float] = None
     esp_max_kcal: Optional[float] = None
     esp_image_path: Optional[str] = None
+    homo_image_path: Optional[str] = None
+    lumo_image_path: Optional[str] = None
 
 
 class MoleculeQCCacheInDB(MoleculeQCCacheBase):

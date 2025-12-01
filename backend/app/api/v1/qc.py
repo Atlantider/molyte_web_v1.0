@@ -1302,6 +1302,62 @@ def get_esp_image_by_smiles(
     )
 
 
+@router.get("/homo-image-by-smiles/{smiles:path}")
+def get_homo_image_by_smiles(
+    smiles: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """根据SMILES获取HOMO轨道图片"""
+    from urllib.parse import unquote
+    smiles = unquote(smiles)
+
+    cache = db.query(MoleculeQCCache).filter(
+        MoleculeQCCache.smiles == smiles
+    ).first()
+
+    if not cache:
+        raise HTTPException(status_code=404, detail="No QC cache found for this SMILES")
+
+    if not cache.homo_image_path or not os.path.exists(cache.homo_image_path):
+        raise HTTPException(status_code=404, detail="HOMO image not found")
+
+    return FileResponse(
+        cache.homo_image_path,
+        media_type="image/png",
+        filename=f"homo_{cache.id}.png",
+        headers={"Content-Disposition": f"inline; filename=homo_{cache.id}.png"}
+    )
+
+
+@router.get("/lumo-image-by-smiles/{smiles:path}")
+def get_lumo_image_by_smiles(
+    smiles: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """根据SMILES获取LUMO轨道图片"""
+    from urllib.parse import unquote
+    smiles = unquote(smiles)
+
+    cache = db.query(MoleculeQCCache).filter(
+        MoleculeQCCache.smiles == smiles
+    ).first()
+
+    if not cache:
+        raise HTTPException(status_code=404, detail="No QC cache found for this SMILES")
+
+    if not cache.lumo_image_path or not os.path.exists(cache.lumo_image_path):
+        raise HTTPException(status_code=404, detail="LUMO image not found")
+
+    return FileResponse(
+        cache.lumo_image_path,
+        media_type="image/png",
+        filename=f"lumo_{cache.id}.png",
+        headers={"Content-Disposition": f"inline; filename=lumo_{cache.id}.png"}
+    )
+
+
 # ============================================================================
 # Configuration Endpoints
 # ============================================================================

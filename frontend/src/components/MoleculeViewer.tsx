@@ -839,49 +839,88 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
                 >
                   {(() => {
                     const qc = qcCache[currentMolecule.smiles!];
+                    const hasImages = qc.esp_image_path || qc.homo_image_path || qc.lumo_image_path;
                     return (
-                      <Row gutter={24}>
-                        <Col xs={24} md={12}>
-                          <Descriptions column={1} size="small" bordered>
-                            <Descriptions.Item label="能量 (A.U.)">
-                              {qc.energy_au?.toFixed(6) || '-'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="HOMO">
-                              <Tag color="blue">{qc.homo_ev?.toFixed(3) || '-'} eV</Tag>
-                            </Descriptions.Item>
-                            <Descriptions.Item label="LUMO">
-                              <Tag color="green">{qc.lumo_ev?.toFixed(3) || '-'} eV</Tag>
-                            </Descriptions.Item>
-                            <Descriptions.Item label="HOMO-LUMO Gap">
-                              <Tag color="orange">{qc.homo_lumo_gap_ev?.toFixed(3) || '-'} eV</Tag>
-                            </Descriptions.Item>
-                            <Descriptions.Item label="ESP Min">
-                              {qc.esp_min_kcal?.toFixed(2) || '-'} kcal/mol
-                            </Descriptions.Item>
-                            <Descriptions.Item label="ESP Max">
-                              {qc.esp_max_kcal?.toFixed(2) || '-'} kcal/mol
-                            </Descriptions.Item>
-                            <Descriptions.Item label="基组/泛函">
-                              {qc.basis_set || '-'} / {qc.functional || '-'}
-                            </Descriptions.Item>
-                          </Descriptions>
-                        </Col>
-                        {qc.esp_image_path && (
-                          <Col xs={24} md={12}>
-                            <div style={{ textAlign: 'center' }}>
-                              <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                                静电势表面 (ESP)
-                              </Text>
-                              <Image
-                                src={`/api/v1/qc/esp-image-by-smiles/${encodeURIComponent(currentMolecule.smiles!)}`}
-                                alt="ESP Surface"
-                                style={{ maxWidth: '100%', maxHeight: 300 }}
-                                placeholder
-                              />
-                            </div>
+                      <>
+                        <Row gutter={24}>
+                          <Col xs={24} md={hasImages ? 8 : 24}>
+                            <Descriptions column={1} size="small" bordered>
+                              <Descriptions.Item label="能量 (A.U.)">
+                                {qc.energy_au?.toFixed(6) || '-'}
+                              </Descriptions.Item>
+                              <Descriptions.Item label="HOMO">
+                                <Tag color="blue">{qc.homo_ev?.toFixed(3) || '-'} eV</Tag>
+                              </Descriptions.Item>
+                              <Descriptions.Item label="LUMO">
+                                <Tag color="green">{qc.lumo_ev?.toFixed(3) || '-'} eV</Tag>
+                              </Descriptions.Item>
+                              <Descriptions.Item label="HOMO-LUMO Gap">
+                                <Tag color="orange">{qc.homo_lumo_gap_ev?.toFixed(3) || '-'} eV</Tag>
+                              </Descriptions.Item>
+                              <Descriptions.Item label="ESP Min">
+                                {qc.esp_min_kcal?.toFixed(2) || '-'} kcal/mol
+                              </Descriptions.Item>
+                              <Descriptions.Item label="ESP Max">
+                                {qc.esp_max_kcal?.toFixed(2) || '-'} kcal/mol
+                              </Descriptions.Item>
+                              <Descriptions.Item label="基组/泛函">
+                                {qc.basis_set || '-'} / {qc.functional || '-'}
+                              </Descriptions.Item>
+                            </Descriptions>
                           </Col>
-                        )}
-                      </Row>
+                          {hasImages && (
+                            <Col xs={24} md={16}>
+                              <Row gutter={[8, 8]}>
+                                {qc.esp_image_path && (
+                                  <Col xs={24} sm={8}>
+                                    <div style={{ textAlign: 'center' }}>
+                                      <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>
+                                        静电势 (ESP)
+                                      </Text>
+                                      <Image
+                                        src={`/api/v1/qc/esp-image-by-smiles/${encodeURIComponent(currentMolecule.smiles!)}`}
+                                        alt="ESP Surface"
+                                        style={{ maxWidth: '100%', maxHeight: 180 }}
+                                        placeholder
+                                      />
+                                    </div>
+                                  </Col>
+                                )}
+                                {qc.homo_image_path && (
+                                  <Col xs={24} sm={8}>
+                                    <div style={{ textAlign: 'center' }}>
+                                      <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>
+                                        HOMO 轨道
+                                      </Text>
+                                      <Image
+                                        src={`/api/v1/qc/homo-image-by-smiles/${encodeURIComponent(currentMolecule.smiles!)}`}
+                                        alt="HOMO Orbital"
+                                        style={{ maxWidth: '100%', maxHeight: 180 }}
+                                        placeholder
+                                      />
+                                    </div>
+                                  </Col>
+                                )}
+                                {qc.lumo_image_path && (
+                                  <Col xs={24} sm={8}>
+                                    <div style={{ textAlign: 'center' }}>
+                                      <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>
+                                        LUMO 轨道
+                                      </Text>
+                                      <Image
+                                        src={`/api/v1/qc/lumo-image-by-smiles/${encodeURIComponent(currentMolecule.smiles!)}`}
+                                        alt="LUMO Orbital"
+                                        style={{ maxWidth: '100%', maxHeight: 180 }}
+                                        placeholder
+                                      />
+                                    </div>
+                                  </Col>
+                                )}
+                              </Row>
+                            </Col>
+                          )}
+                        </Row>
+                      </>
                     );
                   })()}
                 </Card>

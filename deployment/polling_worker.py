@@ -857,16 +857,17 @@ echo "QC calculation completed"
                         (f for f in uploaded_files if f.endswith('.fchk')), None
                     )
 
-                    # 生成 ESP 可视化图片（如果有 fchk 文件）
-                    fchk_file = next((work_dir / f for f in work_dir.glob("*.fchk")), None)
-                    if fchk_file and fchk_file.exists():
+                    # 生成 QC 可视化图片（ESP、HOMO、LUMO）
+                    fchk_files = list(work_dir.glob("*.fchk"))
+                    if fchk_files:
+                        fchk_file = fchk_files[0]
                         try:
-                            esp_result = self._generate_esp_visualization(work_dir, fchk_file)
-                            if esp_result:
-                                qc_result.update(esp_result)
-                                self.logger.info(f"ESP 可视化生成成功")
+                            vis_result = self._generate_qc_visualizations(work_dir, fchk_file)
+                            if vis_result:
+                                qc_result.update(vis_result)
+                                self.logger.info(f"QC 可视化生成成功: ESP={vis_result.get('esp_image_path')}, HOMO={vis_result.get('homo_image_path')}, LUMO={vis_result.get('lumo_image_path')}")
                         except Exception as e:
-                            self.logger.warning(f"ESP 可视化生成失败: {e}")
+                            self.logger.warning(f"QC 可视化生成失败: {e}")
 
                     # 上传 QC 结果到数据库
                     self._upload_qc_result(job_id, qc_result)
@@ -967,9 +968,9 @@ echo "QC calculation completed"
             self.logger.error(f"解析 Gaussian 输出失败: {e}", exc_info=True)
             return None
 
-    def _generate_esp_visualization(self, work_dir: Path, fchk_file: Path) -> Optional[Dict[str, Any]]:
+    def _generate_qc_visualizations(self, work_dir: Path, fchk_file: Path) -> Optional[Dict[str, Any]]:
         """
-        生成 ESP 可视化图片
+        生成 QC 可视化图片（ESP、HOMO、LUMO）
         使用后端的 qc_postprocess 模块中的函数
         """
         import sys
@@ -982,6 +983,7 @@ echo "QC calculation completed"
 
             from app.tasks.qc_postprocess import (
                 generate_esp_visualization,
+                generate_orbital_visualization,
                 extract_esp_values
             )
 
@@ -990,19 +992,40 @@ echo "QC calculation completed"
             # 获取分子名称
             molecule_name = fchk_file.stem
 
-            # 生成 ESP 图片
-            esp_image_path = generate_esp_visualization(work_dir, molecule_name, str(fchk_file))
-            if esp_image_path:
-                result['esp_image_path'] = esp_image_path
-                self.logger.info(f"ESP 图片生成: {esp_image_path}")
+            # 1. 生成 ESP 图片
+            try:
+                esp_image_path = generate_esp_visualization(work_dir, molecule_name, str(fchk_file))
+                if esp_image_path:
+                    result['esp_image_path'] = esp_image_path
+                    self.logger.info(f"ESP 图片生成: {esp_image_path}")
 
-            # 提取 ESP 极值
-            surfanalysis_file = work_dir / "surfanalysis.txt"
-            esp_min, esp_max = extract_esp_values(str(surfanalysis_file))
-            if esp_min is not None:
-                result['esp_min_kcal'] = esp_min
-            if esp_max is not None:
-                result['esp_max_kcal'] = esp_max
+                # 提取 ESP 极值
+                surfanalysis_file = work_dir / "surfanalysis.txt"
+                esp_min, esp_max = extract_esp_values(str(surfanalysis_file))
+                if esp_min is not None:
+                    result['esp_min_kcal'] = esp_min
+                if esp_max is not None:
+                    result['esp_max_kcal'] = esp_max
+            except Exception as e:
+                self.logger.warning(f"ESP 可视化生成失败: {e}")
+
+            # 2. 生成 HOMO 轨道图片
+            try:
+                homo_image_path = generate_orbital_visualization(work_dir, str(fchk_file), "HOMO")
+                if homo_image_path:
+                    result['homo_image_path'] = homo_image_path
+                    self.logger.info(f"HOMO 图片生成: {homo_image_path}")
+            except Exception as e:
+                self.logger.warning(f"HOMO 可视化生成失败: {e}")
+
+            # 3. 生成 LUMO 轨道图片
+            try:
+                lumo_image_path = generate_orbital_visualization(work_dir, str(fchk_file), "LUMO")
+                if lumo_image_path:
+                    result['lumo_image_path'] = lumo_image_path
+                    self.logger.info(f"LUMO 图片生成: {lumo_image_path}")
+            except Exception as e:
+                self.logger.warning(f"LUMO 可视化生成失败: {e}")
 
             return result if result else None
 
@@ -1010,7 +1033,7 @@ echo "QC calculation completed"
             self.logger.warning(f"无法导入 qc_postprocess 模块: {e}")
             return None
         except Exception as e:
-            self.logger.error(f"生成 ESP 可视化失败: {e}", exc_info=True)
+            self.logger.error(f"生成 QC 可视化失败: {e}", exc_info=True)
             return None
 
     def _upload_qc_result(self, job_id: int, result: Dict[str, Any]):

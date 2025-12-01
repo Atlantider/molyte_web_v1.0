@@ -154,6 +154,8 @@ export interface MoleculeQCCache {
   esp_min_kcal?: number;
   esp_max_kcal?: number;
   esp_image_path?: string;
+  homo_image_path?: string;
+  lumo_image_path?: string;
   preferred_qc_result_id?: number;
   calculation_count: number;
   created_at: string;
