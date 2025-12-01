@@ -13,6 +13,23 @@ class MDJobBase(BaseModel):
     system_id: int
 
 
+class QCResultSummary(BaseModel):
+    """QC结果简要信息（用于MD任务关联展示）"""
+    energy_au: Optional[float] = None  # 能量 (A.U.)
+    homo_ev: Optional[float] = None  # HOMO能量 (eV)
+    lumo_ev: Optional[float] = None  # LUMO能量 (eV)
+    homo_lumo_gap: Optional[float] = None  # HOMO-LUMO能隙 (eV)
+    esp_min_kcal: Optional[float] = None  # ESP最小值 (kcal/mol)
+    esp_max_kcal: Optional[float] = None  # ESP最大值 (kcal/mol)
+    dipole_moment: Optional[float] = None  # 偶极矩
+    has_esp_image: bool = False  # 是否有ESP图片
+    has_homo_image: bool = False  # 是否有HOMO图片
+    has_lumo_image: bool = False  # 是否有LUMO图片
+
+    class Config:
+        from_attributes = True
+
+
 class QCJobSummary(BaseModel):
     """QC任务简要信息（用于MD任务关联展示）"""
     id: int
@@ -36,6 +53,8 @@ class QCJobSummary(BaseModel):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    # 计算结果（仅已完成任务有）
+    result: Optional[QCResultSummary] = None
 
     class Config:
         from_attributes = True

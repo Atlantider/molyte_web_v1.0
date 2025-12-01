@@ -391,6 +391,69 @@ export default function QCTasksPanel({ mdJobId, refreshInterval = 10000 }: QCTas
                     </Space>
                   </div>
 
+                  {/* 计算结果（仅已完成任务显示） */}
+                  {job.status === 'COMPLETED' && job.result && (
+                    <div style={{ marginTop: 8, padding: '8px 12px', background: '#f6ffed', borderRadius: 4, border: '1px solid #b7eb8f' }}>
+                      <div style={{ fontSize: 12, color: '#389e0d', marginBottom: 4, fontWeight: 500 }}>
+                        📊 计算结果
+                      </div>
+                      <Row gutter={[16, 4]}>
+                        {job.result.energy_au !== undefined && job.result.energy_au !== null && (
+                          <Col span={8}>
+                            <Text type="secondary" style={{ fontSize: 11 }}>能量: </Text>
+                            <Text style={{ fontSize: 11 }}>{job.result.energy_au.toFixed(6)} A.U.</Text>
+                          </Col>
+                        )}
+                        {job.result.homo_ev !== undefined && job.result.homo_ev !== null && (
+                          <Col span={8}>
+                            <Text type="secondary" style={{ fontSize: 11 }}>HOMO: </Text>
+                            <Text style={{ fontSize: 11 }}>{job.result.homo_ev.toFixed(3)} eV</Text>
+                          </Col>
+                        )}
+                        {job.result.lumo_ev !== undefined && job.result.lumo_ev !== null && (
+                          <Col span={8}>
+                            <Text type="secondary" style={{ fontSize: 11 }}>LUMO: </Text>
+                            <Text style={{ fontSize: 11 }}>{job.result.lumo_ev.toFixed(3)} eV</Text>
+                          </Col>
+                        )}
+                        {job.result.homo_lumo_gap !== undefined && job.result.homo_lumo_gap !== null && (
+                          <Col span={8}>
+                            <Text type="secondary" style={{ fontSize: 11 }}>能隙: </Text>
+                            <Text style={{ fontSize: 11 }}>{job.result.homo_lumo_gap.toFixed(3)} eV</Text>
+                          </Col>
+                        )}
+                        {job.result.esp_min_kcal !== undefined && job.result.esp_min_kcal !== null && (
+                          <Col span={8}>
+                            <Text type="secondary" style={{ fontSize: 11 }}>ESP Min: </Text>
+                            <Text style={{ fontSize: 11 }}>{job.result.esp_min_kcal.toFixed(2)} kcal/mol</Text>
+                          </Col>
+                        )}
+                        {job.result.esp_max_kcal !== undefined && job.result.esp_max_kcal !== null && (
+                          <Col span={8}>
+                            <Text type="secondary" style={{ fontSize: 11 }}>ESP Max: </Text>
+                            <Text style={{ fontSize: 11 }}>{job.result.esp_max_kcal.toFixed(2)} kcal/mol</Text>
+                          </Col>
+                        )}
+                        {job.result.dipole_moment !== undefined && job.result.dipole_moment !== null && (
+                          <Col span={8}>
+                            <Text type="secondary" style={{ fontSize: 11 }}>偶极矩: </Text>
+                            <Text style={{ fontSize: 11 }}>{job.result.dipole_moment.toFixed(3)} D</Text>
+                          </Col>
+                        )}
+                      </Row>
+                      {/* 图片指示 */}
+                      {(job.result.has_esp_image || job.result.has_homo_image || job.result.has_lumo_image) && (
+                        <div style={{ marginTop: 4 }}>
+                          <Space size={8}>
+                            {job.result.has_esp_image && <Tag color="purple" style={{ fontSize: 10 }}>ESP图</Tag>}
+                            {job.result.has_homo_image && <Tag color="blue" style={{ fontSize: 10 }}>HOMO图</Tag>}
+                            {job.result.has_lumo_image && <Tag color="cyan" style={{ fontSize: 10 }}>LUMO图</Tag>}
+                          </Space>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* 错误信息 */}
                   {job.error_message && (
                     <div style={{ marginTop: 6, padding: '4px 8px', background: '#fff2f0', borderRadius: 4, border: '1px solid #ffccc7' }}>

@@ -291,24 +291,26 @@ export default function ElectrolyteFormNew({
     const parts: string[] = [];
 
     // 添加阳离子（按浓度降序排列，取前2个）
+    // 清理名称中的特殊字符，将/替换为-
     const sortedCations = [...selectedCations].sort((a, b) => b.concentration - a.concentration);
-    const topCations = sortedCations.slice(0, 2).map(c => c.name).filter(Boolean);
+    const topCations = sortedCations.slice(0, 2).map(c => c.name?.replace(/\//g, '-')).filter(Boolean);
     if (topCations.length > 0) {
       parts.push(topCations.join('-'));
     }
 
     // 添加阴离子（按浓度降序排列，取前2个）
     const sortedAnions = [...selectedAnions].sort((a, b) => b.concentration - a.concentration);
-    const topAnions = sortedAnions.slice(0, 2).map(a => a.name).filter(Boolean);
+    const topAnions = sortedAnions.slice(0, 2).map(a => a.name?.replace(/\//g, '-')).filter(Boolean);
     if (topAnions.length > 0) {
       parts.push(topAnions.join('-'));
     }
 
     // 添加溶剂（按摩尔比降序排列，取前3个）
     // 安全检查：确保溶剂对象存在且有 name 属性
+    // 清理溶剂名称中的特殊字符，将/替换为-
     const validSolvents = solvents.filter((s: any) => s && s.name);
     const sortedSolvents = [...validSolvents].sort((a: any, b: any) => (b.molar_ratio || 0) - (a.molar_ratio || 0));
-    const topSolvents = sortedSolvents.slice(0, 3).map((s: any) => s.name).filter(Boolean);
+    const topSolvents = sortedSolvents.slice(0, 3).map((s: any) => s.name?.replace(/\//g, '-')).filter(Boolean);
     if (topSolvents.length > 0) {
       parts.push(topSolvents.join('-'));
     }

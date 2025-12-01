@@ -311,17 +311,19 @@ export default function ElectrolyteFormOptimized({
     const parts: string[] = [];
     const validCations = selectedCations.filter(c => c && c.name);
     const sortedCations = [...validCations].sort((a, b) => (b.concentration || 0) - (a.concentration || 0));
-    const topCations = sortedCations.slice(0, 2).map(c => c.name).filter(Boolean);
+    // 清理名称中的特殊字符，将/替换为-
+    const topCations = sortedCations.slice(0, 2).map(c => c.name?.replace(/\//g, '-')).filter(Boolean);
     if (topCations.length > 0) parts.push(topCations.join('-'));
     const validAnions = selectedAnions.filter(a => a && a.name);
     const sortedAnions = [...validAnions].sort((a, b) => (b.concentration || 0) - (a.concentration || 0));
-    const topAnions = sortedAnions.slice(0, 2).map(a => a.name).filter(Boolean);
+    const topAnions = sortedAnions.slice(0, 2).map(a => a.name?.replace(/\//g, '-')).filter(Boolean);
     if (topAnions.length > 0) parts.push(topAnions.join('-'));
     const validSolvents = solvents.filter((s: any) => s && s.name);
     const sortedSolvents = [...validSolvents].sort((a: any, b: any) => (b.molar_ratio || 0) - (a.molar_ratio || 0));
-    const topSolvents = sortedSolvents.slice(0, 3).map((s: any) => s.name).filter(Boolean);
-    if (topSolvents.length > 0) parts.push(topSolvents.join('/'));
-    return parts.join(' ');
+    // 清理溶剂名称中的特殊字符，将/替换为-
+    const topSolvents = sortedSolvents.slice(0, 3).map((s: any) => s.name?.replace(/\//g, '-')).filter(Boolean);
+    if (topSolvents.length > 0) parts.push(topSolvents.join('-'));
+    return parts.join('-');
   };
 
   useEffect(() => {
@@ -375,7 +377,7 @@ export default function ElectrolyteFormOptimized({
                         <Button
                           type="primary"
                           icon={<FolderAddOutlined />}
-                          onClick={() => navigate('/projects?action=create')}
+                          onClick={() => navigate('/workspace/projects?action=create')}
                         >
                           新建项目
                         </Button>
@@ -389,7 +391,7 @@ export default function ElectrolyteFormOptimized({
                           <Button
                             type="link"
                             icon={<FolderAddOutlined />}
-                            onClick={() => navigate('/projects?action=create')}
+                            onClick={() => navigate('/workspace/projects?action=create')}
                             style={{ width: '100%', textAlign: 'left' }}
                           >
                             新建项目

@@ -949,33 +949,45 @@ def get_md_job(
 ):
     """
     Get MD job by ID
-    
+
     Args:
         job_id: MD job ID
         db: Database session
         current_user: Current authenticated user
-        
+
     Returns:
         MDJob: MD job data
-        
+
     Raises:
         HTTPException: If not found or no permission
     """
+    from datetime import datetime
+
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
-    
+
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="MD job not found"
         )
-    
+
     # Check permission
-    if job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
+    # 允许访问：1. 自己的数据 2. 管理员 3. 公开数据 4. 已过延期的数据
+    is_owner = job.user_id == current_user.id
+    is_admin = current_user.role == UserRole.ADMIN
+    is_public = job.visibility == DataVisibility.PUBLIC
+    is_delayed_expired = (
+        job.visibility == DataVisibility.DELAYED and
+        job.visibility_delay_until and
+        job.visibility_delay_until <= datetime.utcnow()
+    )
+
+    if not (is_owner or is_admin or is_public or is_delayed_expired):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
         )
-    
+
     return job
 
 
@@ -996,7 +1008,9 @@ def get_md_job_qc_jobs(
     Returns:
         QC任务列表和状态汇总
     """
-    from app.schemas.job import QCJobSummary, QCJobsStatusSummary
+    from datetime import datetime
+    from app.schemas.job import QCJobSummary, QCJobsStatusSummary, QCResultSummary
+    from app.models.qc import QCResult
 
     # 获取MD任务
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
@@ -1006,8 +1020,17 @@ def get_md_job_qc_jobs(
             detail="MD job not found"
         )
 
-    # 检查权限
-    if job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
+    # 检查权限（支持公开数据访问）
+    is_owner = job.user_id == current_user.id
+    is_admin = current_user.role == UserRole.ADMIN
+    is_public = job.visibility == DataVisibility.PUBLIC
+    is_delayed_expired = (
+        job.visibility == DataVisibility.DELAYED and
+        job.visibility_delay_until and
+        job.visibility_delay_until <= datetime.utcnow()
+    )
+
+    if not (is_owner or is_admin or is_public or is_delayed_expired):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1035,9 +1058,35 @@ def get_md_job_qc_jobs(
         elif status_str == "CANCELLED":
             status_summary.cancelled += 1
 
+    # 获取所有已完成QC任务的结果
+    qc_job_ids = [qc.id for qc in qc_jobs]
+    qc_results = {}
+    if qc_job_ids:
+        results = db.query(QCResult).filter(QCResult.qc_job_id.in_(qc_job_ids)).all()
+        for result in results:
+            qc_results[result.qc_job_id] = result
+
     # 转换为Schema
-    qc_jobs_data = [
-        QCJobSummary(
+    qc_jobs_data = []
+    for qc in qc_jobs:
+        # 获取该任务的结果
+        result_summary = None
+        if qc.id in qc_results:
+            r = qc_results[qc.id]
+            result_summary = QCResultSummary(
+                energy_au=r.energy_au,
+                homo_ev=r.homo * 27.2114 if r.homo is not None else None,  # Hartree to eV
+                lumo_ev=r.lumo * 27.2114 if r.lumo is not None else None,  # Hartree to eV
+                homo_lumo_gap=r.homo_lumo_gap,
+                esp_min_kcal=r.esp_min_kcal,
+                esp_max_kcal=r.esp_max_kcal,
+                dipole_moment=r.dipole_moment,
+                has_esp_image=bool(r.esp_image_path or r.esp_image_content),
+                has_homo_image=bool(r.homo_image_path or r.homo_image_content),
+                has_lumo_image=bool(r.lumo_image_path or r.lumo_image_content),
+            )
+
+        qc_jobs_data.append(QCJobSummary(
             id=qc.id,
             molecule_name=qc.molecule_name,
             smiles=qc.smiles,
@@ -1058,10 +1107,9 @@ def get_md_job_qc_jobs(
             created_at=qc.created_at,
             started_at=qc.started_at,
             finished_at=qc.finished_at,
-            error_message=qc.error_message
-        )
-        for qc in qc_jobs
-    ]
+            error_message=qc.error_message,
+            result=result_summary
+        ))
 
     return {
         "md_job_id": job_id,
@@ -1446,14 +1494,15 @@ def sync_job_status(
     在混合云架构下，此接口返回数据库中的当前状态。
     实际的 Slurm 状态同步由校园网 Worker 通过 /workers/jobs/{job_id}/status API 完成。
     """
+    from app.dependencies import check_job_permission
+
     # Get job
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Check permission
-    if job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Not authorized to access this job")
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     # Get Slurm job ID - check both job.slurm_job_id and job.config
     slurm_job_id = job.slurm_job_id
@@ -1758,15 +1807,15 @@ def get_msd_results(
         List of MSD results with diffusion coefficients
     """
     from app.tasks.msd_processor import get_msd_results as get_msd_data
+    from app.dependencies import check_job_permission
 
     # Get job
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Check permission
-    if job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Permission denied")
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     # Get MSD results
     results = get_msd_data(db, job_id)
@@ -1876,15 +1925,15 @@ def get_rdf_results(
         List of RDF results with analysis data
     """
     from app.models.result import RDFResult
-    from app.dependencies import check_resource_permission
+    from app.dependencies import check_job_permission
 
     # Get job
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # 数据隔离：检查权限（管理员可以访问所有数据，普通用户只能访问自己的数据）
-    check_resource_permission(job.user_id, current_user)
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     # Get RDF results
     rdf_results = db.query(RDFResult).filter(RDFResult.md_job_id == job_id).all()
@@ -1918,7 +1967,7 @@ def get_molecule_templates(
     Returns:
         List of molecules with PDB structure and charge information
     """
-    from app.dependencies import check_resource_permission
+    from app.dependencies import check_job_permission
     from app.models.result import ResultSummary
 
     # Get job
@@ -1926,8 +1975,8 @@ def get_molecule_templates(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # 数据隔离：检查权限（管理员可以访问所有数据，普通用户只能访问自己的数据）
-    check_resource_permission(job.user_id, current_user)
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     # 优先从数据库读取分子结构（Worker 上传的）
     result_summary = db.query(ResultSummary).filter(
@@ -2136,15 +2185,15 @@ async def get_structure_info(
     优先从数据库读取，其次从文件读取
     """
     from app.models.result import ResultSummary
+    from app.dependencies import check_job_permission
 
     # 获取任务
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # 检查权限（管理员可以访问所有数据）
-    if job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Not authorized to access this job")
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     try:
         # 获取任务名称
@@ -2424,14 +2473,15 @@ def get_job_slurm_status(
     在混合云架构下，返回数据库中由 Worker 同步的状态，
     而不是直接查询 Slurm（因为后端无法访问校园网 Slurm 集群）。
     """
+    from app.dependencies import check_job_permission
+
     # 获取任务
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # 检查权限
-    if job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Not authorized to access this job")
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     # 获取 Slurm Job ID
     slurm_job_id = job.slurm_job_id or (job.config.get("slurm_job_id") if job.config else None)
@@ -2489,15 +2539,15 @@ def get_solvation_structures(
     返回溶剂化结构列表，包括配位数、组成、结构文件路径等
     """
     from app.models.result import SolvationStructure
-    from app.dependencies import check_resource_permission
+    from app.dependencies import check_job_permission
 
     # 获取任务
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # 数据隔离：检查权限（管理员可以访问所有数据，普通用户只能访问自己的数据）
-    check_resource_permission(job.user_id, current_user)
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     # 查询溶剂化结构
     structures = db.query(SolvationStructure).filter(
@@ -2698,7 +2748,7 @@ def get_solvation_statistics(
     """
     from app.models.result import SolvationStructure
     from collections import Counter, defaultdict
-    from app.dependencies import check_resource_permission
+    from app.dependencies import check_job_permission
     import numpy as np
 
     # 获取任务
@@ -2706,8 +2756,8 @@ def get_solvation_statistics(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # 数据隔离：检查权限（管理员可以访问所有数据，普通用户只能访问自己的数据）
-    check_resource_permission(job.user_id, current_user)
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     # 查询溶剂化结构
     structures = db.query(SolvationStructure).filter(
@@ -2797,15 +2847,15 @@ async def get_solvation_structure_file(
     from fastapi.responses import FileResponse, Response
     from app.models.result import SolvationStructure
     from app.services.solvation import get_structure_xyz_content
-    from app.dependencies import check_resource_permission
+    from app.dependencies import check_job_permission
 
     # 获取任务
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # 数据隔离：检查权限（管理员可以访问所有数据，普通用户只能访问自己的数据）
-    check_resource_permission(job.user_id, current_user)
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     # 获取溶剂化结构
     structure = db.query(SolvationStructure).filter(
@@ -2879,15 +2929,15 @@ def get_system_structure_endpoint(
         frame: 帧索引，-1 表示最后一帧
     """
     from app.models.result import ResultSummary
-    from app.dependencies import check_resource_permission
+    from app.dependencies import check_job_permission
 
     # 获取任务
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # 数据隔离：检查权限（管理员可以访问所有数据，普通用户只能访问自己的数据）
-    check_resource_permission(job.user_id, current_user)
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     # 优先从数据库读取
     summary = db.query(ResultSummary).filter(ResultSummary.md_job_id == job_id).first()
@@ -2933,15 +2983,15 @@ def get_frame_count_endpoint(
     获取轨迹文件的帧数
     """
     from app.services.solvation import get_frame_count
-    from app.dependencies import check_resource_permission
+    from app.dependencies import check_job_permission
 
     # 获取任务
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # 数据隔离：检查权限（管理员可以访问所有数据，普通用户只能访问自己的数据）
-    check_resource_permission(job.user_id, current_user)
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     if not job.work_dir:
         raise HTTPException(status_code=400, detail="Job work directory not found")
@@ -2966,7 +3016,7 @@ def export_solvation_data(
     """
     from fastapi.responses import Response
     from app.models.result import SolvationStructure
-    from app.dependencies import check_resource_permission
+    from app.dependencies import check_job_permission
     import csv
     import io
 
@@ -2975,8 +3025,8 @@ def export_solvation_data(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # 数据隔离：检查权限（管理员可以访问所有数据，普通用户只能访问自己的数据）
-    check_resource_permission(job.user_id, current_user)
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
 
     # 查询溶剂化结构
     structures = db.query(SolvationStructure).filter(

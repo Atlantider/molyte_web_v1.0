@@ -165,3 +165,47 @@ def check_resource_permission(resource_user_id: int, current_user: User) -> None
             detail="You don't have permission to access this resource"
         )
 
+
+def check_job_permission(job, current_user: User) -> None:
+    """
+    Check if current user has permission to access a job (MD or QC)
+
+    Supports public data access:
+    - ADMIN: Can access all jobs
+    - Owner: Can access their own jobs
+    - Other users: Can access PUBLIC jobs or DELAYED jobs past their delay date
+
+    Args:
+        job: MDJob or QCJob instance with visibility field
+        current_user: Current authenticated user
+
+    Raises:
+        HTTPException: If user doesn't have permission
+    """
+    from datetime import datetime
+    from app.models.job import DataVisibility
+
+    # Admin can access everything
+    if current_user.role == UserRole.ADMIN:
+        return
+
+    # Owner can access their own jobs
+    if job.user_id == current_user.id:
+        return
+
+    # Check if job is public or delayed and past delay date
+    is_public = getattr(job, 'visibility', None) == DataVisibility.PUBLIC
+    is_delayed_expired = (
+        getattr(job, 'visibility', None) == DataVisibility.DELAYED and
+        getattr(job, 'visibility_delay_until', None) and
+        job.visibility_delay_until <= datetime.utcnow()
+    )
+
+    if is_public or is_delayed_expired:
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You don't have permission to access this resource"
+    )
+

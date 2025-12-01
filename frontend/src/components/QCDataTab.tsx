@@ -62,6 +62,12 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
   const [recalculateModalVisible, setRecalculateModalVisible] = useState(false);
   const [selectedJob, setSelectedJob] = useState<QCJob | null>(null);
 
+  // 详情模态框状态（用于公开数据查看）
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [detailJob, setDetailJob] = useState<QCJob | null>(null);
+  const [detailImages, setDetailImages] = useState<{esp?: string; homo?: string; lumo?: string}>({});
+  const [detailImagesLoading, setDetailImagesLoading] = useState(false);
+
   // 对比分析相关状态
   const [comparisonModalVisible, setComparisonModalVisible] = useState(false);
   const [comparisonType, setComparisonType] = useState<'molecule' | 'functional' | 'basis_set' | 'solvent'>('molecule');
@@ -1459,8 +1465,36 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
   };
 
   // 查看详情
-  const handleViewDetail = (record: QCJob) => {
-    navigate(`/workspace/qc-jobs/${record.id}`);
+  const handleViewDetail = async (record: QCJob) => {
+    if (isPublic) {
+      // 公开数据：显示模态框
+      setDetailJob(record);
+      setDetailModalVisible(true);
+      setDetailImagesLoading(true);
+      setDetailImages({});
+
+      // 加载图片
+      try {
+        const [espImg, homoImg, lumoImg] = await Promise.allSettled([
+          record.result_id ? getESPImage(record.result_id) : Promise.reject('no result'),
+          record.result_id ? getHOMOImage(record.result_id) : Promise.reject('no result'),
+          record.result_id ? getLUMOImage(record.result_id) : Promise.reject('no result'),
+        ]);
+
+        setDetailImages({
+          esp: espImg.status === 'fulfilled' ? espImg.value : undefined,
+          homo: homoImg.status === 'fulfilled' ? homoImg.value : undefined,
+          lumo: lumoImg.status === 'fulfilled' ? lumoImg.value : undefined,
+        });
+      } catch (e) {
+        console.warn('Failed to load some images:', e);
+      } finally {
+        setDetailImagesLoading(false);
+      }
+    } else {
+      // 私有数据：跳转到详情页
+      navigate(`/workspace/qc-jobs/${record.id}`);
+    }
   };
 
   // 重新计算
@@ -1885,6 +1919,124 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
         }}
         onSuccess={handleRecalculateSuccess}
       />
+
+      {/* QC详情模态框（公开数据） */}
+      <Modal
+        title={
+          <Space>
+            <ExperimentOutlined style={{ color: '#1890ff' }} />
+            <span>QC 计算结果详情</span>
+          </Space>
+        }
+        open={detailModalVisible}
+        onCancel={() => {
+          setDetailModalVisible(false);
+          setDetailJob(null);
+          setDetailImages({});
+        }}
+        footer={null}
+        width={900}
+        destroyOnClose
+      >
+        {detailJob && (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            {/* 基本信息 */}
+            <Descriptions bordered size="small" column={2}>
+              <Descriptions.Item label="分子名称">{detailJob.molecule_name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="SMILES">
+                <Text copyable style={{ maxWidth: 300 }}>{detailJob.smiles || '-'}</Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="泛函">{detailJob.functional || '-'}</Descriptions.Item>
+              <Descriptions.Item label="基组">{detailJob.basis_set || '-'}</Descriptions.Item>
+              <Descriptions.Item label="溶剂模型">{renderSolventModel(detailJob)}</Descriptions.Item>
+              <Descriptions.Item label="任务类型">{detailJob.task_type || 'OPT+FREQ'}</Descriptions.Item>
+            </Descriptions>
+
+            {/* 计算结果 */}
+            {detailJob.result && (
+              <Card title="计算结果" size="small">
+                <Row gutter={16}>
+                  <Col span={8}>
+                    <Statistic
+                      title="总能量"
+                      value={detailJob.result.total_energy?.toFixed(6) || '-'}
+                      suffix="Hartree"
+                      valueStyle={{ fontSize: 16 }}
+                    />
+                  </Col>
+                  <Col span={8}>
+                    <Statistic
+                      title="HOMO 能量"
+                      value={detailJob.result.homo_energy?.toFixed(4) || '-'}
+                      suffix="eV"
+                      valueStyle={{ fontSize: 16, color: '#1890ff' }}
+                    />
+                  </Col>
+                  <Col span={8}>
+                    <Statistic
+                      title="LUMO 能量"
+                      value={detailJob.result.lumo_energy?.toFixed(4) || '-'}
+                      suffix="eV"
+                      valueStyle={{ fontSize: 16, color: '#52c41a' }}
+                    />
+                  </Col>
+                </Row>
+                {(detailJob.result.homo_energy && detailJob.result.lumo_energy) && (
+                  <Row style={{ marginTop: 16 }}>
+                    <Col span={8}>
+                      <Statistic
+                        title="HOMO-LUMO Gap"
+                        value={(detailJob.result.lumo_energy - detailJob.result.homo_energy).toFixed(4)}
+                        suffix="eV"
+                        valueStyle={{ fontSize: 16, color: '#722ed1' }}
+                      />
+                    </Col>
+                  </Row>
+                )}
+              </Card>
+            )}
+
+            {/* 轨道图片 */}
+            <Card title="分子轨道可视化" size="small">
+              {detailImagesLoading ? (
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <Spin tip="加载图片中..." />
+                </div>
+              ) : (
+                <Row gutter={16}>
+                  <Col span={8}>
+                    <Card size="small" title="ESP 静电势">
+                      {detailImages.esp ? (
+                        <Image src={detailImages.esp} alt="ESP" style={{ width: '100%' }} />
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: 20, color: '#999' }}>暂无图片</div>
+                      )}
+                    </Card>
+                  </Col>
+                  <Col span={8}>
+                    <Card size="small" title="HOMO 轨道">
+                      {detailImages.homo ? (
+                        <Image src={detailImages.homo} alt="HOMO" style={{ width: '100%' }} />
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: 20, color: '#999' }}>暂无图片</div>
+                      )}
+                    </Card>
+                  </Col>
+                  <Col span={8}>
+                    <Card size="small" title="LUMO 轨道">
+                      {detailImages.lumo ? (
+                        <Image src={detailImages.lumo} alt="LUMO" style={{ width: '100%' }} />
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: 20, color: '#999' }}>暂无图片</div>
+                      )}
+                    </Card>
+                  </Col>
+                </Row>
+              )}
+            </Card>
+          </Space>
+        )}
+      </Modal>
     </Space>
   );
 }

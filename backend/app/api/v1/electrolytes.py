@@ -385,6 +385,9 @@ def get_electrolyte(
     Raises:
         HTTPException: If not found or no permission
     """
+    from datetime import datetime
+    from app.models.job import DataVisibility
+
     electrolyte = db.query(ElectrolyteSystem).filter(
         ElectrolyteSystem.id == electrolyte_id
     ).first()
@@ -396,7 +399,24 @@ def get_electrolyte(
         )
 
     # Check permission
-    if electrolyte.project.user_id != current_user.id and current_user.role != UserRole.ADMIN:
+    # 允许访问：1. 自己的数据 2. 管理员 3. 关联的MD任务是公开的
+    is_owner = electrolyte.project.user_id == current_user.id
+    is_admin = current_user.role == UserRole.ADMIN
+
+    # 检查是否有关联的公开MD任务
+    has_public_job = db.query(MDJob).filter(
+        MDJob.system_id == electrolyte_id,
+        MDJob.visibility == DataVisibility.PUBLIC
+    ).first() is not None
+
+    # 检查是否有关联的已过延期的MD任务
+    has_delayed_expired_job = db.query(MDJob).filter(
+        MDJob.system_id == electrolyte_id,
+        MDJob.visibility == DataVisibility.DELAYED,
+        MDJob.visibility_delay_until <= datetime.utcnow()
+    ).first() is not None
+
+    if not (is_owner or is_admin or has_public_job or has_delayed_expired_job):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"

@@ -1307,7 +1307,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
           )}
 
           {/* 帧数滑块 */}
-          {totalFrames > 0 && (
+          {totalFrames > 1 && (
             <div
               style={{
                 marginTop: 8,

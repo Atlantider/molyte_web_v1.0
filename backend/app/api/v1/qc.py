@@ -515,13 +515,25 @@ def get_qc_job(
     current_user: User = Depends(get_current_active_user)
 ):
     """获取QC任务详情"""
+    from datetime import datetime
+    from app.models.job import DataVisibility
+
     job = db.query(QCJob).filter(QCJob.id == job_id).first()
 
     if not job:
         raise HTTPException(status_code=404, detail="QC job not found")
 
-    # 检查权限
-    if job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
+    # 检查权限（支持公开数据访问）
+    is_owner = job.user_id == current_user.id
+    is_admin = current_user.role == UserRole.ADMIN
+    is_public = job.visibility == "PUBLIC"
+    is_delayed_expired = (
+        job.visibility == "DELAYED" and
+        job.visibility_delay_until and
+        job.visibility_delay_until <= datetime.utcnow()
+    )
+
+    if not (is_owner or is_admin or is_public or is_delayed_expired):
         raise HTTPException(status_code=403, detail="Permission denied")
 
     # 如果是复用任务且没有自己的结果，获取原始任务的结果
@@ -1041,12 +1053,24 @@ def get_qc_results(
     current_user: User = Depends(get_current_active_user)
 ):
     """获取QC任务的计算结果"""
+    from datetime import datetime
+
     job = db.query(QCJob).filter(QCJob.id == job_id).first()
 
     if not job:
         raise HTTPException(status_code=404, detail="QC job not found")
 
-    if job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
+    # 检查权限（支持公开数据访问）
+    is_owner = job.user_id == current_user.id
+    is_admin = current_user.role == UserRole.ADMIN
+    is_public = job.visibility == "PUBLIC"
+    is_delayed_expired = (
+        job.visibility == "DELAYED" and
+        job.visibility_delay_until and
+        job.visibility_delay_until <= datetime.utcnow()
+    )
+
+    if not (is_owner or is_admin or is_public or is_delayed_expired):
         raise HTTPException(status_code=403, detail="Permission denied")
 
     results = db.query(QCResult).filter(QCResult.qc_job_id == job_id).all()
@@ -1198,6 +1222,7 @@ def get_esp_image(
 ):
     """获取QC结果的ESP图片"""
     from fastapi.responses import Response
+    from datetime import datetime
     import base64
 
     result = db.query(QCResult).filter(QCResult.id == result_id).first()
@@ -1205,10 +1230,20 @@ def get_esp_image(
     if not result:
         raise HTTPException(status_code=404, detail="QC result not found")
 
-    # 检查权限
+    # 检查权限（支持公开数据访问）
     qc_job = db.query(QCJob).filter(QCJob.id == result.qc_job_id).first()
-    if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Permission denied")
+    if qc_job:
+        is_owner = qc_job.user_id == current_user.id
+        is_admin = current_user.role == UserRole.ADMIN
+        is_public = qc_job.visibility == "PUBLIC"
+        is_delayed_expired = (
+            qc_job.visibility == "DELAYED" and
+            qc_job.visibility_delay_until and
+            qc_job.visibility_delay_until <= datetime.utcnow()
+        )
+
+        if not (is_owner or is_admin or is_public or is_delayed_expired):
+            raise HTTPException(status_code=403, detail="Permission denied")
 
     # 优先使用数据库中的图片内容（混合云架构）
     if result.esp_image_content:
@@ -1270,6 +1305,7 @@ def get_homo_image(
 ):
     """获取QC结果的HOMO轨道图片"""
     from fastapi.responses import Response
+    from datetime import datetime
     import base64
 
     result = db.query(QCResult).filter(QCResult.id == result_id).first()
@@ -1277,10 +1313,20 @@ def get_homo_image(
     if not result:
         raise HTTPException(status_code=404, detail="QC result not found")
 
-    # 检查权限
+    # 检查权限（支持公开数据访问）
     qc_job = db.query(QCJob).filter(QCJob.id == result.qc_job_id).first()
-    if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Permission denied")
+    if qc_job:
+        is_owner = qc_job.user_id == current_user.id
+        is_admin = current_user.role == UserRole.ADMIN
+        is_public = qc_job.visibility == "PUBLIC"
+        is_delayed_expired = (
+            qc_job.visibility == "DELAYED" and
+            qc_job.visibility_delay_until and
+            qc_job.visibility_delay_until <= datetime.utcnow()
+        )
+
+        if not (is_owner or is_admin or is_public or is_delayed_expired):
+            raise HTTPException(status_code=403, detail="Permission denied")
 
     # 优先使用数据库中的图片内容（混合云架构）
     if result.homo_image_content:
@@ -1314,6 +1360,7 @@ def get_lumo_image(
 ):
     """获取QC结果的LUMO轨道图片"""
     from fastapi.responses import Response
+    from datetime import datetime
     import base64
 
     result = db.query(QCResult).filter(QCResult.id == result_id).first()
@@ -1321,10 +1368,20 @@ def get_lumo_image(
     if not result:
         raise HTTPException(status_code=404, detail="QC result not found")
 
-    # 检查权限
+    # 检查权限（支持公开数据访问）
     qc_job = db.query(QCJob).filter(QCJob.id == result.qc_job_id).first()
-    if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Permission denied")
+    if qc_job:
+        is_owner = qc_job.user_id == current_user.id
+        is_admin = current_user.role == UserRole.ADMIN
+        is_public = qc_job.visibility == "PUBLIC"
+        is_delayed_expired = (
+            qc_job.visibility == "DELAYED" and
+            qc_job.visibility_delay_until and
+            qc_job.visibility_delay_until <= datetime.utcnow()
+        )
+
+        if not (is_owner or is_admin or is_public or is_delayed_expired):
+            raise HTTPException(status_code=403, detail="Permission denied")
 
     # 优先使用数据库中的图片内容（混合云架构）
     if result.lumo_image_content:

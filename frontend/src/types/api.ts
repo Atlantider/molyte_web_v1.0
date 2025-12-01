@@ -310,6 +310,20 @@ export interface PostprocessJob {
   error_message?: string;
 }
 
+// QC结果简要信息（用于MD任务关联展示）
+export interface QCResultSummary {
+  energy_au?: number;  // 能量 (A.U.)
+  homo_ev?: number;  // HOMO能量 (eV)
+  lumo_ev?: number;  // LUMO能量 (eV)
+  homo_lumo_gap?: number;  // HOMO-LUMO能隙 (eV)
+  esp_min_kcal?: number;  // ESP最小值 (kcal/mol)
+  esp_max_kcal?: number;  // ESP最大值 (kcal/mol)
+  dipole_moment?: number;  // 偶极矩
+  has_esp_image?: boolean;  // 是否有ESP图片
+  has_homo_image?: boolean;  // 是否有HOMO图片
+  has_lumo_image?: boolean;  // 是否有LUMO图片
+}
+
 // QC任务简要信息（用于MD任务关联展示）
 export interface QCJobSummary {
   id: number;
@@ -333,6 +347,7 @@ export interface QCJobSummary {
   started_at?: string;
   finished_at?: string;
   error_message?: string;
+  result?: QCResultSummary;  // 计算结果（仅已完成任务有）
 }
 
 // QC任务状态汇总
