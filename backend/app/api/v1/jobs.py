@@ -365,9 +365,17 @@ def create_md_job(
     logger.info(f"  Charge method: {config.get('charge_method')}")
     logger.info(f"  NPT steps: {config.get('nsteps_npt')}, NVT steps: {config.get('nsteps_nvt')}")
 
-    # 在混合云架构下，所有任务都设置为 CREATED，等待 Worker 拉取执行
-    # submit_to_cluster 参数现在只用于标记任务是否应该被 Worker 优先处理
-    initial_status = JobStatus.CREATED
+    # 根据 submit_to_cluster 决定初始状态
+    # CREATED: 只保存，等待用户后续手动提交
+    # SUBMITTED: 直接提交，等待 Worker 拉取执行
+    if job_data.submit_to_cluster:
+        initial_status = JobStatus.SUBMITTED
+        config["submitted_at"] = datetime.now().isoformat()
+        config["submitted_by"] = current_user.username
+        logger.info(f"Job will be submitted to cluster immediately")
+    else:
+        initial_status = JobStatus.CREATED
+        logger.info(f"Job saved as draft, waiting for manual submission")
 
     # Create MD job
     db_job = MDJob(
@@ -382,12 +390,28 @@ def create_md_job(
     db.commit()
     db.refresh(db_job)
 
-    logger.info(f"MD job created: ID={db_job.id} by {current_user.username}, waiting for Worker to pick up")
+    logger.info(f"MD job created: ID={db_job.id} by {current_user.username}, status={initial_status}")
 
     # 如果启用了QC计算，创建QC任务
     if job_data.qc_options and job_data.qc_options.enabled:
         try:
             _create_qc_jobs_for_md(db, db_job, system, current_user, job_data.qc_options)
+
+            # 如果 MD 任务直接提交，QC 任务也应该直接提交
+            if job_data.submit_to_cluster:
+                from app.models.qc import QCJob, QCJobStatus
+                qc_jobs = db.query(QCJob).filter(
+                    QCJob.md_job_id == db_job.id,
+                    QCJob.status == QCJobStatus.CREATED
+                ).all()
+                for qc_job in qc_jobs:
+                    qc_job.status = QCJobStatus.SUBMITTED
+                    qc_job.config = qc_job.config or {}
+                    qc_job.config["submitted_at"] = datetime.now().isoformat()
+                    qc_job.config["submitted_by"] = current_user.username
+                db.commit()
+                logger.info(f"Auto-submitted {len(qc_jobs)} QC jobs for MD job {db_job.id}")
+
         except Exception as e:
             logger.error(f"Failed to create QC jobs for MD job {db_job.id}: {e}")
             # QC任务创建失败不影响MD任务
