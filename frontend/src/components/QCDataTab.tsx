@@ -1475,17 +1475,20 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
 
       // 加载图片
       try {
-        const [espImg, homoImg, lumoImg] = await Promise.allSettled([
-          record.result_id ? getESPImage(record.result_id) : Promise.reject('no result'),
-          record.result_id ? getHOMOImage(record.result_id) : Promise.reject('no result'),
-          record.result_id ? getLUMOImage(record.result_id) : Promise.reject('no result'),
-        ]);
+        const resultId = record.results && record.results.length > 0 ? record.results[0].id : null;
+        if (resultId) {
+          const [espImg, homoImg, lumoImg] = await Promise.allSettled([
+            getESPImage(resultId),
+            getHOMOImage(resultId),
+            getLUMOImage(resultId),
+          ]);
 
-        setDetailImages({
-          esp: espImg.status === 'fulfilled' ? espImg.value : undefined,
-          homo: homoImg.status === 'fulfilled' ? homoImg.value : undefined,
-          lumo: lumoImg.status === 'fulfilled' ? lumoImg.value : undefined,
-        });
+          setDetailImages({
+            esp: espImg.status === 'fulfilled' && espImg.value ? URL.createObjectURL(espImg.value) : undefined,
+            homo: homoImg.status === 'fulfilled' && homoImg.value ? URL.createObjectURL(homoImg.value) : undefined,
+            lumo: lumoImg.status === 'fulfilled' && lumoImg.value ? URL.createObjectURL(lumoImg.value) : undefined,
+          });
+        }
       } catch (e) {
         console.warn('Failed to load some images:', e);
       } finally {
@@ -1949,17 +1952,17 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
               <Descriptions.Item label="泛函">{detailJob.functional || '-'}</Descriptions.Item>
               <Descriptions.Item label="基组">{detailJob.basis_set || '-'}</Descriptions.Item>
               <Descriptions.Item label="溶剂模型">{renderSolventModel(detailJob)}</Descriptions.Item>
-              <Descriptions.Item label="任务类型">{detailJob.task_type || 'OPT+FREQ'}</Descriptions.Item>
+              <Descriptions.Item label="任务类型">OPT+FREQ</Descriptions.Item>
             </Descriptions>
 
             {/* 计算结果 */}
-            {detailJob.result && (
+            {detailJob.results && detailJob.results.length > 0 && (
               <Card title="计算结果" size="small">
                 <Row gutter={16}>
                   <Col span={8}>
                     <Statistic
                       title="总能量"
-                      value={detailJob.result.total_energy?.toFixed(6) || '-'}
+                      value={detailJob.results[0].energy_au?.toFixed(6) || '-'}
                       suffix="Hartree"
                       valueStyle={{ fontSize: 16 }}
                     />
@@ -1967,7 +1970,7 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
                   <Col span={8}>
                     <Statistic
                       title="HOMO 能量"
-                      value={detailJob.result.homo_energy?.toFixed(4) || '-'}
+                      value={detailJob.results[0].homo?.toFixed(4) || '-'}
                       suffix="eV"
                       valueStyle={{ fontSize: 16, color: '#1890ff' }}
                     />
@@ -1975,18 +1978,18 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
                   <Col span={8}>
                     <Statistic
                       title="LUMO 能量"
-                      value={detailJob.result.lumo_energy?.toFixed(4) || '-'}
+                      value={detailJob.results[0].lumo?.toFixed(4) || '-'}
                       suffix="eV"
                       valueStyle={{ fontSize: 16, color: '#52c41a' }}
                     />
                   </Col>
                 </Row>
-                {(detailJob.result.homo_energy && detailJob.result.lumo_energy) && (
+                {(detailJob.results[0].homo && detailJob.results[0].lumo) && (
                   <Row style={{ marginTop: 16 }}>
                     <Col span={8}>
                       <Statistic
                         title="HOMO-LUMO Gap"
-                        value={(detailJob.result.lumo_energy - detailJob.result.homo_energy).toFixed(4)}
+                        value={(detailJob.results[0].lumo - detailJob.results[0].homo).toFixed(4)}
                         suffix="eV"
                         valueStyle={{ fontSize: 16, color: '#722ed1' }}
                       />
