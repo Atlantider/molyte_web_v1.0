@@ -723,13 +723,17 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
                         }
 
                     # 构建任务名称（包含所有参数以区分）
-                    # 格式: 分子名_泛函_基组_溶剂模型_溶剂
-                    name_parts = [mol_name, functional, basis_set.replace('(', '').replace(')', '').replace('+', 'p')]
+                    # 格式: 分子名-泛函-基组-溶剂模型-溶剂
+                    # 统一使用连字符，移除空格和斜杠
+                    clean_mol_name = mol_name.replace(' ', '-').replace('/', '-')
+                    clean_basis = basis_set.replace('(', '').replace(')', '').replace('+', 'p').replace(' ', '-').replace('/', '-')
+                    name_parts = [clean_mol_name, functional, clean_basis]
                     if solvent_model == 'gas':
                         name_parts.append('gas')
                     else:
-                        name_parts.extend([solvent_model, solvent_name])
-                    job_mol_name = '_'.join(name_parts)
+                        clean_solvent = solvent_name.replace(' ', '-').replace('/', '-')
+                        name_parts.extend([solvent_model, clean_solvent])
+                    job_mol_name = '-'.join(name_parts)
 
                     # ======== 查重逻辑 ========
                     # 检查是否已存在相同参数的QC任务（包括其他用户的已完成任务）
