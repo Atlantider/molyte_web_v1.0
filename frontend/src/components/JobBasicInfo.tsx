@@ -114,26 +114,35 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
 
   // 计算CPU核时（core-hours）
   const getCoreHours = () => {
-    if (!job.started_at || !slurmStatus?.elapsed) return '-';
-    
     const ntasks = job.config?.slurm_ntasks || 1;
     const cpusPerTask = job.config?.slurm_cpus_per_task || 1;
     const totalCores = ntasks * cpusPerTask;
-    
-    // 解析 elapsed 时间（格式：DD-HH:MM:SS 或 HH:MM:SS）
-    const elapsedParts = slurmStatus.elapsed.split(/[-:]/);
+
     let hours = 0;
-    
-    if (elapsedParts.length === 4) {
-      // DD-HH:MM:SS
-      hours = parseInt(elapsedParts[0]) * 24 + parseInt(elapsedParts[1]) + 
-              parseInt(elapsedParts[2]) / 60 + parseInt(elapsedParts[3]) / 3600;
-    } else if (elapsedParts.length === 3) {
-      // HH:MM:SS
-      hours = parseInt(elapsedParts[0]) + parseInt(elapsedParts[1]) / 60 + 
-              parseInt(elapsedParts[2]) / 3600;
+
+    // 优先使用 slurmStatus.elapsed
+    if (slurmStatus?.elapsed) {
+      // 解析 elapsed 时间（格式：DD-HH:MM:SS 或 HH:MM:SS）
+      const elapsedParts = slurmStatus.elapsed.split(/[-:]/);
+
+      if (elapsedParts.length === 4) {
+        // DD-HH:MM:SS
+        hours = parseInt(elapsedParts[0]) * 24 + parseInt(elapsedParts[1]) +
+                parseInt(elapsedParts[2]) / 60 + parseInt(elapsedParts[3]) / 3600;
+      } else if (elapsedParts.length === 3) {
+        // HH:MM:SS
+        hours = parseInt(elapsedParts[0]) + parseInt(elapsedParts[1]) / 60 +
+                parseInt(elapsedParts[2]) / 3600;
+      }
+    } else if (job.started_at) {
+      // 如果没有 slurmStatus，使用 started_at 和 finished_at 计算
+      const end = job.finished_at ? dayjs(job.finished_at) : dayjs();
+      const start = dayjs(job.started_at);
+      hours = end.diff(start, 'hour', true); // 精确到小数
+    } else {
+      return '-';
     }
-    
+
     const coreHours = totalCores * hours;
     return coreHours.toFixed(1);
   };
@@ -162,44 +171,76 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
               </Space>
             }
           >
-            <Descriptions column={4} size="small" bordered>
-              <Descriptions.Item label="任务 ID">#{job.id}</Descriptions.Item>
-              <Descriptions.Item label="任务名称">
-                {job.config?.job_name || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Slurm Job ID">
-                {job.slurm_job_id || job.config?.slurm_job_id || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="计算分区">
-                {job.config?.slurm_partition || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="创建时间">
-                {dayjs(job.created_at).format('YYYY-MM-DD HH:mm:ss')}
-              </Descriptions.Item>
-              <Descriptions.Item label="开始时间">
-                {job.started_at ? dayjs(job.started_at).format('YYYY-MM-DD HH:mm:ss') : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="结束时间">
-                {job.finished_at ? dayjs(job.finished_at).format('YYYY-MM-DD HH:mm:ss') : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="运行时长">
-                <Text strong style={{ color: '#1890ff' }}>{getRunningTime()}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="计算资源">
-                {job.config?.slurm_ntasks && job.config?.slurm_cpus_per_task ? (
-                  <>
-                    {job.config.slurm_ntasks} × {job.config.slurm_cpus_per_task} = {' '}
-                    <Text strong>{job.config.slurm_ntasks * job.config.slurm_cpus_per_task}</Text> 核
-                  </>
-                ) : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="CPU 核时 (h)" span={3}>
-                <Text strong style={{ color: '#fa8c16' }}>{getCoreHours()}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="工作目录" span={4}>
-                <Text code style={{ fontSize: 11, wordBreak: 'break-all' }}>{job.work_dir || '-'}</Text>
-              </Descriptions.Item>
-            </Descriptions>
+            <Row gutter={16}>
+              {/* 左侧：基本信息 */}
+              <Col xs={24} lg={12}>
+                <Descriptions column={1} size="small" bordered>
+                  <Descriptions.Item label="任务 ID">
+                    <Text strong>#{job.id}</Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="任务名称">
+                    <Text strong>{job.config?.job_name || '-'}</Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Slurm Job ID">
+                    <Text code>{job.slurm_job_id || job.config?.slurm_job_id || '-'}</Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="计算分区">
+                    <Tag color="blue">{job.config?.slurm_partition || '-'}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="计算资源">
+                    {job.config?.slurm_ntasks && job.config?.slurm_cpus_per_task ? (
+                      <Space>
+                        <Text>{job.config.slurm_ntasks} 任务 × {job.config.slurm_cpus_per_task} 核/任务 =</Text>
+                        <Text strong style={{ color: '#52c41a', fontSize: 16 }}>
+                          {job.config.slurm_ntasks * job.config.slurm_cpus_per_task} 核
+                        </Text>
+                      </Space>
+                    ) : '-'}
+                  </Descriptions.Item>
+                </Descriptions>
+              </Col>
+
+              {/* 右侧：时间信息 */}
+              <Col xs={24} lg={12}>
+                <Descriptions column={1} size="small" bordered>
+                  <Descriptions.Item label="创建时间">
+                    {dayjs(job.created_at).format('YYYY-MM-DD HH:mm:ss')}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="开始时间">
+                    {job.started_at ? dayjs(job.started_at).format('YYYY-MM-DD HH:mm:ss') : '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="结束时间">
+                    {job.finished_at ? dayjs(job.finished_at).format('YYYY-MM-DD HH:mm:ss') : '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="运行时长">
+                    <Text strong style={{ color: '#1890ff', fontSize: 15 }}>{getRunningTime()}</Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="CPU 核时">
+                    <Space>
+                      <Text strong style={{ color: '#fa8c16', fontSize: 16 }}>{getCoreHours()}</Text>
+                      <Text type="secondary">小时</Text>
+                    </Space>
+                  </Descriptions.Item>
+                </Descriptions>
+              </Col>
+
+              {/* 工作目录（全宽） */}
+              <Col xs={24} style={{ marginTop: 16 }}>
+                <div style={{
+                  padding: '12px 16px',
+                  background: '#fafafa',
+                  borderRadius: 8,
+                  border: '1px solid #e8e8e8'
+                }}>
+                  <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>工作目录</Text>
+                    <Text code style={{ fontSize: 12, wordBreak: 'break-all' }}>
+                      {job.work_dir || '-'}
+                    </Text>
+                  </Space>
+                </div>
+              </Col>
+            </Row>
           </Card>
         </Col>
 
