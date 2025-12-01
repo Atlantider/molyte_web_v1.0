@@ -35,3 +35,6 @@ kombu==5.2.4
 requests>=2.31.0
 pandas>=2.0
 openpyxl>=3.1.0  # Excel file support for batch import
+
+# Chemistry
+rdkit>=2023.9.1  # 分子处理，用于SMILES解析和自旋多重度计算

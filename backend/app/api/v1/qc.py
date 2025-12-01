@@ -496,6 +496,15 @@ def list_qc_jobs(
     total = query.count()
     jobs = query.options(selectinload(QCJob.results)).order_by(desc(QCJob.created_at)).offset(skip).limit(limit).all()
 
+    # 处理复用任务：如果任务是复用的且没有自己的结果，获取原始任务的结果
+    for job in jobs:
+        if job.is_reused and job.reused_from_job_id and len(job.results) == 0:
+            original_results = db.query(QCResult).filter(
+                QCResult.qc_job_id == job.reused_from_job_id
+            ).all()
+            if original_results:
+                job.results = original_results
+
     return QCJobListResponse(total=total, jobs=jobs)
 
 
@@ -514,6 +523,17 @@ def get_qc_job(
     # 检查权限
     if job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Permission denied")
+
+    # 如果是复用任务且没有自己的结果，获取原始任务的结果
+    if job.is_reused and job.reused_from_job_id and len(job.results) == 0:
+        original_results = db.query(QCResult).filter(
+            QCResult.qc_job_id == job.reused_from_job_id
+        ).all()
+        if original_results:
+            # 动态添加原始任务的结果到当前任务对象
+            # 注意：这不会持久化到数据库，只是为了返回给前端
+            job.results = original_results
+            logger.info(f"QC job {job_id} is reused from {job.reused_from_job_id}, returning original results")
 
     return job
 
@@ -1030,6 +1050,14 @@ def get_qc_results(
         raise HTTPException(status_code=403, detail="Permission denied")
 
     results = db.query(QCResult).filter(QCResult.qc_job_id == job_id).all()
+
+    # 如果是复用任务且没有自己的结果，获取原始任务的结果
+    if not results and job.is_reused and job.reused_from_job_id:
+        results = db.query(QCResult).filter(
+            QCResult.qc_job_id == job.reused_from_job_id
+        ).all()
+        if results:
+            logger.info(f"QC job {job_id} is reused from {job.reused_from_job_id}, returning original results")
 
     return results
 

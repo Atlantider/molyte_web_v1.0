@@ -594,6 +594,7 @@ def _calculate_spin_multiplicity(smiles: str, charge: int) -> int:
         from rdkit import Chem
         mol = Chem.MolFromSmiles(smiles)
         if mol is None:
+            logger.warning(f"无法解析SMILES: {smiles[:50]}..., 使用默认自旋多重度1")
             return 1
 
         # 计算总电子数
@@ -605,7 +606,11 @@ def _calculate_spin_multiplicity(smiles: str, charge: int) -> int:
             return 1  # 单重态
         else:
             return 2  # 二重态
-    except Exception:
+    except ImportError:
+        logger.warning(f"RDKit未安装，使用默认自旋多重度1 (smiles: {smiles[:30]}...)")
+        return 1  # 默认单重态
+    except Exception as e:
+        logger.warning(f"计算自旋多重度失败: {e}, 使用默认值1")
         return 1  # 默认单重态
 
 
