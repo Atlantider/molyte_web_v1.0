@@ -770,8 +770,9 @@ echo "QC calculation completed"
             # 1. 上传结果文件到 OSS/COS
             uploaded_files = self._upload_results_to_oss(job_id, work_dir)
 
-            # 2. 针对 QC 任务：解析 Gaussian 输出并上传结果
+            # 2. 针对不同任务类型执行后处理
             if job_type == 'qc':
+                # QC 任务：解析 Gaussian 输出并上传结果
                 qc_result = self._parse_gaussian_output(work_dir)
                 if qc_result:
                     # 添加文件路径到结果
@@ -786,10 +787,19 @@ echo "QC calculation completed"
                 else:
                     self.logger.warning(f"QC 任务 {job_id} 未能解析 Gaussian 输出")
 
+            elif job_type == 'md':
+                # MD 任务：解析 RDF、MSD 等结果并上传
+                md_results = self._parse_md_results(work_dir)
+                if md_results:
+                    self._upload_md_results(job_id, md_results)
+                else:
+                    self.logger.warning(f"MD 任务 {job_id} 未能解析结果数据")
+
             # 3. 更新任务状态为 COMPLETED
             self._update_job_status(
                 job_id, 'COMPLETED', job_type,
-                result_files=uploaded_files
+                result_files=uploaded_files,
+                progress=100.0
             )
 
             self.logger.info(f"任务 {job_id} 处理完成，上传了 {len(uploaded_files)} 个文件")
@@ -891,6 +901,324 @@ echo "QC calculation completed"
 
         except Exception as e:
             self.logger.error(f"上传 QC 结果失败: {e}", exc_info=True)
+
+    def _parse_md_results(self, work_dir: Path) -> Optional[Dict[str, Any]]:
+        """解析 MD 任务的结果数据（RDF、MSD 等）"""
+        import re
+
+        results = {
+            'rdf_results': [],
+            'msd_results': [],
+        }
+
+        try:
+            # 1. 解析 RDF 数据（从 out_rdf.dat 文件）
+            rdf_file = work_dir / "out_rdf.dat"
+            if rdf_file.exists():
+                rdf_data = self._parse_lammps_rdf(rdf_file)
+                if rdf_data:
+                    results['rdf_results'] = rdf_data
+                    self.logger.info(f"解析到 {len(rdf_data)} 个 RDF 数据对")
+
+            # 2. 解析 MSD 数据（从 msd_*.dat 文件）
+            msd_files = list(work_dir.glob("msd_*.dat"))
+            for msd_file in msd_files:
+                msd_data = self._parse_lammps_msd(msd_file)
+                if msd_data:
+                    results['msd_results'].append(msd_data)
+
+            if results['msd_results']:
+                self.logger.info(f"解析到 {len(results['msd_results'])} 个 MSD 数据")
+
+            # 3. 解析日志文件获取能量、密度等
+            log_file = work_dir / "log.lammps"
+            if log_file.exists():
+                summary = self._parse_lammps_log(log_file)
+                results.update(summary)
+
+            return results if (results['rdf_results'] or results['msd_results']) else None
+
+        except Exception as e:
+            self.logger.error(f"解析 MD 结果失败: {e}", exc_info=True)
+            return None
+
+    def _parse_lammps_rdf(self, rdf_file: Path) -> List[Dict[str, Any]]:
+        """解析 LAMMPS RDF 输出文件"""
+        import re
+
+        rdf_results = []
+
+        try:
+            content = rdf_file.read_text()
+            lines = content.strip().split('\n')
+
+            # 解析头部获取原子对信息
+            # 格式: # Row c_rdf[1] c_rdf[2] c_rdf[3] c_rdf[4] ...
+            header_line = None
+            for line in lines:
+                if line.startswith('# Row'):
+                    header_line = line
+                    break
+
+            if not header_line:
+                self.logger.warning("RDF 文件缺少头部信息")
+                return []
+
+            # 提取列信息
+            # c_rdf[1], c_rdf[2] 是第一对的 r 和 g(r)
+            # c_rdf[3], c_rdf[4] 是第二对的 r 和 g(r)，以此类推
+            columns = header_line.split()[2:]  # 跳过 "# Row"
+            num_pairs = len(columns) // 2
+
+            # 读取数据部分（最后一个时间步的数据）
+            data_blocks = []
+            current_block = []
+
+            for line in lines:
+                if line.startswith('#'):
+                    continue
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    # 检查是否是新的时间步（第一列是行号，从 1 开始）
+                    try:
+                        row_num = int(parts[0])
+                        if row_num == 1 and current_block:
+                            data_blocks.append(current_block)
+                            current_block = []
+                        current_block.append([float(x) for x in parts[1:]])
+                    except ValueError:
+                        continue
+
+            if current_block:
+                data_blocks.append(current_block)
+
+            if not data_blocks:
+                return []
+
+            # 使用最后一个数据块
+            last_block = data_blocks[-1]
+
+            # 尝试从配置文件或工作目录名获取原子对标签
+            pair_labels = self._get_rdf_pair_labels(rdf_file.parent)
+
+            # 为每个原子对提取 RDF 数据
+            for i in range(num_pairs):
+                r_col = i * 2
+                g_col = i * 2 + 1
+
+                if g_col >= len(last_block[0]):
+                    break
+
+                r_values = [row[r_col] for row in last_block if len(row) > g_col]
+                g_r_values = [row[g_col] for row in last_block if len(row) > g_col]
+
+                # 计算配位数（对 g(r) 积分）
+                coord_numbers = self._calculate_coordination_number(r_values, g_r_values)
+
+                # 查找第一峰
+                first_peak_pos, first_peak_height = self._find_first_peak(r_values, g_r_values)
+
+                # 获取原子对标签
+                if pair_labels and i < len(pair_labels):
+                    center, shell = pair_labels[i]
+                else:
+                    center = f"Type{i*2+1}"
+                    shell = f"Type{i*2+2}"
+
+                rdf_results.append({
+                    'center_species': center,
+                    'shell_species': shell,
+                    'r_values': r_values,
+                    'g_r_values': g_r_values,
+                    'coordination_number_values': coord_numbers,
+                    'first_peak_position': first_peak_pos,
+                    'first_peak_height': first_peak_height,
+                    'coordination_number': coord_numbers[-1] if coord_numbers else None,
+                })
+
+            return rdf_results
+
+        except Exception as e:
+            self.logger.error(f"解析 RDF 文件失败: {e}", exc_info=True)
+            return []
+
+    def _get_rdf_pair_labels(self, work_dir: Path) -> List[tuple]:
+        """从工作目录获取 RDF 原子对标签"""
+        # 尝试从 rdf_pairs.json 文件读取
+        pairs_file = work_dir / "rdf_pairs.json"
+        if pairs_file.exists():
+            try:
+                import json
+                with open(pairs_file) as f:
+                    data = json.load(f)
+                return [(p['center'], p['target']) for p in data]
+            except:
+                pass
+        return []
+
+    def _calculate_coordination_number(self, r: List[float], g_r: List[float]) -> List[float]:
+        """计算配位数（g(r) 的积分）"""
+        import math
+
+        coord_numbers = []
+        integral = 0.0
+
+        for i in range(1, len(r)):
+            dr = r[i] - r[i-1]
+            # 使用梯形法则
+            avg_g = (g_r[i] + g_r[i-1]) / 2
+            avg_r = (r[i] + r[i-1]) / 2
+            # N(r) = 4π ∫ r² g(r) ρ dr，这里假设 ρ=1
+            integral += 4 * math.pi * avg_r * avg_r * avg_g * dr
+            coord_numbers.append(integral)
+
+        return coord_numbers
+
+    def _find_first_peak(self, r: List[float], g_r: List[float]) -> tuple:
+        """查找 g(r) 的第一个峰"""
+        if len(r) < 3:
+            return None, None
+
+        # 找第一个峰（g(r) > 1 的第一个局部最大值）
+        for i in range(1, len(g_r) - 1):
+            if g_r[i] > g_r[i-1] and g_r[i] > g_r[i+1] and g_r[i] > 1.0:
+                return r[i], g_r[i]
+
+        return None, None
+
+    def _parse_lammps_msd(self, msd_file: Path) -> Optional[Dict[str, Any]]:
+        """解析 LAMMPS MSD 输出文件"""
+        try:
+            # 从文件名获取物种名称
+            # 格式: msd_Li.dat, msd_PF6.dat 等
+            species = msd_file.stem.replace('msd_', '')
+
+            content = msd_file.read_text()
+            lines = content.strip().split('\n')
+
+            t_values = []
+            msd_x = []
+            msd_y = []
+            msd_z = []
+            msd_total = []
+
+            for line in lines:
+                if line.startswith('#'):
+                    continue
+                parts = line.strip().split()
+                if len(parts) >= 5:
+                    try:
+                        t_values.append(float(parts[0]))
+                        msd_x.append(float(parts[1]))
+                        msd_y.append(float(parts[2]))
+                        msd_z.append(float(parts[3]))
+                        msd_total.append(float(parts[4]))
+                    except ValueError:
+                        continue
+
+            if not t_values:
+                return None
+
+            # 计算扩散系数（从 MSD 斜率，D = MSD / (6t)）
+            diffusion_coeff = None
+            if len(t_values) > 10:
+                # 使用后半部分数据线性拟合
+                mid = len(t_values) // 2
+                t_fit = t_values[mid:]
+                msd_fit = msd_total[mid:]
+
+                if len(t_fit) > 2:
+                    # 简单线性回归
+                    n = len(t_fit)
+                    sum_t = sum(t_fit)
+                    sum_msd = sum(msd_fit)
+                    sum_t_msd = sum(t * m for t, m in zip(t_fit, msd_fit))
+                    sum_t2 = sum(t * t for t in t_fit)
+
+                    slope = (n * sum_t_msd - sum_t * sum_msd) / (n * sum_t2 - sum_t * sum_t)
+                    # D = slope / 6 (3D), 单位转换 Å²/fs -> cm²/s
+                    diffusion_coeff = slope / 6.0 * 1e-4  # Å²/fs 转 cm²/s
+
+            return {
+                'species': species,
+                't_values': t_values,
+                'msd_x_values': msd_x,
+                'msd_y_values': msd_y,
+                'msd_z_values': msd_z,
+                'msd_total_values': msd_total,
+                'diffusion_coefficient': diffusion_coeff,
+                'labels': {
+                    'time': 'fs',
+                    'x': f'{species}_x',
+                    'y': f'{species}_y',
+                    'z': f'{species}_z',
+                    'total': f'{species}_total'
+                }
+            }
+
+        except Exception as e:
+            self.logger.error(f"解析 MSD 文件 {msd_file} 失败: {e}", exc_info=True)
+            return None
+
+    def _parse_lammps_log(self, log_file: Path) -> Dict[str, Any]:
+        """从 LAMMPS 日志文件解析能量、温度等"""
+        import re
+
+        result = {}
+
+        try:
+            content = log_file.read_text()
+
+            # 查找最后的 thermo 输出
+            # 通常格式: Step Temp Press E_total KinEng PotEng Density ...
+            thermo_pattern = r'Step\s+Temp\s+.*?\n([\s\S]*?)Loop time'
+            matches = re.findall(thermo_pattern, content)
+
+            if matches:
+                last_thermo = matches[-1].strip().split('\n')
+                if last_thermo:
+                    last_line = last_thermo[-1].split()
+                    if len(last_line) >= 6:
+                        try:
+                            result['final_temperature'] = float(last_line[1])
+                            result['final_pressure'] = float(last_line[2])
+                            result['total_energy'] = float(last_line[3])
+                            result['kinetic_energy'] = float(last_line[4])
+                            result['potential_energy'] = float(last_line[5])
+                            if len(last_line) >= 7:
+                                result['final_density'] = float(last_line[6])
+                        except (ValueError, IndexError):
+                            pass
+
+        except Exception as e:
+            self.logger.error(f"解析 LAMMPS 日志失败: {e}")
+
+        return result
+
+    def _upload_md_results(self, job_id: int, results: Dict[str, Any]):
+        """上传 MD 结果到后端 API"""
+        try:
+            endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/md_results"
+
+            response = requests.post(
+                endpoint,
+                headers=self.api_headers,
+                json=results,
+                timeout=self.config['api']['timeout']
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                self.logger.info(
+                    f"MD 结果上传成功: job_id={job_id}, "
+                    f"RDF={data.get('uploaded', {}).get('rdf', 0)}, "
+                    f"MSD={data.get('uploaded', {}).get('msd', 0)}"
+                )
+            else:
+                self.logger.error(f"MD 结果上传失败: {response.status_code} - {response.text}")
+
+        except Exception as e:
+            self.logger.error(f"上传 MD 结果失败: {e}", exc_info=True)
 
     def _extract_last_frame(self, work_dir: Path, job_id: int) -> Optional[Path]:
         """从 LAMMPS 轨迹文件中提取最后一帧"""

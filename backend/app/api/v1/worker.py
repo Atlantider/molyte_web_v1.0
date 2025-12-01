@@ -660,3 +660,194 @@ async def upload_qc_result(
         logger.info(f"Created QC result for job {job_id}: id={new_result.id}")
         return {"status": "ok", "message": "Result created", "result_id": new_result.id}
 
+
+# ==================== MD 结果上传（RDF、MSD等） ====================
+
+class RDFResultUpload(BaseModel):
+    """RDF 结果上传"""
+    center_species: str
+    shell_species: str
+    r_values: List[float]
+    g_r_values: List[float]
+    coordination_number_values: Optional[List[float]] = None
+    first_peak_position: Optional[float] = None
+    first_peak_height: Optional[float] = None
+    coordination_number: Optional[float] = None
+
+
+class MSDResultUpload(BaseModel):
+    """MSD 结果上传"""
+    species: str
+    t_values: List[float]
+    msd_x_values: Optional[List[float]] = None
+    msd_y_values: Optional[List[float]] = None
+    msd_z_values: Optional[List[float]] = None
+    msd_total_values: List[float]
+    labels: Optional[Dict[str, str]] = None
+    diffusion_coefficient: Optional[float] = None
+    ionic_conductivity: Optional[float] = None
+    mobility: Optional[float] = None
+    charge: Optional[int] = None
+
+
+class MDResultsUpload(BaseModel):
+    """MD 任务结果上传（包含 RDF、MSD 等）"""
+    rdf_results: Optional[List[RDFResultUpload]] = None
+    msd_results: Optional[List[MSDResultUpload]] = None
+    # 结果摘要
+    final_density: Optional[float] = None
+    final_temperature: Optional[float] = None
+    final_pressure: Optional[float] = None
+    total_energy: Optional[float] = None
+    potential_energy: Optional[float] = None
+    kinetic_energy: Optional[float] = None
+    total_atoms: Optional[int] = None
+    total_molecules: Optional[int] = None
+
+
+@router.post("/jobs/{job_id}/md_results")
+async def upload_md_results(
+    job_id: int,
+    results_data: MDResultsUpload,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Worker 上传 MD 计算结果（RDF、MSD 等）
+
+    Worker 在 MD 任务完成后，解析结果并调用此接口保存到数据库
+    """
+    from app.models.result import RDFResult, MSDResult, ResultSummary
+
+    # 验证是否是 Worker 用户（ADMIN 角色）
+    if not is_worker_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only worker users can upload MD results"
+        )
+
+    # 获取 MD 任务
+    job = db.query(MDJob).filter(MDJob.id == job_id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"MD Job {job_id} not found"
+        )
+
+    uploaded_counts = {"rdf": 0, "msd": 0, "summary": False}
+
+    # 1. 保存 RDF 结果
+    if results_data.rdf_results:
+        # 先删除旧的 RDF 结果
+        db.query(RDFResult).filter(RDFResult.md_job_id == job_id).delete()
+
+        for rdf_data in results_data.rdf_results:
+            rdf_record = RDFResult(
+                md_job_id=job_id,
+                center_species=rdf_data.center_species,
+                shell_species=rdf_data.shell_species,
+                r_values=rdf_data.r_values,
+                g_r_values=rdf_data.g_r_values,
+                coordination_number_values=rdf_data.coordination_number_values,
+                first_peak_position=rdf_data.first_peak_position,
+                first_peak_height=rdf_data.first_peak_height,
+                coordination_number=rdf_data.coordination_number,
+            )
+            db.add(rdf_record)
+            uploaded_counts["rdf"] += 1
+
+    # 2. 保存 MSD 结果
+    if results_data.msd_results:
+        # 先删除旧的 MSD 结果
+        db.query(MSDResult).filter(MSDResult.md_job_id == job_id).delete()
+
+        for msd_data in results_data.msd_results:
+            msd_record = MSDResult(
+                md_job_id=job_id,
+                species=msd_data.species,
+                t_values=msd_data.t_values,
+                msd_x_values=msd_data.msd_x_values,
+                msd_y_values=msd_data.msd_y_values,
+                msd_z_values=msd_data.msd_z_values,
+                msd_total_values=msd_data.msd_total_values,
+                labels=msd_data.labels,
+                diffusion_coefficient=msd_data.diffusion_coefficient,
+                ionic_conductivity=msd_data.ionic_conductivity,
+                mobility=msd_data.mobility,
+                charge=msd_data.charge,
+            )
+            db.add(msd_record)
+            uploaded_counts["msd"] += 1
+
+    # 3. 保存结果摘要
+    if any([
+        results_data.final_density,
+        results_data.final_temperature,
+        results_data.total_energy,
+        results_data.total_atoms
+    ]):
+        # 检查是否已有摘要
+        existing_summary = db.query(ResultSummary).filter(
+            ResultSummary.md_job_id == job_id
+        ).first()
+
+        if existing_summary:
+            # 更新已有摘要
+            if results_data.final_density is not None:
+                existing_summary.final_density = results_data.final_density
+            if results_data.final_temperature is not None:
+                existing_summary.final_temperature = results_data.final_temperature
+            if results_data.final_pressure is not None:
+                existing_summary.final_pressure = results_data.final_pressure
+            if results_data.total_energy is not None:
+                existing_summary.total_energy = results_data.total_energy
+            if results_data.potential_energy is not None:
+                existing_summary.potential_energy = results_data.potential_energy
+            if results_data.kinetic_energy is not None:
+                existing_summary.kinetic_energy = results_data.kinetic_energy
+            if results_data.total_atoms is not None:
+                existing_summary.total_atoms = results_data.total_atoms
+            if results_data.total_molecules is not None:
+                existing_summary.total_molecules = results_data.total_molecules
+        else:
+            # 创建新摘要
+            summary = ResultSummary(
+                md_job_id=job_id,
+                final_density=results_data.final_density,
+                final_temperature=results_data.final_temperature,
+                final_pressure=results_data.final_pressure,
+                total_energy=results_data.total_energy,
+                potential_energy=results_data.potential_energy,
+                kinetic_energy=results_data.kinetic_energy,
+                total_atoms=results_data.total_atoms,
+                total_molecules=results_data.total_molecules,
+            )
+            db.add(summary)
+        uploaded_counts["summary"] = True
+
+    # 4. 更新任务配置，记录后处理结果
+    if job.config is None:
+        job.config = {}
+
+    if "postprocess" not in job.config:
+        job.config["postprocess"] = {}
+
+    job.config["postprocess"]["rdf_count"] = uploaded_counts["rdf"]
+    job.config["postprocess"]["msd_count"] = uploaded_counts["msd"]
+    job.config["postprocess"]["completed_at"] = datetime.now().isoformat()
+    job.config["postprocess"]["uploaded_by"] = "worker"
+
+    db.commit()
+
+    logger.info(
+        f"MD results uploaded for job {job_id}: "
+        f"RDF={uploaded_counts['rdf']}, MSD={uploaded_counts['msd']}, "
+        f"Summary={uploaded_counts['summary']}"
+    )
+
+    return {
+        "status": "ok",
+        "job_id": job_id,
+        "uploaded": uploaded_counts
+    }
+
