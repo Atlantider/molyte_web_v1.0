@@ -2333,10 +2333,9 @@ def get_job_slurm_status(
     """
     获取任务的 Slurm 状态
 
-    返回详细的 Slurm 任务状态信息，包括运行时间、CPU 时间等
+    在混合云架构下，返回数据库中由 Worker 同步的状态，
+    而不是直接查询 Slurm（因为后端无法访问校园网 Slurm 集群）。
     """
-    from app.services.slurm import get_job_status, normalize_slurm_state
-
     # 获取任务
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
     if not job:
@@ -2358,29 +2357,33 @@ def get_job_slurm_status(
             "job_status": job.status.value if job.status else None,
         }
 
-    # 查询 Slurm 状态
-    slurm_status = get_job_status(slurm_job_id)
+    # 混合云架构：从数据库返回由 Worker 同步的状态
+    # 映射数据库状态到 Slurm 状态显示
+    status_mapping = {
+        "CREATED": "PENDING",
+        "QUEUED": "PENDING",
+        "RUNNING": "RUNNING",
+        "POSTPROCESSING": "COMPLETING",
+        "COMPLETED": "COMPLETED",
+        "FAILED": "FAILED",
+        "CANCELLED": "CANCELLED",
+    }
 
-    if not slurm_status:
-        return {
-            "job_id": job_id,
-            "slurm_job_id": slurm_job_id,
-            "status": "UNKNOWN",
-            "message": "无法获取 Slurm 状态",
-            "job_status": job.status.value if job.status else None,
-        }
+    db_status = job.status.value if job.status else "UNKNOWN"
+    slurm_display_status = status_mapping.get(db_status, db_status)
 
     return {
         "job_id": job_id,
         "slurm_job_id": slurm_job_id,
-        "status": normalize_slurm_state(slurm_status.state),
-        "raw_state": slurm_status.state,
-        "exit_code": slurm_status.exit_code,
-        "start_time": slurm_status.start_time,
-        "end_time": slurm_status.end_time,
-        "elapsed": slurm_status.elapsed,
-        "cpu_time": slurm_status.cpu_time,
-        "job_status": job.status.value if job.status else None,
+        "status": slurm_display_status,
+        "raw_state": db_status,
+        "exit_code": None,
+        "start_time": job.started_at.isoformat() if job.started_at else None,
+        "end_time": job.finished_at.isoformat() if job.finished_at else None,
+        "elapsed": None,
+        "cpu_time": None,
+        "job_status": db_status,
+        "message": "状态由校园网 Worker 定期同步",
     }
 
 
