@@ -765,12 +765,28 @@ echo "QC calculation completed"
             work_dir = Path(job_info['work_dir'])
             job_type = job_info['type']
 
-            self.logger.info(f"开始处理任务 {job_id} 的结果")
+            self.logger.info(f"开始处理任务 {job_id} ({job_type}) 的结果")
 
-            # 1. 上传结果文件到 OSS
+            # 1. 上传结果文件到 OSS/COS
             uploaded_files = self._upload_results_to_oss(job_id, work_dir)
 
-            # 2. 更新任务状态为 COMPLETED
+            # 2. 针对 QC 任务：解析 Gaussian 输出并上传结果
+            if job_type == 'qc':
+                qc_result = self._parse_gaussian_output(work_dir)
+                if qc_result:
+                    # 添加文件路径到结果
+                    qc_result['log_file_path'] = next(
+                        (f for f in uploaded_files if f.endswith('.log')), None
+                    )
+                    qc_result['fchk_file_path'] = next(
+                        (f for f in uploaded_files if f.endswith('.fchk')), None
+                    )
+                    # 上传 QC 结果到数据库
+                    self._upload_qc_result(job_id, qc_result)
+                else:
+                    self.logger.warning(f"QC 任务 {job_id} 未能解析 Gaussian 输出")
+
+            # 3. 更新任务状态为 COMPLETED
             self._update_job_status(
                 job_id, 'COMPLETED', job_type,
                 result_files=uploaded_files
@@ -781,6 +797,100 @@ echo "QC calculation completed"
         except Exception as e:
             self.logger.error(f"处理任务 {job_id} 完成失败: {e}", exc_info=True)
             self._update_job_status(job_id, 'FAILED', job_info['type'], error_message=str(e))
+
+    def _parse_gaussian_output(self, work_dir: Path) -> Optional[Dict[str, Any]]:
+        """解析 Gaussian 输出文件，提取能量、HOMO、LUMO 等"""
+        import re
+
+        try:
+            # 查找 .log 文件
+            log_files = list(work_dir.glob("*.log"))
+            if not log_files:
+                self.logger.warning(f"未找到 Gaussian 日志文件: {work_dir}")
+                return None
+
+            log_file = log_files[0]
+            self.logger.info(f"解析 Gaussian 输出: {log_file.name}")
+
+            content = log_file.read_text(errors='ignore')
+
+            result = {}
+
+            # 解析 SCF 能量 (最后一个)
+            energy_matches = re.findall(r'SCF Done:.*?=\s*([-\d.]+)', content)
+            if energy_matches:
+                result['energy_au'] = float(energy_matches[-1])
+                self.logger.info(f"SCF 能量: {result['energy_au']} Hartree")
+
+            # 解析 HOMO 和 LUMO
+            # 查找 Alpha 轨道能量
+            orbital_section = re.search(
+                r'Population analysis.*?Alpha\s+occ\.\s+eigenvalues.*?([\s\S]*?)(?:Alpha virt\.|Beta)',
+                content
+            )
+            if orbital_section:
+                occ_text = orbital_section.group(1)
+                # 提取所有占据轨道能量
+                occ_energies = re.findall(r'[-\d.]+', occ_text)
+                if occ_energies:
+                    result['homo'] = float(occ_energies[-1])
+                    self.logger.info(f"HOMO: {result['homo']} Hartree")
+
+            # 查找虚轨道能量（LUMO）
+            virt_section = re.search(
+                r'Alpha virt\.\s+eigenvalues.*?([-\d.\s]+)',
+                content
+            )
+            if virt_section:
+                virt_text = virt_section.group(1)
+                virt_energies = re.findall(r'[-\d.]+', virt_text)
+                if virt_energies:
+                    result['lumo'] = float(virt_energies[0])
+                    self.logger.info(f"LUMO: {result['lumo']} Hartree")
+
+            # 计算 HOMO-LUMO gap (转换为 eV)
+            if 'homo' in result and 'lumo' in result:
+                gap_hartree = result['lumo'] - result['homo']
+                result['homo_lumo_gap'] = gap_hartree * 27.2114  # Hartree to eV
+                self.logger.info(f"HOMO-LUMO Gap: {result['homo_lumo_gap']:.3f} eV")
+
+            # 解析偶极矩
+            dipole_match = re.search(r'Dipole moment.*?Tot=\s*([\d.]+)', content, re.DOTALL)
+            if dipole_match:
+                result['dipole_moment'] = float(dipole_match.group(1))
+                self.logger.info(f"偶极矩: {result['dipole_moment']} Debye")
+
+            # 检查计算是否正常结束
+            if 'Normal termination' not in content:
+                self.logger.warning("Gaussian 计算未正常结束")
+                # 仍然返回已解析的结果
+
+            return result if result else None
+
+        except Exception as e:
+            self.logger.error(f"解析 Gaussian 输出失败: {e}", exc_info=True)
+            return None
+
+    def _upload_qc_result(self, job_id: int, result: Dict[str, Any]):
+        """上传 QC 计算结果到后端 API"""
+        try:
+            endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/qc_result"
+
+            response = requests.post(
+                endpoint,
+                headers=self.api_headers,
+                json=result,
+                timeout=self.config['api']['timeout']
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                self.logger.info(f"QC 结果上传成功: job_id={job_id}, result_id={data.get('result_id')}")
+            else:
+                self.logger.error(f"QC 结果上传失败: {response.status_code} - {response.text}")
+
+        except Exception as e:
+            self.logger.error(f"上传 QC 结果失败: {e}", exc_info=True)
 
     def _extract_last_frame(self, work_dir: Path, job_id: int) -> Optional[Path]:
         """从 LAMMPS 轨迹文件中提取最后一帧"""
@@ -948,7 +1058,8 @@ echo "QC calculation completed"
         slurm_job_id: Optional[str] = None,
         work_dir: Optional[str] = None,
         error_message: Optional[str] = None,
-        result_files: Optional[List[str]] = None
+        result_files: Optional[List[str]] = None,
+        progress: Optional[float] = None
     ):
         """更新任务状态到阿里云"""
         try:
@@ -975,6 +1086,8 @@ echo "QC calculation completed"
                 data['error_message'] = str(error_message)[:500]
             if result_files:
                 data['result_files'] = result_files
+            if progress is not None:
+                data['progress'] = progress
 
             response = requests.put(
                 endpoint,

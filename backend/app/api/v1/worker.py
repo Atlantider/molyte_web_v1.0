@@ -77,6 +77,7 @@ class JobStatusUpdate(BaseModel):
     work_dir: Optional[str] = None
     error_message: Optional[str] = None
     result_files: Optional[List[str]] = None
+    progress: Optional[float] = None  # 任务进度 0-100
 
 
 class PendingJobResponse(BaseModel):
@@ -319,7 +320,7 @@ async def update_job_status(
 
         # 更新状态
         job.status = JobStatus[mapped_status]
-        
+
         if status_update.slurm_job_id:
             job.slurm_job_id = status_update.slurm_job_id
 
@@ -329,11 +330,17 @@ async def update_job_status(
         if status_update.error_message:
             job.error_message = status_update.error_message
 
+        if status_update.progress is not None:
+            job.progress = status_update.progress
+
         if mapped_status == "RUNNING" and not job.started_at:
             job.started_at = datetime.now()
 
         if mapped_status in ["COMPLETED", "FAILED"]:
             job.finished_at = datetime.now()
+            # 完成时设置进度为 100%
+            if mapped_status == "COMPLETED":
+                job.progress = 100.0
 
         # 如果有结果文件，可以存储到 config 中
         if status_update.result_files:
@@ -360,7 +367,7 @@ async def update_job_status(
 
         # 更新状态
         job.status = QCJobStatus[mapped_status]
-        
+
         if status_update.slurm_job_id:
             job.slurm_job_id = status_update.slurm_job_id
 
@@ -370,11 +377,17 @@ async def update_job_status(
         if status_update.error_message:
             job.error_message = status_update.error_message
 
+        if status_update.progress is not None:
+            job.progress = status_update.progress
+
         if mapped_status == "RUNNING" and not job.started_at:
             job.started_at = datetime.now()
 
         if mapped_status in ["COMPLETED", "FAILED"]:
             job.finished_at = datetime.now()
+            # 完成时设置进度为 100%
+            if mapped_status == "COMPLETED":
+                job.progress = 100.0
 
         # 如果有结果文件，可以存储到 config 中
         if status_update.result_files:
@@ -549,4 +562,101 @@ async def get_job_input_data(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid job type: {job_type}"
         )
+
+
+# ==================== QC 结果上传 ====================
+
+class QCResultUpload(BaseModel):
+    """QC计算结果上传"""
+    energy_au: Optional[float] = None
+    homo: Optional[float] = None
+    lumo: Optional[float] = None
+    homo_lumo_gap: Optional[float] = None
+    dipole_moment: Optional[float] = None
+    polarizability: Optional[float] = None
+    esp_min_kcal: Optional[float] = None
+    esp_max_kcal: Optional[float] = None
+    # 文件路径（COS/OSS 上的路径）
+    fchk_file_path: Optional[str] = None
+    log_file_path: Optional[str] = None
+    cube_density_path: Optional[str] = None
+    cube_esp_path: Optional[str] = None
+    cube_homo_path: Optional[str] = None
+    cube_lumo_path: Optional[str] = None
+    esp_image_path: Optional[str] = None
+    homo_image_path: Optional[str] = None
+    lumo_image_path: Optional[str] = None
+    # 额外属性
+    additional_properties: Optional[Dict[str, Any]] = None
+
+
+@router.post("/jobs/{job_id}/qc_result")
+async def upload_qc_result(
+    job_id: int,
+    result_data: QCResultUpload,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Worker 上传 QC 计算结果
+
+    Worker 解析 Gaussian 输出后调用此接口保存结果到数据库
+    """
+    from app.models.qc import QCResult
+
+    # 验证是否是 Worker 用户（ADMIN 角色）
+    if not is_worker_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only worker users can upload QC results"
+        )
+
+    # 获取 QC 任务
+    job = db.query(QCJob).filter(QCJob.id == job_id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"QC Job {job_id} not found"
+        )
+
+    # 检查是否已有结果
+    existing_result = db.query(QCResult).filter(QCResult.qc_job_id == job_id).first()
+
+    if existing_result:
+        # 更新已有结果
+        for field, value in result_data.dict(exclude_unset=True).items():
+            if value is not None:
+                setattr(existing_result, field, value)
+        db.commit()
+        logger.info(f"Updated QC result for job {job_id}")
+        return {"status": "ok", "message": "Result updated", "result_id": existing_result.id}
+    else:
+        # 创建新结果
+        new_result = QCResult(
+            qc_job_id=job_id,
+            smiles=job.smiles,
+            energy_au=result_data.energy_au,
+            homo=result_data.homo,
+            lumo=result_data.lumo,
+            homo_lumo_gap=result_data.homo_lumo_gap,
+            dipole_moment=result_data.dipole_moment,
+            polarizability=result_data.polarizability,
+            esp_min_kcal=result_data.esp_min_kcal,
+            esp_max_kcal=result_data.esp_max_kcal,
+            fchk_file_path=result_data.fchk_file_path,
+            log_file_path=result_data.log_file_path,
+            cube_density_path=result_data.cube_density_path,
+            cube_esp_path=result_data.cube_esp_path,
+            cube_homo_path=result_data.cube_homo_path,
+            cube_lumo_path=result_data.cube_lumo_path,
+            esp_image_path=result_data.esp_image_path,
+            homo_image_path=result_data.homo_image_path,
+            lumo_image_path=result_data.lumo_image_path,
+            additional_properties=result_data.additional_properties or {},
+        )
+        db.add(new_result)
+        db.commit()
+        db.refresh(new_result)
+        logger.info(f"Created QC result for job {job_id}: id={new_result.id}")
+        return {"status": "ok", "message": "Result created", "result_id": new_result.id}
 
