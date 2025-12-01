@@ -665,7 +665,7 @@ echo "QC calculation completed"
             del self.running_jobs[job_id]
 
     def _check_if_cancelled(self, job_id: int, job_type: str) -> bool:
-        """检查任务是否被用户取消（通过 API 查询）"""
+        """检查任务是否被用户取消或删除（通过 API 查询）"""
         try:
             endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/check_cancelled"
             params = {'job_type': job_type.upper()}
@@ -680,6 +680,11 @@ echo "QC calculation completed"
             if response.status_code == 200:
                 data = response.json()
                 return data.get('cancelled', False)
+
+            # 如果返回 404，说明任务已被删除，应该取消 Slurm 任务
+            if response.status_code == 404:
+                self.logger.warning(f"任务 {job_id} 在数据库中不存在（可能已被删除），将取消 Slurm 任务")
+                return True
 
             return False
 
