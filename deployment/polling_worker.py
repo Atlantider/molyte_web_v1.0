@@ -153,23 +153,88 @@ class PollingWorker:
                 self.logger.error(f"主循环错误: {e}", exc_info=True)
                 time.sleep(10)
     
-    def _send_heartbeat(self):
-        """发送心跳到阿里云"""
+    def _get_slurm_partitions(self) -> List[Dict]:
+        """获取 Slurm 分区信息"""
+        partitions = []
         try:
+            # 使用 sinfo 获取分区信息
+            cmd = ["sinfo", "--format=%P|%a|%D|%C|%l", "--noheader"]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+            if result.returncode != 0:
+                self.logger.warning(f"sinfo 命令失败: {result.stderr}")
+                return partitions
+
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    continue
+
+                fields = line.split("|")
+                if len(fields) < 4:
+                    continue
+
+                name = fields[0].rstrip("*")  # 移除默认分区的 * 标记
+                state = fields[1]
+                total_nodes = int(fields[2]) if fields[2].isdigit() else 0
+
+                # 解析 CPU 信息 (格式: A/I/O/T - Allocated/Idle/Other/Total)
+                cpu_info = fields[3].split("/")
+                if len(cpu_info) >= 4:
+                    allocated = int(cpu_info[0]) if cpu_info[0].isdigit() else 0
+                    idle = int(cpu_info[1]) if cpu_info[1].isdigit() else 0
+                    total = int(cpu_info[3]) if cpu_info[3].isdigit() else 0
+                else:
+                    allocated = idle = total = 0
+
+                max_time = fields[4] if len(fields) > 4 else None
+
+                partitions.append({
+                    "name": name,
+                    "state": state,
+                    "total_nodes": total_nodes,
+                    "available_nodes": total_nodes,  # 简化处理
+                    "total_cpus": total,
+                    "available_cpus": idle,
+                    "max_time": max_time,
+                })
+
+            self.logger.debug(f"获取到 {len(partitions)} 个分区信息")
+
+        except subprocess.TimeoutExpired:
+            self.logger.error("sinfo 命令超时")
+        except FileNotFoundError:
+            self.logger.warning("sinfo 命令未找到（可能不在 Slurm 环境中）")
+        except Exception as e:
+            self.logger.error(f"获取分区信息失败: {e}")
+
+        return partitions
+
+    def _send_heartbeat(self):
+        """发送心跳到云端（同时上报分区信息）"""
+        try:
+            # 获取当前分区信息
+            partitions = self._get_slurm_partitions()
+
             data = {
                 'worker_name': self.config['worker']['name'],
                 'status': 'running',
                 'running_jobs': len(self.running_jobs),
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'partitions': partitions  # 上报分区信息
             }
-            # 这里需要在阿里云后端添加心跳接口
-            # response = requests.post(
-            #     f"{self.api_base_url}/workers/heartbeat",
-            #     headers=self.api_headers,
-            #     json=data,
-            #     timeout=self.config['api']['timeout']
-            # )
-            self.logger.debug(f"心跳已发送: {len(self.running_jobs)} 个任务运行中")
+
+            response = requests.post(
+                f"{self.api_base_url}/workers/heartbeat",
+                headers=self.api_headers,
+                json=data,
+                timeout=self.config['api']['timeout']
+            )
+
+            if response.status_code == 200:
+                self.logger.debug(f"心跳已发送: {len(self.running_jobs)} 个任务运行中, {len(partitions)} 个分区")
+            else:
+                self.logger.warning(f"发送心跳失败: {response.status_code} - {response.text}")
+
         except Exception as e:
             self.logger.warning(f"发送心跳失败: {e}")
     
@@ -196,7 +261,7 @@ class PollingWorker:
     def _fetch_pending_jobs(self, job_type: str) -> List[Dict]:
         """从阿里云获取待处理任务"""
         try:
-            endpoint = f"{self.api_base_url}/jobs/pending"
+            endpoint = f"{self.api_base_url}/workers/jobs/pending"
             params = {
                 'job_type': job_type.upper(),
                 'limit': 10
@@ -546,7 +611,7 @@ class PollingWorker:
     ):
         """更新任务状态到阿里云"""
         try:
-            endpoint = f"{self.api_base_url}/jobs/{job_id}/status"
+            endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/status"
 
             data = {
                 'status': status,

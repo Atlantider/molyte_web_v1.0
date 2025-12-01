@@ -108,71 +108,65 @@ def get_job_status(slurm_job_id: str) -> Optional[SlurmJobStatus]:
 def list_partitions() -> List[PartitionInfo]:
     """
     获取所有 Slurm 分区信息
-    
+
+    在云端部署模式下，从 Worker 上报的缓存中获取分区信息。
+    如果 Worker 还没有上报，返回默认的分区列表。
+
     Returns:
         PartitionInfo 列表
     """
+    # 尝试从 Worker 缓存获取分区信息
     try:
-        # 使用 sinfo 获取分区信息
-        cmd = [
-            "sinfo",
-            "--format=%P|%a|%D|%C|%l",
-            "--noheader",
-        ]
-        
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        
-        if result.returncode != 0:
-            logger.warning(f"sinfo failed: {result.stderr}")
-            return []
-        
-        partitions = []
-        for line in result.stdout.strip().split("\n"):
-            if not line:
-                continue
-            
-            fields = line.split("|")
-            if len(fields) < 4:
-                continue
-            
-            name = fields[0].rstrip("*")  # 移除默认分区的 * 标记
-            state = fields[1]
-            total_nodes = int(fields[2]) if fields[2].isdigit() else 0
-            
-            # 解析 CPU 信息 (格式: A/I/O/T - Allocated/Idle/Other/Total)
-            cpu_info = fields[3].split("/")
-            if len(cpu_info) >= 4:
-                allocated = int(cpu_info[0]) if cpu_info[0].isdigit() else 0
-                idle = int(cpu_info[1]) if cpu_info[1].isdigit() else 0
-                total = int(cpu_info[3]) if cpu_info[3].isdigit() else 0
-            else:
-                allocated = idle = total = 0
-            
-            max_time = fields[4] if len(fields) > 4 else None
-            
-            partitions.append(PartitionInfo(
-                name=name,
-                state=state,
-                total_nodes=total_nodes,
-                available_nodes=total_nodes,  # 简化处理
-                total_cpus=total,
-                available_cpus=idle,
-                max_time=max_time,
-            ))
-        
-        return partitions
-        
-    except subprocess.TimeoutExpired:
-        logger.error("sinfo timeout")
-        return []
+        from app.api.v1.worker import get_cached_partitions
+        cached = get_cached_partitions()
+        if cached:
+            return [
+                PartitionInfo(
+                    name=p["name"],
+                    state=p["state"],
+                    total_nodes=p.get("total_nodes", 0),
+                    available_nodes=p.get("available_nodes", 0),
+                    total_cpus=p.get("total_cpus", 0),
+                    available_cpus=p.get("available_cpus", 0),
+                    max_time=p.get("max_time"),
+                )
+                for p in cached
+            ]
     except Exception as e:
-        logger.exception(f"Error listing partitions: {e}")
-        return []
+        logger.warning(f"Failed to get cached partitions: {e}")
+
+    # 如果没有缓存，返回默认分区（等待 Worker 上报）
+    default_partitions = [
+        PartitionInfo(
+            name="cpu",
+            state="up",
+            total_nodes=10,
+            available_nodes=10,
+            total_cpus=320,
+            available_cpus=320,
+            max_time="7-00:00:00",
+        ),
+        PartitionInfo(
+            name="gpu",
+            state="up",
+            total_nodes=4,
+            available_nodes=4,
+            total_cpus=128,
+            available_cpus=128,
+            max_time="3-00:00:00",
+        ),
+        PartitionInfo(
+            name="debug",
+            state="up",
+            total_nodes=2,
+            available_nodes=2,
+            total_cpus=64,
+            available_cpus=64,
+            max_time="01:00:00",
+        ),
+    ]
+
+    return default_partitions
 
 
 def suggest_partition_and_cpus(

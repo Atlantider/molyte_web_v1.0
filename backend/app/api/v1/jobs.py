@@ -365,8 +365,9 @@ def create_md_job(
     logger.info(f"  Charge method: {config.get('charge_method')}")
     logger.info(f"  NPT steps: {config.get('nsteps_npt')}, NVT steps: {config.get('nsteps_nvt')}")
 
-    # 根据是否提交到集群设置初始状态
-    initial_status = JobStatus.QUEUED if job_data.submit_to_cluster else JobStatus.CREATED
+    # 在混合云架构下，所有任务都设置为 CREATED，等待 Worker 拉取执行
+    # submit_to_cluster 参数现在只用于标记任务是否应该被 Worker 优先处理
+    initial_status = JobStatus.CREATED
 
     # Create MD job
     db_job = MDJob(
@@ -381,30 +382,7 @@ def create_md_job(
     db.commit()
     db.refresh(db_job)
 
-    # 如果需要提交到集群，立即提交
-    if job_data.submit_to_cluster:
-        try:
-            logger.info(f"Auto-submitting job {db_job.id} to cluster...")
-
-            # 调用提交逻辑（复用 submit_md_job 的代码）
-            _submit_job_to_cluster(db_job, system, db)
-
-            logger.info(f"MD job submitted to cluster: ID={db_job.id} by {current_user.username}")
-        except Exception as e:
-            logger.error(f"Failed to auto-submit job {db_job.id}: {e}")
-            # 更新任务状态为失败
-            db_job.status = JobStatus.FAILED
-            if db_job.config is None:
-                db_job.config = {}
-            db_job.config["error"] = str(e)
-            db.commit()
-            db.refresh(db_job)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to submit job to cluster: {str(e)}"
-            )
-    else:
-        logger.info(f"MD job created: ID={db_job.id} by {current_user.username}")
+    logger.info(f"MD job created: ID={db_job.id} by {current_user.username}, waiting for Worker to pick up")
 
     # 如果启用了QC计算，创建QC任务
     if job_data.qc_options and job_data.qc_options.enabled:
@@ -1095,18 +1073,14 @@ def update_md_job_config(
 @router.post("/{job_id}/submit", response_model=MDJobSchema)
 def submit_md_job(
     job_id: int,
-    use_celery: bool = True,  # 新增参数：是否使用 Celery 异步提交
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Submit MD job to cluster
-
-    可以选择同步提交（use_celery=False）或异步提交（use_celery=True，默认）
+    Submit MD job - 在混合云架构下，只更新状态为 CREATED，等待 Worker 拉取执行
 
     Args:
         job_id: MD job ID
-        use_celery: 是否使用 Celery 异步提交（默认 True）
         db: Database session
         current_user: Current authenticated user
 
@@ -1140,12 +1114,12 @@ def submit_md_job(
             detail="Not enough permissions"
         )
 
-    # Only allow submitting CREATED or CANCELLED jobs
-    # CANCELLED jobs can be reconfigured and resubmitted
-    if job.status not in [JobStatus.CREATED, JobStatus.CANCELLED]:
+    # Allow submitting CREATED, CANCELLED, or FAILED jobs
+    # CANCELLED/FAILED jobs can be reconfigured and resubmitted
+    if job.status not in [JobStatus.CREATED, JobStatus.CANCELLED, JobStatus.FAILED]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot submit job with status {job.status}. Only CREATED or CANCELLED jobs can be submitted."
+            detail=f"Cannot submit job with status {job.status}. Only CREATED, CANCELLED, or FAILED jobs can be submitted."
         )
 
     # Get electrolyte system
@@ -1181,38 +1155,18 @@ def submit_md_job(
                     logger.error(f"Failed to create QC jobs for MD job {job.id}: {qc_error}")
                     # QC任务创建失败不影响MD任务提交
 
-        if use_celery:
-            # 使用 Celery 异步提交
-            from app.tasks.job_submission import submit_md_job_task
+        # 在混合云架构下，只更新状态为 CREATED，等待 Worker 拉取执行
+        job.status = JobStatus.CREATED
+        job.error_message = None
+        if job.config is None:
+            job.config = {}
+        job.config["submitted_at"] = datetime.now().isoformat()
+        job.config["submitted_by"] = current_user.username
+        db.commit()
+        db.refresh(job)
 
-            # 更新状态为 PENDING（等待 Celery 处理）
-            job.status = JobStatus.CREATED  # 保持 CREATED，Celery 会更新为 QUEUED
-            if job.config is None:
-                job.config = {}
-            job.config["celery_task_submitted"] = True
-            job.config["celery_task_submitted_at"] = datetime.now().isoformat()
-            job.config["celery_task_submitted_by"] = current_user.username
-            db.commit()
-
-            # 提交到 Celery 队列
-            task = submit_md_job_task.delay(job.id)
-
-            # 记录 Celery 任务 ID
-            job.config["celery_task_id"] = task.id
-            db.commit()
-            db.refresh(job)
-
-            logger.info(f"MD job {job.id} submitted to Celery queue: task_id={task.id} by {current_user.username}")
-            return job
-        else:
-            # 同步提交（原有逻辑）
-            _submit_job_to_cluster(job, electrolyte, db)
-            db.refresh(job)
-
-            # Read from the model field, not config
-            slurm_job_id = job.slurm_job_id
-            logger.info(f"MD job submitted to cluster (sync): ID={job.id}, Slurm ID={slurm_job_id} by {current_user.username}")
-            return job
+        logger.info(f"MD job {job.id} submitted by {current_user.username}, waiting for Worker to pick up")
+        return job
 
     except Exception as e:
         logger.error(f"Failed to submit job {job.id}: {e}")
@@ -1552,20 +1506,17 @@ def resubmit_md_job(
             job.config = {}
         job.config.pop("error", None)
 
-        # Reset job status to CREATED before resubmission
+        # Reset job status to CREATED - Worker will pick it up
         job.status = JobStatus.CREATED
         job.error_message = None
         job.progress = 0.0
+        job.slurm_job_id = None
+        job.started_at = None
+        job.finished_at = None
         db.commit()
-
-        logger.info(f"Resubmitting job {job.id} by {current_user.username}")
-
-        # Use the internal submission function
-        _submit_job_to_cluster(job, electrolyte, db)
         db.refresh(job)
 
-        slurm_job_id = job.slurm_job_id
-        logger.info(f"MD job resubmitted to cluster: ID={job.id}, Slurm ID={slurm_job_id} by {current_user.username}")
+        logger.info(f"Job {job.id} reset to CREATED by {current_user.username}, waiting for Worker to pick up")
         return job
 
     except Exception as e:

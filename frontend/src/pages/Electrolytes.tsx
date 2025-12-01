@@ -340,7 +340,25 @@ export default function Electrolytes() {
       onOk: async () => {
         try {
           const result = await batchDeleteElectrolytes(selectedIds);
-          message.success(result.message);
+
+          if (result.deleted_count > 0) {
+            message.success(result.message);
+          }
+
+          // 如果有失败的，显示详细原因
+          if (result.failed_ids && result.failed_ids.length > 0) {
+            const failedReasons = result.failed_reasons || {};
+            const reasonMessages = Object.entries(failedReasons)
+              .map(([id, reason]) => `配方ID ${id}: ${reason}`)
+              .join('\n');
+
+            if (result.deleted_count === 0) {
+              message.error(`删除失败：\n${reasonMessages}`);
+            } else {
+              message.warning(`部分删除失败：\n${reasonMessages}`);
+            }
+          }
+
           setSelectedIds([]);
           setSelectMode(false);
           loadData();

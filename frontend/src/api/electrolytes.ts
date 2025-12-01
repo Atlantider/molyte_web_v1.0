@@ -93,9 +93,10 @@ export const deleteElectrolyte = async (id: number): Promise<void> => {
 export const batchDeleteElectrolytes = async (ids: number[]): Promise<{
   deleted_count: number;
   failed_ids: number[];
+  failed_reasons?: Record<number, string>;
   message: string;
 }> => {
-  const response = await client.delete('/electrolytes/batch/delete', { data: ids });
+  const response = await client.delete('/electrolytes/batch/delete', { data: { ids } });
   return response.data;
 };
 

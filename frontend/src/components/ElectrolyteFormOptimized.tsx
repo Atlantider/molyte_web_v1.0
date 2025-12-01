@@ -3,6 +3,7 @@
  * 采用双栏布局 + 分类折叠 + 精简UI + 用户自定义常用组合
  */
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Form,
   Select,
@@ -34,6 +35,7 @@ import {
   StarOutlined,
   StarFilled,
   EditOutlined,
+  FolderAddOutlined,
 } from '@ant-design/icons';
 import type { IonInfo, Project } from '../types';
 import { getAvailableIons } from '../api/electrolytes';
@@ -147,6 +149,7 @@ export default function ElectrolyteFormOptimized({
   initialCations = [],
   initialAnions = []
 }: ElectrolyteFormOptimizedProps) {
+  const navigate = useNavigate();
   const [availableCations, setAvailableCations] = useState<IonInfo[]>([]);
   const [availableAnions, setAvailableAnions] = useState<IonInfo[]>([]);
   const [selectedCations, setSelectedCations] = useState<SelectedIon[]>(initialCations);
@@ -364,7 +367,37 @@ export default function ElectrolyteFormOptimized({
             <Row gutter={16}>
               <Col span={10}>
                 <Form.Item name="project_id" label="所属项目" rules={[{ required: true, message: '请选择所属项目' }]}>
-                  <Select placeholder="选择项目">
+                  <Select
+                    placeholder="选择项目"
+                    notFoundContent={
+                      <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                        <div style={{ color: '#999', marginBottom: 8 }}>暂无项目</div>
+                        <Button
+                          type="primary"
+                          icon={<FolderAddOutlined />}
+                          onClick={() => navigate('/projects?action=create')}
+                        >
+                          新建项目
+                        </Button>
+                      </div>
+                    }
+                    dropdownRender={(menu) => (
+                      <>
+                        {menu}
+                        <Divider style={{ margin: '8px 0' }} />
+                        <div style={{ padding: '4px 8px' }}>
+                          <Button
+                            type="link"
+                            icon={<FolderAddOutlined />}
+                            onClick={() => navigate('/projects?action=create')}
+                            style={{ width: '100%', textAlign: 'left' }}
+                          >
+                            新建项目
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  >
                     {projects?.filter(p => p && p.id && p.name).map(p => <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>)}
                   </Select>
                 </Form.Item>

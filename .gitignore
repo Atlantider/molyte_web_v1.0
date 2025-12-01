@@ -105,3 +105,8 @@ backup/
 *.md
 !README.md
 
+# Deployment secrets (实际配置文件，包含秘钥)
+deployment/polling_worker_config_local.yaml
+deployment/*_secret*.yaml
+deployment/*.local.yaml
+

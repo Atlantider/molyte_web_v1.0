@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.models.electrolyte import ElectrolyteSystem
+from app.models.job import MDJob
 from app.schemas.electrolyte import (
     Electrolyte as ElectrolyteSchema,
     ElectrolyteCreate,
@@ -623,31 +624,45 @@ class BatchUpdateProjectRequest(BaseModel):
     project_id: int
 
 
+class BatchDeleteRequest(BaseModel):
+    """批量删除请求"""
+    ids: List[int]
+
+
 @router.delete("/batch/delete")
 def batch_delete_electrolytes(
-    ids: List[int],
+    request: BatchDeleteRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    批量删除电解质配方（软删除 - 保留数据）
+    批量删除电解质配方（硬删除）
 
     只能删除用户自己的配方，或管理员可以删除所有配方
     """
-    from datetime import datetime
+    ids = request.ids
+    logger.info(f"Batch delete request: ids={ids}, user={current_user.username}")
 
     deleted_count = 0
     failed_ids = []
+    failed_reasons = {}
 
     for electrolyte_id in ids:
         electrolyte = db.query(ElectrolyteSystem).filter(ElectrolyteSystem.id == electrolyte_id).first()
         if not electrolyte:
             failed_ids.append(electrolyte_id)
+            failed_reasons[electrolyte_id] = "配方不存在"
+            logger.warning(f"Electrolyte {electrolyte_id} not found")
             continue
 
         # 检查权限 - 通过project关系获取用户ID
-        if electrolyte.project.user_id != current_user.id and current_user.role != UserRole.ADMIN:
+        if electrolyte.project is None:
+            # 配方没有关联项目，允许删除
+            pass
+        elif electrolyte.project.user_id != current_user.id and current_user.role != UserRole.ADMIN:
             failed_ids.append(electrolyte_id)
+            failed_reasons[electrolyte_id] = "无权限删除"
+            logger.warning(f"No permission to delete electrolyte {electrolyte_id}")
             continue
 
         # 检查是否有关联的任务
@@ -658,20 +673,32 @@ def batch_delete_electrolytes(
 
         if has_jobs:
             failed_ids.append(electrolyte_id)
+            failed_reasons[electrolyte_id] = "存在关联的任务"
+            logger.warning(f"Electrolyte {electrolyte_id} has associated jobs")
             continue
 
         # 硬删除
         db.delete(electrolyte)
         deleted_count += 1
+        logger.info(f"Deleted electrolyte {electrolyte_id}")
 
     db.commit()
 
-    logger.info(f"Batch deleted {deleted_count} electrolyte systems by {current_user.username}")
+    logger.info(f"Batch deleted {deleted_count} electrolyte systems by {current_user.username}, failed: {failed_reasons}")
+
+    # 构建返回信息
+    if deleted_count > 0 and not failed_ids:
+        message = f"成功删除 {deleted_count} 个配方"
+    elif deleted_count > 0 and failed_ids:
+        message = f"成功删除 {deleted_count} 个配方，{len(failed_ids)} 个删除失败"
+    else:
+        message = f"删除失败：{len(failed_ids)} 个配方无法删除"
 
     return {
         "deleted_count": deleted_count,
         "failed_ids": failed_ids,
-        "message": f"成功删除 {deleted_count} 个配方"
+        "failed_reasons": failed_reasons,
+        "message": message
     }
 
 

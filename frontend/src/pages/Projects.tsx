@@ -57,10 +57,11 @@ export default function Projects() {
 
   // 检查是否需要自动打开创建对话框
   useEffect(() => {
-    if (location.state?.openCreateModal) {
+    const searchParams = new URLSearchParams(location.search);
+    if (location.state?.openCreateModal || searchParams.get('action') === 'create') {
       setModalVisible(true);
-      // 清除 state，避免刷新时重复打开
-      window.history.replaceState({}, document.title);
+      // 清除 state 和 URL 参数，避免刷新时重复打开
+      window.history.replaceState({}, document.title, location.pathname);
     }
   }, [location]);
 

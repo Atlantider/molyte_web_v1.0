@@ -1,28 +1,63 @@
 """
 Worker API 端点
 
-用于轮询 Worker 与阿里云后端通信
+用于轮询 Worker 与云端后端通信
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
 
 from app.database import get_db
 from app.models.job import MDJob, JobStatus
 from app.models.qc import QCJob, QCJobStatus
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.dependencies import get_current_user
 from pydantic import BaseModel
+
+
+def is_worker_user(user: User) -> bool:
+    """检查用户是否是 Worker 用户（ADMIN 角色）"""
+    return user.role == UserRole.ADMIN
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/workers", tags=["workers"])
 
 
+# ==================== 全局缓存 ====================
+# 存储 Worker 上报的分区信息
+_partition_cache: Dict[str, Any] = {
+    "partitions": [],
+    "last_updated": None,
+    "worker_name": None,
+}
+
+
+def get_cached_partitions() -> List[dict]:
+    """获取缓存的分区信息"""
+    return _partition_cache["partitions"]
+
+
+def get_partition_cache_info() -> Dict[str, Any]:
+    """获取分区缓存的完整信息"""
+    return _partition_cache.copy()
+
+
 # ==================== Schemas ====================
+
+class PartitionReport(BaseModel):
+    """分区信息上报"""
+    name: str
+    state: str
+    total_nodes: int
+    available_nodes: int
+    total_cpus: int
+    available_cpus: int
+    max_time: Optional[str] = None
+
 
 class WorkerHeartbeat(BaseModel):
     """Worker 心跳"""
@@ -30,6 +65,7 @@ class WorkerHeartbeat(BaseModel):
     status: str
     running_jobs: int
     timestamp: str
+    partitions: Optional[List[PartitionReport]] = None  # 可选：同时上报分区信息
 
 
 class JobStatusUpdate(BaseModel):
@@ -61,25 +97,80 @@ async def worker_heartbeat(
 ):
     """
     Worker 心跳接口
-    
-    Worker 定期发送心跳，表明自己在线
+
+    Worker 定期发送心跳，表明自己在线。
+    可以同时上报分区信息。
     """
-    # 验证是否是 Worker 用户（可以添加特殊的 Worker 角色）
-    if current_user.user_type != "admin":
+    # 验证是否是 Worker 用户（ADMIN 角色）
+    if not is_worker_user(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only worker users can send heartbeat"
         )
-    
+
     logger.info(
         f"Received heartbeat from {heartbeat.worker_name}: "
         f"{heartbeat.running_jobs} jobs running"
     )
-    
-    # TODO: 可以将心跳信息存储到数据库或 Redis
-    # 用于监控 Worker 状态
-    
+
+    # 如果心跳中包含分区信息，更新缓存
+    if heartbeat.partitions:
+        _partition_cache["partitions"] = [p.dict() for p in heartbeat.partitions]
+        _partition_cache["last_updated"] = datetime.now().isoformat()
+        _partition_cache["worker_name"] = heartbeat.worker_name
+        logger.info(f"Updated partition cache with {len(heartbeat.partitions)} partitions from {heartbeat.worker_name}")
+
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+
+@router.post("/partitions")
+async def report_partitions(
+    partitions: List[PartitionReport],
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Worker 上报分区信息
+
+    Worker 定期调用此接口上报校园网集群的分区状态。
+    云端会缓存这些信息，供前端获取。
+    """
+    # 验证是否是 Worker 用户（ADMIN 角色）
+    if not is_worker_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only worker users can report partitions"
+        )
+
+    # 更新分区缓存
+    _partition_cache["partitions"] = [p.dict() for p in partitions]
+    _partition_cache["last_updated"] = datetime.now().isoformat()
+    _partition_cache["worker_name"] = current_user.username
+
+    logger.info(f"Received {len(partitions)} partitions from worker {current_user.username}")
+
+    return {
+        "status": "ok",
+        "partitions_count": len(partitions),
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@router.get("/partitions")
+async def get_worker_partitions(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    获取 Worker 上报的分区信息
+
+    返回校园网 Worker 最近上报的分区状态。
+    """
+    cache_info = get_partition_cache_info()
+
+    return {
+        "partitions": cache_info["partitions"],
+        "last_updated": cache_info["last_updated"],
+        "worker_name": cache_info["worker_name"],
+    }
 
 
 @router.get("/jobs/pending", response_model=List[PendingJobResponse])
@@ -94,8 +185,8 @@ async def get_pending_jobs(
     
     Worker 轮询此接口获取新任务
     """
-    # 验证是否是 Worker 用户
-    if current_user.user_type != "admin":
+    # 验证是否是 Worker 用户（ADMIN 角色）
+    if not is_worker_user(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only worker users can fetch pending jobs"
@@ -104,9 +195,9 @@ async def get_pending_jobs(
     job_type = job_type.upper()
     
     if job_type == "MD":
-        # 获取 PENDING 状态的 MD 任务
+        # 获取 CREATED 状态的 MD 任务（待处理）
         jobs = db.query(MDJob).filter(
-            MDJob.status == JobStatus.PENDING
+            MDJob.status == JobStatus.CREATED
         ).order_by(MDJob.created_at).limit(limit).all()
         
         return [
@@ -120,9 +211,9 @@ async def get_pending_jobs(
         ]
     
     elif job_type == "QC":
-        # 获取 PENDING 状态的 QC 任务
+        # 获取 CREATED 状态的 QC 任务（待处理）
         jobs = db.query(QCJob).filter(
-            QCJob.status == QCJobStatus.PENDING
+            QCJob.status == QCJobStatus.CREATED
         ).order_by(QCJob.created_at).limit(limit).all()
         
         return [
@@ -163,8 +254,8 @@ async def update_job_status(
     
     Worker 在任务状态变化时调用此接口
     """
-    # 验证是否是 Worker 用户
-    if current_user.user_type != "admin":
+    # 验证是否是 Worker 用户（ADMIN 角色）
+    if not is_worker_user(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only worker users can update job status"
@@ -273,8 +364,8 @@ async def get_job_input_data(
     
     Worker 可以通过此接口下载任务所需的输入数据
     """
-    # 验证是否是 Worker 用户
-    if current_user.user_type != "admin":
+    # 验证是否是 Worker 用户（ADMIN 角色）
+    if not is_worker_user(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only worker users can fetch job input data"
