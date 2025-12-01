@@ -21,14 +21,17 @@ def strip_ion_charge(name: str) -> str:
     """
     从离子名称中移除电荷符号（+、-）
 
+    只移除末尾的 + 或 - 符号，保留分子式中的数字。
+
     例如:
         Na+ -> Na
         Li+ -> Li
         PF6- -> PF6
         TFSI- -> TFSI
-        Ca2+ -> Ca
+        Ca2+ -> Ca2  (保留分子式中的2，只去掉+)
         Ca++ -> Ca
         SO4-- -> SO4
+        BF4- -> BF4
 
     Args:
         name: 可能带有电荷符号的离子名称
@@ -38,9 +41,9 @@ def strip_ion_charge(name: str) -> str:
     """
     if not name:
         return name
-    # 移除末尾的所有 + 和 - 符号（包括多个，如 Ca2+, ++, --）
-    # 也移除数字+符号的组合（如 2+, 3-）
-    cleaned = re.sub(r'[0-9]*[+\-]+$', '', name)
+    # 只移除末尾的 + 和 - 符号（一个或多个）
+    # 不移除分子式中的数字
+    cleaned = re.sub(r'[+\-]+$', '', name)
     return cleaned
 
 
