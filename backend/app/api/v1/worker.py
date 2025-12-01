@@ -702,11 +702,23 @@ class SolvationStructureUpload(BaseModel):
     description: Optional[str] = None
 
 
+class MoleculeStructureUpload(BaseModel):
+    """分子结构上传"""
+    name: str
+    type: str  # solvent, cation, anion
+    pdb_content: str  # PDB 文件内容
+    smiles: Optional[str] = None
+    total_charge: Optional[float] = 0.0
+    charge_method: Optional[str] = "resp"
+    atoms: Optional[List[Dict[str, Any]]] = None  # 原子列表 [{id, name, element, x, y, z, charge}]
+
+
 class MDResultsUpload(BaseModel):
     """MD 任务结果上传（包含 RDF、MSD、溶剂化结构等）"""
     rdf_results: Optional[List[RDFResultUpload]] = None
     msd_results: Optional[List[MSDResultUpload]] = None
     solvation_structures: Optional[List[SolvationStructureUpload]] = None
+    molecule_structures: Optional[List[MoleculeStructureUpload]] = None  # 分子结构
     # 结果摘要
     final_density: Optional[float] = None
     initial_density: Optional[float] = None
@@ -836,7 +848,16 @@ async def upload_md_results(
         results_data.box_x,
         results_data.concentration,
         results_data.system_xyz_content,
+        results_data.molecule_structures,
     ])
+
+    # 准备分子结构 JSON
+    molecule_structures_json = None
+    if results_data.molecule_structures:
+        molecule_structures_json = [
+            mol.dict() for mol in results_data.molecule_structures
+        ]
+        uploaded_counts["molecules"] = len(results_data.molecule_structures)
 
     if has_summary_data:
         # 检查是否已有摘要
@@ -883,6 +904,8 @@ async def upload_md_results(
                 existing_summary.initial_concentration = results_data.initial_concentration
             if results_data.system_xyz_content is not None:
                 existing_summary.system_xyz_content = results_data.system_xyz_content
+            if molecule_structures_json is not None:
+                existing_summary.molecule_structures = molecule_structures_json
         else:
             # 创建新摘要
             summary = ResultSummary(
@@ -905,6 +928,7 @@ async def upload_md_results(
                 concentration=results_data.concentration,
                 initial_concentration=results_data.initial_concentration,
                 system_xyz_content=results_data.system_xyz_content,
+                molecule_structures=molecule_structures_json,
             )
             db.add(summary)
         uploaded_counts["summary"] = True
@@ -927,7 +951,8 @@ async def upload_md_results(
     logger.info(
         f"MD results uploaded for job {job_id}: "
         f"RDF={uploaded_counts['rdf']}, MSD={uploaded_counts['msd']}, "
-        f"Solvation={uploaded_counts.get('solvation', 0)}, Summary={uploaded_counts['summary']}"
+        f"Solvation={uploaded_counts.get('solvation', 0)}, "
+        f"Molecules={uploaded_counts.get('molecules', 0)}, Summary={uploaded_counts['summary']}"
     )
 
     return {

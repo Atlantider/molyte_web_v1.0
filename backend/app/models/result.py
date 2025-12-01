@@ -45,6 +45,9 @@ class ResultSummary(Base):
     # System structure (最后一帧 XYZ 内容)
     system_xyz_content = Column(String)  # XYZ 格式的系统结构
 
+    # Molecule structures (分子结构信息 JSON)
+    molecule_structures = Column(JSONB)  # [{name, type, pdb_content, smiles, total_charge, atoms}]
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Relationships

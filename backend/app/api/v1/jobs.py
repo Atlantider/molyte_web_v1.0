@@ -1910,6 +1910,7 @@ def get_molecule_templates(
         List of molecules with PDB structure and charge information
     """
     from app.dependencies import check_resource_permission
+    from app.models.result import ResultSummary
 
     # Get job
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
@@ -1919,6 +1920,16 @@ def get_molecule_templates(
     # 数据隔离：检查权限（管理员可以访问所有数据，普通用户只能访问自己的数据）
     check_resource_permission(job.user_id, current_user)
 
+    # 优先从数据库读取分子结构（Worker 上传的）
+    result_summary = db.query(ResultSummary).filter(
+        ResultSummary.md_job_id == job_id
+    ).first()
+
+    if result_summary and result_summary.molecule_structures:
+        logger.info(f"Returning molecule structures from database for job {job_id}")
+        return {"molecules": result_summary.molecule_structures}
+
+    # 回退：从工作目录读取（本地运行的情况）
     # Get work directory
     if job.work_dir:
         work_dir = Path(job.work_dir)
@@ -1927,7 +1938,7 @@ def get_molecule_templates(
     elif job.config and job.config.get("job_name"):
         work_dir = settings.MOLYTE_WORK_BASE_PATH / job.config.get("job_name")
     else:
-        raise HTTPException(status_code=404, detail="Work directory not found for this job")
+        raise HTTPException(status_code=404, detail="Work directory not found and no molecule structures in database")
 
     try:
         import re

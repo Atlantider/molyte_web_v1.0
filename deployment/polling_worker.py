@@ -856,6 +856,18 @@ echo "QC calculation completed"
                     qc_result['fchk_file_path'] = next(
                         (f for f in uploaded_files if f.endswith('.fchk')), None
                     )
+
+                    # 生成 ESP 可视化图片（如果有 fchk 文件）
+                    fchk_file = next((work_dir / f for f in work_dir.glob("*.fchk")), None)
+                    if fchk_file and fchk_file.exists():
+                        try:
+                            esp_result = self._generate_esp_visualization(work_dir, fchk_file)
+                            if esp_result:
+                                qc_result.update(esp_result)
+                                self.logger.info(f"ESP 可视化生成成功")
+                        except Exception as e:
+                            self.logger.warning(f"ESP 可视化生成失败: {e}")
+
                     # 上传 QC 结果到数据库
                     self._upload_qc_result(job_id, qc_result)
                 else:
@@ -953,6 +965,52 @@ echo "QC calculation completed"
 
         except Exception as e:
             self.logger.error(f"解析 Gaussian 输出失败: {e}", exc_info=True)
+            return None
+
+    def _generate_esp_visualization(self, work_dir: Path, fchk_file: Path) -> Optional[Dict[str, Any]]:
+        """
+        生成 ESP 可视化图片
+        使用后端的 qc_postprocess 模块中的函数
+        """
+        import sys
+
+        try:
+            # 添加后端模块路径
+            backend_path = Path(__file__).parent.parent / "backend"
+            if str(backend_path) not in sys.path:
+                sys.path.insert(0, str(backend_path))
+
+            from app.tasks.qc_postprocess import (
+                generate_esp_visualization,
+                extract_esp_values
+            )
+
+            result = {}
+
+            # 获取分子名称
+            molecule_name = fchk_file.stem
+
+            # 生成 ESP 图片
+            esp_image_path = generate_esp_visualization(work_dir, molecule_name, str(fchk_file))
+            if esp_image_path:
+                result['esp_image_path'] = esp_image_path
+                self.logger.info(f"ESP 图片生成: {esp_image_path}")
+
+            # 提取 ESP 极值
+            surfanalysis_file = work_dir / "surfanalysis.txt"
+            esp_min, esp_max = extract_esp_values(str(surfanalysis_file))
+            if esp_min is not None:
+                result['esp_min_kcal'] = esp_min
+            if esp_max is not None:
+                result['esp_max_kcal'] = esp_max
+
+            return result if result else None
+
+        except ImportError as e:
+            self.logger.warning(f"无法导入 qc_postprocess 模块: {e}")
+            return None
+        except Exception as e:
+            self.logger.error(f"生成 ESP 可视化失败: {e}", exc_info=True)
             return None
 
     def _upload_qc_result(self, job_id: int, result: Dict[str, Any]):
@@ -1175,7 +1233,16 @@ echo "QC calculation completed"
             except Exception as e:
                 self.logger.warning(f"提取系统结构失败: {e}")
 
-            # 6. 计算浓度（如果有盒子尺寸和电解液配置）
+            # 6. 提取分子结构（PDB 和电荷信息）
+            try:
+                molecule_structures = self._extract_molecule_structures(work_dir)
+                if molecule_structures:
+                    results['molecule_structures'] = molecule_structures
+                    self.logger.info(f"分子结构提取完成: {len(molecule_structures)} 个分子")
+            except Exception as e:
+                self.logger.warning(f"提取分子结构失败: {e}")
+
+            # 7. 计算浓度（如果有盒子尺寸和电解液配置）
             if electrolyte_data and results.get('box_x'):
                 try:
                     conc_data = self._calculate_concentration(results, electrolyte_data)
@@ -1183,7 +1250,7 @@ echo "QC calculation completed"
                 except Exception as e:
                     self.logger.warning(f"计算浓度失败: {e}")
 
-            return results if (results['rdf_results'] or results['msd_results'] or results.get('solvation_structures') or results.get('system_xyz_content')) else None
+            return results if (results['rdf_results'] or results['msd_results'] or results.get('solvation_structures') or results.get('system_xyz_content') or results.get('molecule_structures')) else None
 
         except Exception as e:
             self.logger.error(f"解析 MD 结果失败: {e}", exc_info=True)
@@ -1289,6 +1356,156 @@ echo "QC calculation completed"
             self.logger.warning(f"浓度计算失败: {e}")
 
         return conc_result
+
+    def _extract_molecule_structures(self, work_dir: Path) -> List[Dict[str, Any]]:
+        """
+        从工作目录提取分子结构信息（PDB 内容和电荷）
+        这是后端 get_molecule_templates API 的逻辑移植到 Worker
+        """
+        import json
+        import re
+
+        molecules = []
+        seen_molecules = set()
+
+        try:
+            # 获取任务名称（用于过滤系统级别的 .lt 文件）
+            job_name = work_dir.name
+
+            # 首先找到所有 .lt 文件（这些是实际使用的分子）
+            lt_files = list(work_dir.glob("*.lt"))
+
+            for lt_file in lt_files:
+                base_name = lt_file.stem
+
+                # 跳过系统级别的 .lt 文件
+                if base_name == job_name or len(base_name) > 50:
+                    continue
+
+                if base_name in seen_molecules:
+                    continue
+                seen_molecules.add(base_name)
+
+                # 查找对应的 PDB 文件
+                pdb_file = None
+                pdb_candidates = [
+                    work_dir / f"{base_name}.charmm.pdb",
+                    work_dir / f"{base_name}.q.pdb",
+                    work_dir / f"{base_name}.pdb",
+                ]
+
+                for candidate in pdb_candidates:
+                    if candidate.exists():
+                        pdb_file = candidate
+                        break
+
+                if not pdb_file:
+                    continue
+
+                # 读取 PDB 内容
+                try:
+                    pdb_content = pdb_file.read_text(encoding='utf-8')
+                except UnicodeDecodeError:
+                    pdb_content = pdb_file.read_text(encoding='latin-1')
+
+                # 解析原子
+                atoms = []
+                for line in pdb_content.split('\n'):
+                    if line.startswith('ATOM') or line.startswith('HETATM'):
+                        try:
+                            atom_id = int(line[6:11].strip())
+                            atom_name = line[12:16].strip()
+                            x = float(line[30:38].strip())
+                            y = float(line[38:46].strip())
+                            z = float(line[46:54].strip())
+                            element = line[76:78].strip() if len(line) > 76 else atom_name[0]
+
+                            atoms.append({
+                                "id": atom_id,
+                                "name": atom_name,
+                                "element": element,
+                                "x": x,
+                                "y": y,
+                                "z": z,
+                                "charge": None
+                            })
+                        except (ValueError, IndexError):
+                            continue
+
+                # 从 .lt 文件读取电荷
+                lt_content = lt_file.read_text()
+                charge_map = {}
+
+                # 方法1: 从 "In Charges" 部分解析
+                charges_section = re.search(r'write_once\("In Charges"\)\s*\{(.*?)\}', lt_content, re.DOTALL)
+                if charges_section:
+                    for line in charges_section.group(1).split('\n'):
+                        match = re.search(r'set type @atom:(\w+)\s+charge\s+([-\d.]+)', line)
+                        if match:
+                            charge_map[match.group(1)] = float(match.group(2))
+
+                # 方法2: 从 "Data Atoms" 部分解析
+                atoms_section = re.search(r'write\("Data Atoms"\)\s*\{(.*?)\}', lt_content, re.DOTALL)
+                if atoms_section:
+                    atom_lines = []
+                    for line in atoms_section.group(1).split('\n'):
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            match = re.search(
+                                r'\$atom:(\w+)\s+\$mol[:\w]*\s+@atom:(\w+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)',
+                                line
+                            )
+                            if match:
+                                atom_lines.append({
+                                    'charge': float(match.group(3)),
+                                    'x': float(match.group(4)),
+                                    'y': float(match.group(5)),
+                                    'z': float(match.group(6))
+                                })
+
+                    # 按坐标或顺序匹配电荷
+                    for i, lt_atom in enumerate(atom_lines):
+                        matched = False
+                        for pdb_atom in atoms:
+                            if (abs(pdb_atom['x'] - lt_atom['x']) < 0.01 and
+                                abs(pdb_atom['y'] - lt_atom['y']) < 0.01 and
+                                abs(pdb_atom['z'] - lt_atom['z']) < 0.01):
+                                pdb_atom['charge'] = lt_atom['charge']
+                                matched = True
+                                break
+
+                        if not matched and i < len(atoms):
+                            atoms[i]['charge'] = lt_atom['charge']
+
+                # 应用 charge_map
+                for atom in atoms:
+                    if atom['charge'] is None and atom['element'] in charge_map:
+                        atom['charge'] = charge_map[atom['element']]
+
+                # 确定分子类型
+                total_charge = sum(a['charge'] for a in atoms if a['charge'] is not None)
+
+                if total_charge > 0.5:
+                    mol_type = "cation"
+                elif total_charge < -0.5:
+                    mol_type = "anion"
+                else:
+                    mol_type = "solvent"
+
+                molecules.append({
+                    "name": base_name,
+                    "type": mol_type,
+                    "pdb_content": pdb_content,
+                    "atoms": atoms,
+                    "total_charge": total_charge,
+                    "charge_method": "resp"
+                })
+
+            return molecules
+
+        except Exception as e:
+            self.logger.error(f"提取分子结构失败: {e}", exc_info=True)
+            return []
 
     def _parse_lammps_rdf_simple(self, rdf_file: Path, work_dir: Path) -> List[Dict[str, Any]]:
         """
