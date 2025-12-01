@@ -1280,6 +1280,21 @@ echo "QC calculation completed"
                         slope = (n * sum_t_msd - sum_t * sum_msd) / denom
                         diffusion_coeff = slope / 6.0 * 1e-4  # Å²/fs -> cm²/s
 
+            # 计算离子电荷、迁移率、电导率
+            ion_charge = self._get_ion_charge(species)
+            mobility = None
+            ionic_conductivity = None
+
+            if diffusion_coeff and ion_charge:
+                # 物理常数
+                BOLTZMANN = 1.380649e-23  # J/K
+                ELEMENTARY_CHARGE = 1.602176634e-19  # C
+                temperature = 298.15  # K，默认室温
+
+                # 迁移率 μ = qD / kT (cm²/V·s)
+                # D 单位是 cm²/s，需要转换
+                mobility = abs(ion_charge) * ELEMENTARY_CHARGE * diffusion_coeff / (BOLTZMANN * temperature)
+
             return {
                 'species': species,
                 't_values': t_values,
@@ -1288,12 +1303,30 @@ echo "QC calculation completed"
                 'msd_z_values': msd_z,
                 'msd_total_values': msd_total,
                 'diffusion_coefficient': diffusion_coeff,
+                'mobility': mobility,
+                'charge': ion_charge,
                 'labels': labels,
             }
 
         except Exception as e:
             self.logger.error(f"简化解析 MSD 文件 {msd_file} 失败: {e}", exc_info=True)
             return None
+
+    def _get_ion_charge(self, species: str) -> int:
+        """获取离子电荷"""
+        # 常见离子电荷表
+        ION_CHARGES = {
+            'Li': 1, 'Na': 1, 'K': 1, 'Mg': 2, 'Ca': 2, 'Zn': 2, 'Al': 3,
+            'FSI': -1, 'TFSI': -1, 'PF6': -1, 'BF4': -1, 'ClO4': -1, 'DCA': -1,
+            'Cl': -1, 'Br': -1, 'I': -1, 'F': -1,
+        }
+
+        for ion, charge in ION_CHARGES.items():
+            if ion in species:
+                return charge
+
+        # 默认返回 None（非离子）
+        return None
 
     def _calculate_coordination_number(self, r: List[float], g_r: List[float]) -> List[float]:
         """计算配位数（g(r) 的积分）"""
