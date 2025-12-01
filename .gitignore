@@ -128,6 +128,7 @@ backup/
 
 # Deployment secrets (实际配置文件，包含秘钥)
 deployment/polling_worker_config_local.yaml
+deployment/polling_worker_config_tencent.yaml
 deployment/*_secret*.yaml
 deployment/*.local.yaml
 
