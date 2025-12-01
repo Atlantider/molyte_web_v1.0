@@ -1077,11 +1077,10 @@ echo "QC calculation completed"
                 results.update(summary)
 
             # 4. 分析溶剂化结构（使用后端的 solvation 服务）
+            electrolyte_data = self._load_electrolyte_config(work_dir)
+
             try:
                 from app.services.solvation import analyze_solvation_structures
-
-                # 获取电解液配置（从 electrolyte.json 或 job config）
-                electrolyte_data = self._load_electrolyte_config(work_dir)
 
                 if electrolyte_data:
                     self.logger.info(f"开始溶剂化结构分析: {work_dir}")
@@ -1092,6 +1091,15 @@ echo "QC calculation completed"
                     )
 
                     if solvation_results:
+                        # 读取 XYZ 文件内容
+                        for solv in solvation_results:
+                            if solv.get('file_path'):
+                                try:
+                                    with open(solv['file_path'], 'r') as f:
+                                        solv['xyz_content'] = f.read()
+                                except Exception as e:
+                                    self.logger.warning(f"读取溶剂化 XYZ 失败: {e}")
+
                         results['solvation_structures'] = solvation_results
                         self.logger.info(f"溶剂化结构分析完成: {len(solvation_results)} 个结构")
                 else:
@@ -1101,7 +1109,24 @@ echo "QC calculation completed"
             except Exception as e:
                 self.logger.warning(f"溶剂化分析失败: {e}")
 
-            return results if (results['rdf_results'] or results['msd_results'] or results.get('solvation_structures')) else None
+            # 5. 提取系统结构（最后一帧 XYZ）
+            try:
+                system_xyz = self._extract_system_xyz(work_dir)
+                if system_xyz:
+                    results['system_xyz_content'] = system_xyz
+                    self.logger.info(f"系统结构提取完成: {len(system_xyz)} 字符")
+            except Exception as e:
+                self.logger.warning(f"提取系统结构失败: {e}")
+
+            # 6. 计算浓度（如果有盒子尺寸和电解液配置）
+            if electrolyte_data and results.get('box_x'):
+                try:
+                    conc_data = self._calculate_concentration(results, electrolyte_data)
+                    results.update(conc_data)
+                except Exception as e:
+                    self.logger.warning(f"计算浓度失败: {e}")
+
+            return results if (results['rdf_results'] or results['msd_results'] or results.get('solvation_structures') or results.get('system_xyz_content')) else None
 
         except Exception as e:
             self.logger.error(f"解析 MD 结果失败: {e}", exc_info=True)
@@ -1176,6 +1201,125 @@ echo "QC calculation completed"
                 self.logger.warning(f"从 atom_mapping 构建配置失败: {e}")
 
         return None
+
+    def _extract_system_xyz(self, work_dir: Path) -> Optional[str]:
+        """从轨迹文件提取最后一帧的 XYZ 格式内容"""
+        import json
+
+        job_name = work_dir.name
+
+        # 优先使用 after_nvt 文件（只有一帧，速度快）
+        after_nvt_traj = work_dir / f"{job_name}_after_nvt.lammpstrj"
+        nvt_traj = work_dir / f"NVT_{job_name}.lammpstrj"
+
+        traj_file = None
+        if after_nvt_traj.exists():
+            traj_file = after_nvt_traj
+        elif nvt_traj.exists():
+            traj_file = nvt_traj
+
+        if not traj_file:
+            self.logger.warning(f"未找到轨迹文件: {work_dir}")
+            return None
+
+        # 加载原子映射
+        atom_mapping_file = work_dir / "atom_mapping.json"
+        type_to_element = {}
+
+        if atom_mapping_file.exists():
+            try:
+                with open(atom_mapping_file) as f:
+                    mapping = json.load(f)
+                for at in mapping.get('atom_types', []):
+                    type_id = at.get('type_id')
+                    element = at.get('element', 'X')
+                    type_to_element[type_id] = element
+            except Exception as e:
+                self.logger.warning(f"读取 atom_mapping.json 失败: {e}")
+
+        # 解析最后一帧
+        try:
+            atoms = []
+            box = [0, 0, 0]
+            current_frame_atoms = []
+            in_atoms_section = False
+
+            with open(traj_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+
+                    if line.startswith('ITEM: TIMESTEP'):
+                        # 新的一帧，清空当前帧
+                        if current_frame_atoms:
+                            atoms = current_frame_atoms
+                        current_frame_atoms = []
+                        in_atoms_section = False
+
+                    elif line.startswith('ITEM: BOX BOUNDS'):
+                        in_atoms_section = False
+
+                    elif line.startswith('ITEM: ATOMS'):
+                        in_atoms_section = True
+
+                    elif in_atoms_section and line:
+                        parts = line.split()
+                        if len(parts) >= 5:
+                            try:
+                                atom_type = int(parts[1])
+                                x, y, z = float(parts[2]), float(parts[3]), float(parts[4])
+                                element = type_to_element.get(atom_type, 'X')
+                                current_frame_atoms.append((element, x, y, z))
+                            except (ValueError, IndexError):
+                                pass
+
+            # 使用最后一帧
+            if current_frame_atoms:
+                atoms = current_frame_atoms
+
+            if not atoms:
+                return None
+
+            # 生成 XYZ 格式
+            xyz_lines = [str(len(atoms)), f"System structure from {traj_file.name}"]
+            for element, x, y, z in atoms:
+                xyz_lines.append(f"{element} {x:.4f} {y:.4f} {z:.4f}")
+
+            return '\n'.join(xyz_lines)
+
+        except Exception as e:
+            self.logger.error(f"提取系统 XYZ 失败: {e}")
+            return None
+
+    def _calculate_concentration(self, results: Dict, electrolyte_data: Dict) -> Dict[str, float]:
+        """根据盒子尺寸计算浓度"""
+        conc_result = {}
+        AVOGADRO = 6.022e23
+
+        try:
+            # 计算阳离子数量
+            cation_count = 0
+            for cat in electrolyte_data.get('cations', []):
+                cation_count += cat.get('count', cat.get('number', 0))
+
+            if cation_count == 0:
+                return conc_result
+
+            # 计算最终浓度
+            if results.get('box_x') and results.get('box_y') and results.get('box_z'):
+                volume_L = (results['box_x'] * results['box_y'] * results['box_z']) * 1e-27
+                if volume_L > 0:
+                    conc_result['concentration'] = round((cation_count / AVOGADRO) / volume_L, 4)
+
+            # 计算初始浓度
+            if results.get('initial_box_x') and results.get('initial_box_y') and results.get('initial_box_z'):
+                init_volume_L = (results['initial_box_x'] * results['initial_box_y'] * results['initial_box_z']) * 1e-27
+                if init_volume_L > 0:
+                    conc_result['initial_concentration'] = round((cation_count / AVOGADRO) / init_volume_L, 4)
+
+        except Exception as e:
+            self.logger.warning(f"浓度计算失败: {e}")
+
+        return conc_result
 
     def _parse_lammps_rdf_simple(self, rdf_file: Path, work_dir: Path) -> List[Dict[str, Any]]:
         """
@@ -1454,7 +1598,7 @@ echo "QC calculation completed"
         return None, None
 
     def _parse_lammps_log(self, log_file: Path) -> Dict[str, Any]:
-        """从 LAMMPS 日志文件解析能量、温度等"""
+        """从 LAMMPS 日志文件解析能量、温度、密度、盒子尺寸等"""
         import re
 
         result = {}
@@ -1462,12 +1606,30 @@ echo "QC calculation completed"
         try:
             content = log_file.read_text()
 
-            # 查找最后的 thermo 输出
-            # 通常格式: Step Temp Press E_total KinEng PotEng Density ...
+            # 查找所有 thermo 输出块
+            # 通常格式: Step Temp Press E_total KinEng PotEng Density Lx Ly Lz ...
             thermo_pattern = r'Step\s+Temp\s+.*?\n([\s\S]*?)Loop time'
             matches = re.findall(thermo_pattern, content)
 
             if matches:
+                # 尝试解析第一个 thermo 块的第一行（初始状态）
+                first_thermo = matches[0].strip().split('\n')
+                if first_thermo:
+                    first_line = first_thermo[0].split()
+                    if len(first_line) >= 7:
+                        try:
+                            density_val = float(first_line[6])
+                            if 0.5 < density_val < 3.0:  # 合理的密度范围
+                                result['initial_density'] = density_val
+                            # 尝试提取盒子尺寸 (Lx, Ly, Lz 通常在第 7, 8, 9 列)
+                            if len(first_line) >= 10:
+                                result['initial_box_x'] = float(first_line[7])
+                                result['initial_box_y'] = float(first_line[8])
+                                result['initial_box_z'] = float(first_line[9])
+                        except (ValueError, IndexError):
+                            pass
+
+                # 解析最后一个 thermo 块的最后一行（最终状态）
                 last_thermo = matches[-1].strip().split('\n')
                 if last_thermo:
                     last_line = last_thermo[-1].split()
@@ -1479,7 +1641,39 @@ echo "QC calculation completed"
                             result['kinetic_energy'] = float(last_line[4])
                             result['potential_energy'] = float(last_line[5])
                             if len(last_line) >= 7:
-                                result['final_density'] = float(last_line[6])
+                                density_val = float(last_line[6])
+                                if 0.5 < density_val < 3.0:
+                                    result['final_density'] = density_val
+                            # 提取最终盒子尺寸
+                            if len(last_line) >= 10:
+                                result['box_x'] = float(last_line[7])
+                                result['box_y'] = float(last_line[8])
+                                result['box_z'] = float(last_line[9])
+                        except (ValueError, IndexError):
+                            pass
+
+            # 如果没有从 thermo 找到盒子尺寸，尝试从其他地方解析
+            if 'box_x' not in result:
+                # 尝试匹配 "orthogonal box = ..." 或类似模式
+                box_pattern = r'orthogonal box = \(([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\) to \(([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\)'
+                box_matches = re.findall(box_pattern, content)
+                if box_matches:
+                    # 使用最后一个匹配（最终状态）
+                    last_box = box_matches[-1]
+                    try:
+                        result['box_x'] = float(last_box[3]) - float(last_box[0])
+                        result['box_y'] = float(last_box[4]) - float(last_box[1])
+                        result['box_z'] = float(last_box[5]) - float(last_box[2])
+                    except (ValueError, IndexError):
+                        pass
+
+                    # 初始盒子
+                    if len(box_matches) > 1:
+                        first_box = box_matches[0]
+                        try:
+                            result['initial_box_x'] = float(first_box[3]) - float(first_box[0])
+                            result['initial_box_y'] = float(first_box[4]) - float(first_box[1])
+                            result['initial_box_z'] = float(first_box[5]) - float(first_box[2])
                         except (ValueError, IndexError):
                             pass
 

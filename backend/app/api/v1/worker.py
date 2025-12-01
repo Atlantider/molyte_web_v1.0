@@ -697,6 +697,7 @@ class SolvationStructureUpload(BaseModel):
     coordination_num: int
     composition: Dict[str, int]  # {"EC": 3, "DMC": 1, "FSI": 0}
     file_path: Optional[str] = None
+    xyz_content: Optional[str] = None  # XYZ 文件内容
     snapshot_frame: Optional[int] = None
     description: Optional[str] = None
 
@@ -708,6 +709,7 @@ class MDResultsUpload(BaseModel):
     solvation_structures: Optional[List[SolvationStructureUpload]] = None
     # 结果摘要
     final_density: Optional[float] = None
+    initial_density: Optional[float] = None
     final_temperature: Optional[float] = None
     final_pressure: Optional[float] = None
     total_energy: Optional[float] = None
@@ -715,6 +717,18 @@ class MDResultsUpload(BaseModel):
     kinetic_energy: Optional[float] = None
     total_atoms: Optional[int] = None
     total_molecules: Optional[int] = None
+    # 盒子尺寸
+    box_x: Optional[float] = None
+    box_y: Optional[float] = None
+    box_z: Optional[float] = None
+    initial_box_x: Optional[float] = None
+    initial_box_y: Optional[float] = None
+    initial_box_z: Optional[float] = None
+    # 浓度
+    concentration: Optional[float] = None
+    initial_concentration: Optional[float] = None
+    # 系统结构
+    system_xyz_content: Optional[str] = None  # 最后一帧的 XYZ 内容
 
 
 @router.post("/jobs/{job_id}/md_results")
@@ -806,6 +820,7 @@ async def upload_md_results(
                 coordination_num=solv_data.coordination_num,
                 composition=solv_data.composition,
                 file_path=solv_data.file_path,
+                xyz_content=solv_data.xyz_content,  # 新增：XYZ 内容
                 snapshot_frame=solv_data.snapshot_frame,
                 description=solv_data.description,
             )
@@ -813,12 +828,17 @@ async def upload_md_results(
         uploaded_counts["solvation"] = len(results_data.solvation_structures)
 
     # 4. 保存结果摘要
-    if any([
+    has_summary_data = any([
         results_data.final_density,
         results_data.final_temperature,
         results_data.total_energy,
-        results_data.total_atoms
-    ]):
+        results_data.total_atoms,
+        results_data.box_x,
+        results_data.concentration,
+        results_data.system_xyz_content,
+    ])
+
+    if has_summary_data:
         # 检查是否已有摘要
         existing_summary = db.query(ResultSummary).filter(
             ResultSummary.md_job_id == job_id
@@ -828,6 +848,8 @@ async def upload_md_results(
             # 更新已有摘要
             if results_data.final_density is not None:
                 existing_summary.final_density = results_data.final_density
+            if results_data.initial_density is not None:
+                existing_summary.initial_density = results_data.initial_density
             if results_data.final_temperature is not None:
                 existing_summary.final_temperature = results_data.final_temperature
             if results_data.final_pressure is not None:
@@ -842,11 +864,31 @@ async def upload_md_results(
                 existing_summary.total_atoms = results_data.total_atoms
             if results_data.total_molecules is not None:
                 existing_summary.total_molecules = results_data.total_molecules
+            # 新增字段
+            if results_data.box_x is not None:
+                existing_summary.box_x = results_data.box_x
+            if results_data.box_y is not None:
+                existing_summary.box_y = results_data.box_y
+            if results_data.box_z is not None:
+                existing_summary.box_z = results_data.box_z
+            if results_data.initial_box_x is not None:
+                existing_summary.initial_box_x = results_data.initial_box_x
+            if results_data.initial_box_y is not None:
+                existing_summary.initial_box_y = results_data.initial_box_y
+            if results_data.initial_box_z is not None:
+                existing_summary.initial_box_z = results_data.initial_box_z
+            if results_data.concentration is not None:
+                existing_summary.concentration = results_data.concentration
+            if results_data.initial_concentration is not None:
+                existing_summary.initial_concentration = results_data.initial_concentration
+            if results_data.system_xyz_content is not None:
+                existing_summary.system_xyz_content = results_data.system_xyz_content
         else:
             # 创建新摘要
             summary = ResultSummary(
                 md_job_id=job_id,
                 final_density=results_data.final_density,
+                initial_density=results_data.initial_density,
                 final_temperature=results_data.final_temperature,
                 final_pressure=results_data.final_pressure,
                 total_energy=results_data.total_energy,
@@ -854,6 +896,15 @@ async def upload_md_results(
                 kinetic_energy=results_data.kinetic_energy,
                 total_atoms=results_data.total_atoms,
                 total_molecules=results_data.total_molecules,
+                box_x=results_data.box_x,
+                box_y=results_data.box_y,
+                box_z=results_data.box_z,
+                initial_box_x=results_data.initial_box_x,
+                initial_box_y=results_data.initial_box_y,
+                initial_box_z=results_data.initial_box_z,
+                concentration=results_data.concentration,
+                initial_concentration=results_data.initial_concentration,
+                system_xyz_content=results_data.system_xyz_content,
             )
             db.add(summary)
         uploaded_counts["summary"] = True

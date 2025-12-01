@@ -11,29 +11,45 @@ from app.database import Base
 class ResultSummary(Base):
     """Result summary model"""
     __tablename__ = "result_summary"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
-    
+
     # System information
     total_atoms = Column(Integer)
     total_molecules = Column(Integer)
-    
+
+    # Box dimensions (Å)
+    box_x = Column(Float)  # 盒子 X 尺寸
+    box_y = Column(Float)  # 盒子 Y 尺寸
+    box_z = Column(Float)  # 盒子 Z 尺寸
+    initial_box_x = Column(Float)  # 初始盒子 X
+    initial_box_y = Column(Float)  # 初始盒子 Y
+    initial_box_z = Column(Float)  # 初始盒子 Z
+
+    # Concentration (mol/L)
+    concentration = Column(Float)  # 计算浓度
+    initial_concentration = Column(Float)  # 初始浓度
+
     # Final state
     final_density = Column(Float)
+    initial_density = Column(Float)  # 初始密度
     final_temperature = Column(Float)
     final_pressure = Column(Float)
-    
+
     # Energy
     total_energy = Column(Float)
     potential_energy = Column(Float)
     kinetic_energy = Column(Float)
-    
+
+    # System structure (最后一帧 XYZ 内容)
+    system_xyz_content = Column(String)  # XYZ 格式的系统结构
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    
+
     # Relationships
     md_job = relationship("MDJob", back_populates="result_summary")
-    
+
     def __repr__(self):
         return f"<ResultSummary(id={self.id}, md_job_id={self.md_job_id})>"
 
@@ -131,7 +147,8 @@ class SolvationStructure(Base):
     composition = Column(JSONB)  # 溶剂壳组成，如 {"EC": 3, "DMC": 1, "FSI": 0}
 
     # 文件信息
-    file_path = Column(String)  # xyz/pdb 文件路径
+    file_path = Column(String)  # xyz/pdb 文件路径（本地路径，可选）
+    xyz_content = Column(String)  # XYZ 文件内容（直接存储，用于 3D 显示）
     snapshot_frame = Column(Integer)  # 快照帧号
     description = Column(String)  # 描述信息
 

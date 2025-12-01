@@ -2113,8 +2113,10 @@ async def get_structure_info(
 ):
     """
     获取计算后的结构信息（密度、浓度等）
-    从 Results/{job_name}/structure_{job_name}.xlsx 文件中读取
+    优先从数据库读取，其次从文件读取
     """
+    from app.models.result import ResultSummary
+
     # 获取任务
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
     if not job:
@@ -2127,6 +2129,29 @@ async def get_structure_info(
     try:
         # 获取任务名称
         job_name = job.config.get('job_name', f'MD-{job.id}')
+
+        # 方法0: 优先从数据库读取
+        summary = db.query(ResultSummary).filter(ResultSummary.md_job_id == job_id).first()
+        if summary and (summary.final_density or summary.concentration):
+            structure_info = {
+                "available": True,
+                "sample_name": job_name,
+                "density": summary.final_density,
+                "initial_density": summary.initial_density,
+                "concentration": summary.concentration,
+                "initial_concentration": summary.initial_concentration,
+                "box_dimensions": None,
+                "initial_box_dimensions": None,
+            }
+
+            # 格式化盒子尺寸
+            if summary.box_x and summary.box_y and summary.box_z:
+                structure_info["box_dimensions"] = f"{summary.box_x:.2f} × {summary.box_y:.2f} × {summary.box_z:.2f}"
+            if summary.initial_box_x and summary.initial_box_y and summary.initial_box_z:
+                structure_info["initial_box_dimensions"] = f"{summary.initial_box_x:.2f} × {summary.initial_box_y:.2f} × {summary.initial_box_z:.2f}"
+
+            logger.info(f"从数据库读取结构信息: job_id={job_id}, density={summary.final_density}")
+            return structure_info
 
         # 构建工作目录
         work_dir = Path(job.work_dir) if job.work_dir else None
@@ -2467,6 +2492,7 @@ def get_solvation_structures(
             "coordination_num": s.coordination_num,
             "composition": s.composition,
             "file_path": s.file_path,
+            "xyz_content": s.xyz_content,  # 新增：直接返回 XYZ 内容
             "snapshot_frame": s.snapshot_frame,
             "description": s.description,
             "created_at": s.created_at.isoformat() if s.created_at else None,
@@ -2807,11 +2833,12 @@ def get_system_structure_endpoint(
 ):
     """
     获取整个体系的结构（用于3D可视化）
+    优先从数据库读取，其次从本地轨迹文件读取
 
     Args:
         frame: 帧索引，-1 表示最后一帧
     """
-    from app.services.solvation import get_system_structure, get_frame_count
+    from app.models.result import ResultSummary
     from app.dependencies import check_resource_permission
 
     # 获取任务
@@ -2822,9 +2849,32 @@ def get_system_structure_endpoint(
     # 数据隔离：检查权限（管理员可以访问所有数据，普通用户只能访问自己的数据）
     check_resource_permission(job.user_id, current_user)
 
+    # 优先从数据库读取
+    summary = db.query(ResultSummary).filter(ResultSummary.md_job_id == job_id).first()
+    if summary and summary.system_xyz_content:
+        # 从 XYZ 内容解析原子数和盒子
+        xyz_lines = summary.system_xyz_content.strip().split('\n')
+        atom_count = int(xyz_lines[0]) if xyz_lines else 0
+
+        box = [
+            summary.box_x or 50.0,
+            summary.box_y or 50.0,
+            summary.box_z or 50.0,
+        ]
+
+        return {
+            'frame_index': 0,
+            'total_frames': 1,
+            'atom_count': atom_count,
+            'box': box,
+            'xyz_content': summary.system_xyz_content,
+        }
+
+    # 从本地轨迹文件读取
     if not job.work_dir:
         raise HTTPException(status_code=400, detail="Job work directory not found")
 
+    from app.services.solvation import get_system_structure
     result = get_system_structure(job.work_dir, frame)
 
     if 'error' in result:
