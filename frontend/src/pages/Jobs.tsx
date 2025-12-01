@@ -25,13 +25,15 @@ import {
   Checkbox,
   Tag,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined, ThunderboltOutlined, RocketOutlined, ExperimentOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined, ThunderboltOutlined, RocketOutlined, ExperimentOutlined, FolderAddOutlined } from '@ant-design/icons';
 import JobCard from '../components/JobCard';
 import { getMDJobs, createMDJob, cancelMDJob, deleteMDJob, resubmitMDJob, updateMDJobConfig } from '../api/jobs';
-import { getElectrolytes } from '../api/electrolytes';
+import { getElectrolytes, createElectrolyteNew } from '../api/electrolytes';
 import { getPartitions, getSlurmSuggestion, type PartitionInfo } from '../api/slurm';
-import type { MDJob, MDJobCreate, ElectrolyteSystem } from '../types';
+import { getProjects } from '../api/projects';
+import type { MDJob, MDJobCreate, ElectrolyteSystem, Project } from '../types';
 import { JobStatus } from '../types';
+import ElectrolyteFormOptimized from '../components/ElectrolyteFormOptimized';
 
 const { Title, Text } = Typography;
 
@@ -39,6 +41,7 @@ export default function Jobs() {
   const location = useLocation();
   const [jobs, setJobs] = useState<MDJob[]>([]);
   const [electrolytes, setElectrolytes] = useState<ElectrolyteSystem[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [partitions, setPartitions] = useState<PartitionInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -49,6 +52,12 @@ export default function Jobs() {
   const [resubmittingJob, setResubmittingJob] = useState<MDJob | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 新建配方相关状态
+  const [electrolyteModalVisible, setElectrolyteModalVisible] = useState(false);
+  const [electrolyteForm] = Form.useForm();
+  const [selectedCations, setSelectedCations] = useState<any[]>([]);
+  const [selectedAnions, setSelectedAnions] = useState<any[]>([]);
 
   // 加载任务列表
   const loadJobs = useCallback(async () => {
@@ -71,6 +80,16 @@ export default function Jobs() {
     }
   };
 
+  // 加载项目列表
+  const loadProjects = async () => {
+    try {
+      const data = await getProjects();
+      setProjects(data);
+    } catch (error: any) {
+      console.error('加载项目列表失败:', error);
+    }
+  };
+
   // 加载 Slurm 分区信息
   const loadPartitions = async () => {
     try {
@@ -89,7 +108,7 @@ export default function Jobs() {
   const loadData = async () => {
     setLoading(true);
     try {
-      await Promise.all([loadJobs(), loadElectrolytes(), loadPartitions()]);
+      await Promise.all([loadJobs(), loadElectrolytes(), loadProjects(), loadPartitions()]);
     } finally {
       setLoading(false);
     }
@@ -196,6 +215,62 @@ export default function Jobs() {
   const handleCloseModal = () => {
     setModalVisible(false);
     form.resetFields();
+  };
+
+  // 打开新建配方对话框
+  const handleOpenElectrolyteModal = () => {
+    setElectrolyteModalVisible(true);
+    electrolyteForm.resetFields();
+    setSelectedCations([]);
+    setSelectedAnions([]);
+  };
+
+  // 关闭新建配方对话框
+  const handleCloseElectrolyteModal = () => {
+    setElectrolyteModalVisible(false);
+    electrolyteForm.resetFields();
+    setSelectedCations([]);
+    setSelectedAnions([]);
+  };
+
+  // 创建配方
+  const handleCreateElectrolyte = async () => {
+    try {
+      const values = await electrolyteForm.validateFields();
+
+      // 构建请求数据
+      const electrolyteData = {
+        project_id: values.project_id,
+        name: values.name,
+        temperature: values.temperature,
+        solvents: values.solvents || [],
+        cations: selectedCations.map(cat => ({
+          name: cat.name,
+          smiles: cat.smiles,
+          count: cat.count,
+        })),
+        anions: selectedAnions.map(an => ({
+          name: an.name,
+          smiles: an.smiles,
+          count: an.count,
+        })),
+      };
+
+      const newElectrolyte = await createElectrolyteNew(electrolyteData);
+      message.success('配方创建成功');
+
+      // 重新加载配方列表
+      await loadElectrolytes();
+
+      // 自动选择新创建的配方
+      form.setFieldsValue({ electrolyte_id: newElectrolyte.id });
+
+      handleCloseElectrolyteModal();
+    } catch (error: any) {
+      if (error.response) {
+        message.error(error.response?.data?.detail || '创建配方失败');
+      }
+    }
   };
 
   // 提交表单
@@ -577,7 +652,51 @@ export default function Jobs() {
             label="选择电解质配方"
             rules={[{ required: true, message: '请选择电解质配方' }]}
           >
-            <Select placeholder="选择要计算的电解质配方">
+            <Select
+              placeholder="选择要计算的电解质配方"
+              notFoundContent={
+                electrolytes.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="暂无配方"
+                      style={{ marginBottom: 12 }}
+                    />
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={handleOpenElectrolyteModal}
+                      size="small"
+                    >
+                      新建配方
+                    </Button>
+                  </div>
+                ) : undefined
+              }
+              dropdownRender={(menu) => {
+                const hasElectrolytes = electrolytes && electrolytes.length > 0;
+                return (
+                  <>
+                    {menu}
+                    {hasElectrolytes && (
+                      <>
+                        <Divider style={{ margin: '8px 0' }} />
+                        <div style={{ padding: '4px 8px' }}>
+                          <Button
+                            type="link"
+                            icon={<PlusOutlined />}
+                            onClick={handleOpenElectrolyteModal}
+                            style={{ width: '100%', textAlign: 'left' }}
+                          >
+                            新建配方
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </>
+                );
+              }}
+            >
               {electrolytes.map((e) => (
                 <Select.Option key={e.id} value={e.id}>
                   {e.name} ({e.temperature} K)
@@ -1214,6 +1333,38 @@ export default function Jobs() {
             }}
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 新建配方对话框 */}
+      <Modal
+        title={
+          <Space>
+            <ExperimentOutlined style={{ color: '#1677ff' }} />
+            新建电解质配方
+          </Space>
+        }
+        open={electrolyteModalVisible}
+        onOk={handleCreateElectrolyte}
+        onCancel={handleCloseElectrolyteModal}
+        okText="创建"
+        cancelText="取消"
+        width={900}
+        centered
+        styles={{
+          body: { maxHeight: '70vh', overflowY: 'auto', padding: '24px' },
+          header: { borderBottom: '1px solid #f0f0f0', paddingBottom: 16 },
+        }}
+      >
+        <ElectrolyteFormOptimized
+          form={electrolyteForm}
+          projects={projects}
+          initialCations={selectedCations}
+          initialAnions={selectedAnions}
+          onIonsChange={(cations, anions) => {
+            setSelectedCations(cations);
+            setSelectedAnions(anions);
+          }}
+        />
       </Modal>
     </div>
   );
