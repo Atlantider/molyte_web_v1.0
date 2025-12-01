@@ -371,9 +371,9 @@ class PollingWorker:
             slurm_cpus = config.get('slurm_cpus', 16)
             slurm_time = config.get('slurm_time', 7200)
 
-            # 3. 创建工作目录
-            work_base = Path(self.config['local']['work_base_path'])
-            work_dir = work_base / "qc_work" / f"QC-{job_id}-{molecule_name}"
+            # 3. 创建工作目录 - 使用独立的QC工作目录
+            qc_work_base = Path(self.config['local']['qc_work_base_path'])
+            work_dir = qc_work_base / f"QC-{job_id}-{molecule_name}"
             work_dir.mkdir(parents=True, exist_ok=True)
 
             # 4. 生成安全的文件名
