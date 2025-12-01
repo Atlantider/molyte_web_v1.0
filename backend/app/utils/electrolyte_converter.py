@@ -2,6 +2,7 @@
 Utility functions for converting between old and new electrolyte formats
 """
 import math
+import re
 from typing import List, Dict
 from app.schemas.electrolyte import (
     ElectrolyteCreateNew,
@@ -14,6 +15,33 @@ from app.core.logger import logger
 
 # Avogadro's number
 AVOGADRO = 6.02214076e23
+
+
+def strip_ion_charge(name: str) -> str:
+    """
+    从离子名称中移除电荷符号（+、-）
+
+    例如:
+        Na+ -> Na
+        Li+ -> Li
+        PF6- -> PF6
+        TFSI- -> TFSI
+        Ca2+ -> Ca
+        Ca++ -> Ca
+        SO4-- -> SO4
+
+    Args:
+        name: 可能带有电荷符号的离子名称
+
+    Returns:
+        移除电荷符号后的纯净名称
+    """
+    if not name:
+        return name
+    # 移除末尾的所有 + 和 - 符号（包括多个，如 Ca2+, ++, --）
+    # 也移除数字+符号的组合（如 2+, 3-）
+    cleaned = re.sub(r'[0-9]*[+\-]+$', '', name)
+    return cleaned
 
 
 def calculate_box_volume(box: BoxConfig) -> float:
@@ -87,25 +115,29 @@ def convert_new_to_old_format(data: ElectrolyteCreateNew) -> Dict:
         if first_cation_count is None:
             first_cation_count = count
 
+        # 清理离子名称中的电荷符号
+        clean_name = strip_ion_charge(cation.name)
         cations_old.append({
-            "name": cation.name,
-            "smiles": f"[{cation.name}{'+'*cation.charge}]",  # Generate SMILES for ion
+            "name": clean_name,
+            "smiles": f"[{clean_name}{'+'*cation.charge}]",  # Generate SMILES for ion
             "number": count,
             "concentration": cation.concentration,  # Store original concentration for editing
             "charge": cation.charge,  # Store charge for editing
         })
-        logger.info(f"Cation {cation.name}: {cation.concentration} mol/L -> {count} molecules")
-    
+        logger.info(f"Cation {cation.name} -> {clean_name}: {cation.concentration} mol/L -> {count} molecules")
+
     for anion in data.anions:
         count = convert_concentration_to_count(anion.concentration, volume)
+        # 清理离子名称中的电荷符号
+        clean_name = strip_ion_charge(anion.name)
         anions_old.append({
-            "name": anion.name,
-            "smiles": f"[{anion.name}{'-'*abs(anion.charge)}]",  # Generate SMILES for ion
+            "name": clean_name,
+            "smiles": f"[{clean_name}{'-'*abs(anion.charge)}]",  # Generate SMILES for ion
             "number": count,
             "charge": anion.charge,  # Store charge for later adjustment and editing
             "concentration": anion.concentration,  # Store original concentration for editing
         })
-        logger.info(f"Anion {anion.name}: {anion.concentration} mol/L -> {count} molecules")
+        logger.info(f"Anion {anion.name} -> {clean_name}: {anion.concentration} mol/L -> {count} molecules")
 
     # Adjust last anion count to ensure electroneutrality
     if cations_old and anions_old:
@@ -173,15 +205,15 @@ def convert_new_to_old_format(data: ElectrolyteCreateNew) -> Dict:
         # Auto-generate description: 阳离子-阴离子-溶剂
         parts = []
 
-        # Add cations (sorted by concentration, take top 2)
+        # Add cations (sorted by concentration, take top 2) - 使用清理后的名称
         sorted_cations = sorted(data.cations, key=lambda x: x.concentration, reverse=True)
-        top_cations = [c.name for c in sorted_cations[:2]]
+        top_cations = [strip_ion_charge(c.name) for c in sorted_cations[:2]]
         if top_cations:
             parts.append('-'.join(top_cations))
 
-        # Add anions (sorted by concentration, take top 2)
+        # Add anions (sorted by concentration, take top 2) - 使用清理后的名称
         sorted_anions = sorted(data.anions, key=lambda x: x.concentration, reverse=True)
-        top_anions = [a.name for a in sorted_anions[:2]]
+        top_anions = [strip_ion_charge(a.name) for a in sorted_anions[:2]]
         if top_anions:
             parts.append('-'.join(top_anions))
 
@@ -279,14 +311,17 @@ def convert_old_to_new_format(
             moles = count / AVOGADRO
             concentration = moles / volume_liters
 
+        # 清理离子名称中的电荷符号
+        clean_name = strip_ion_charge(cation["name"])
+
         # Get charge from stored value or lookup
         if "charge" in cation and cation["charge"] is not None:
             charge = cation["charge"]
         else:
-            charge = ions_info.get(cation["name"], {}).get("charge", 1)
+            charge = ions_info.get(clean_name, {}).get("charge", 1)
 
         cations_new.append({
-            "name": cation["name"],
+            "name": clean_name,
             "charge": charge,
             "concentration": round(concentration, 6)
         })
@@ -304,14 +339,17 @@ def convert_old_to_new_format(
             moles = count / AVOGADRO
             concentration = moles / volume_liters
 
+        # 清理离子名称中的电荷符号
+        clean_name = strip_ion_charge(anion["name"])
+
         # Get charge from stored value or lookup
         if "charge" in anion and anion["charge"] is not None:
             charge = anion["charge"]
         else:
-            charge = ions_info.get(anion["name"], {}).get("charge", -1)
+            charge = ions_info.get(clean_name, {}).get("charge", -1)
 
         anions_new.append({
-            "name": anion["name"],
+            "name": clean_name,
             "charge": charge,
             "concentration": round(concentration, 6)
         })

@@ -28,6 +28,7 @@ from app.dependencies import get_current_user
 from app.api.v1.electrolytes import create_electrolyte
 from app.api.v1.qc import create_qc_job
 from app.api.v1.jobs import create_md_job
+from app.utils.electrolyte_converter import strip_ion_charge
 from app.utils.hash import calculate_system_hash
 
 router = APIRouter()
@@ -384,12 +385,12 @@ async def process_electrolyte_import(
             if not electrolyte_data.box_size:
                 raise ValueError("盒子尺寸(Å)为必填字段，请填写")
 
-            # 构建分子列表
-            cation_names = parse_semicolon_list(electrolyte_data.cation_names)
+            # 构建分子列表 - 清理离子名称中的电荷符号
+            cation_names = [strip_ion_charge(name) for name in parse_semicolon_list(electrolyte_data.cation_names)]
             cation_smiles_list = parse_semicolon_list(electrolyte_data.cation_smiles)
             cation_numbers_list = [int(n) for n in parse_semicolon_list(electrolyte_data.cation_numbers)]
 
-            anion_names = parse_semicolon_list(electrolyte_data.anion_names)
+            anion_names = [strip_ion_charge(name) for name in parse_semicolon_list(electrolyte_data.anion_names)]
             anion_smiles_list = parse_semicolon_list(electrolyte_data.anion_smiles)
             anion_numbers_list = [int(n) for n in parse_semicolon_list(electrolyte_data.anion_numbers)]
 
