@@ -6,7 +6,7 @@ api:
   base_url: "https://www.molyte.xyz/api/v1"
   
   # Worker 认证 Token（在腾讯云后端创建专用的 Worker 用户）
-  worker_token: "your-worker-token-here"
+  worker_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ3b3JrZXIiLCJleHAiOjE3OTYxMTIzMTJ9.1lXixHDkAD4oqBHQiPAPdo0D0uHY6te6H-X7607Ie9o"
   
   # 轮询间隔（秒）
   poll_interval: 30
@@ -17,16 +17,16 @@ api:
 # 腾讯云 COS 配置
 cos:
   # SecretId（在腾讯云控制台 -> 访问管理 -> API密钥管理 中获取）
-  secret_id: "your-secret-id"
+  secret_id: "AKIDNqAKH4e1EH7mEWhDbswmU6asxsa5NUeg"
   
   # SecretKey
-  secret_key: "your-secret-key"
+  secret_key: "teGhwyoSt9B3iAOPFxSltpY3LcicIo7l"
   
   # COS 地域（ap-beijing, ap-shanghai, ap-guangzhou 等）
-  region: "ap-guangzhou"
+  region: "ap-beijing"
   
   # Bucket 名称（格式：bucket-appid）
-  bucket: "molyte-results-1234567890"
+  bucket: "molyte-results-1308567295"
   
   # 结果文件路径前缀
   result_prefix: "results/"
@@ -37,7 +37,7 @@ local:
   work_base_path: "/public/home/xiaoji/molyte_web/data/md_work"
   
   # QC 工作目录
-  qc_work_base_path: "/public/home/xiaoji/molyte_web/data/qc_jobs"
+  qc_work_base_path: "/public/home/xiaoji/molyte_web/data/qc_work"
   
   # 初始盐文件路径
   initial_salts_path: "/public/home/xiaoji/molyte_web/data/initial_salts"

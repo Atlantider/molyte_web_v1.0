@@ -1,0 +1,11 @@
+%nprocshared=16
+%mem=8GB
+%chk=PF_B3LYP_6-31ppgd_p_pcm_Acetone.chk
+# opt freq B3LYP/6-31++g(d,p) em=gd3bj scrf=(pcm,solvent=Acetone)
+
+PF_B3LYP_6-31ppgd,p_pcm_Acetone
+
+0 1
+! SMILES: F[P-](F)(F)(F)(F)F
+! 请手动添加分子坐标
+

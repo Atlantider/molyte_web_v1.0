@@ -1,0 +1,10 @@
+%nprocshared=16
+%mem=8GB
+%chk=Na_B3LYP_6-31ppgd_p_pcm_Water.chk
+# opt freq B3LYP/6-31++g(d,p) em=gd3bj scrf=(pcm,solvent=Water)
+
+Na+_B3LYP_6-31ppgd,p_pcm_Water
+
+0 1
+ Na    0.00000000    0.00000000    0.00000000
+

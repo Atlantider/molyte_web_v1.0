@@ -52,7 +52,7 @@ molyte_web/
 │   └── package.json
 ├── data/               # 数据目录
 │   ├── md_work/       # MD 任务工作目录
-│   ├── qc_jobs/       # QC 任务工作目录
+│   ├── qc_work/       # QC 任务工作目录
 │   ├── initial_salts/ # 盐类配置文件
 │   └── charges/       # 电荷计算结果
 ├── start_complete.sh  # 启动所有服务

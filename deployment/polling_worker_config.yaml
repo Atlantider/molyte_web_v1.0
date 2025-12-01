@@ -37,7 +37,7 @@ local:
   work_base_path: "/public/home/xiaoji/molyte_web/data/md_work"
   
   # QC 工作目录
-  qc_work_base_path: "/public/home/xiaoji/molyte_web/data/qc_jobs"
+  qc_work_base_path: "/public/home/xiaoji/molyte_web/data/qc_work"
   
   # 初始盐文件路径
   initial_salts_path: "/public/home/xiaoji/molyte_web/data/initial_salts"

@@ -59,7 +59,7 @@ class Settings:
     # QC paths
     QC_WORK_BASE_PATH: Path = Path(os.getenv(
         "QC_WORK_BASE_PATH",
-        "/public/home/xiaoji/molyte_web/data/qc_jobs"
+        "/public/home/xiaoji/molyte_web/data/qc_work"
     ))
     
     # Slurm settings
