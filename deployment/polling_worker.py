@@ -873,6 +873,11 @@ echo "QC calculation completed"
                                     additional_uploaded = self._upload_additional_files(job_id, png_files)
                                     uploaded_files.extend(additional_uploaded)
                                     self.logger.info(f"额外上传了 {len(additional_uploaded)} 个图片文件")
+
+                                    # 将COS图片路径添加到QC结果中
+                                    cos_image_paths = self._map_local_to_cos_paths(job_id, png_files, additional_uploaded)
+                                    qc_result.update(cos_image_paths)
+                                    self.logger.info(f"图片COS路径: {cos_image_paths}")
                         except Exception as e:
                             self.logger.warning(f"QC 可视化生成失败: {e}")
 
@@ -2158,6 +2163,31 @@ echo "QC calculation completed"
         except Exception as e:
             self.logger.error(f"上传额外文件失败: {e}", exc_info=True)
             return []
+
+    def _map_local_to_cos_paths(self, job_id: int, local_files: List[Path], cos_keys: List[str]) -> Dict[str, str]:
+        """将本地图片文件映射到COS路径，用于数据库存储"""
+        result = {}
+
+        # 创建文件名到COS key的映射
+        filename_to_cos = {}
+        for cos_key in cos_keys:
+            filename = cos_key.split('/')[-1]  # 从 results/105/ESP.png 提取 ESP.png
+            filename_to_cos[filename] = cos_key
+
+        # 映射特定的图片类型
+        for local_file in local_files:
+            filename = local_file.name
+            cos_key = filename_to_cos.get(filename)
+
+            if cos_key:
+                if filename.upper().startswith('ESP'):
+                    result['esp_image_path'] = cos_key
+                elif filename.upper().startswith('HOMO'):
+                    result['homo_image_path'] = cos_key
+                elif filename.upper().startswith('LUMO'):
+                    result['lumo_image_path'] = cos_key
+
+        return result
 
     def _update_job_status(
         self,

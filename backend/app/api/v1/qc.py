@@ -1207,15 +1207,26 @@ def get_esp_image(
     if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    if not result.esp_image_path or not os.path.exists(result.esp_image_path):
-        raise HTTPException(status_code=404, detail="ESP image not found")
+    if not result.esp_image_path:
+        raise HTTPException(status_code=404, detail="ESP image not available for this calculation")
 
-    return FileResponse(
-        result.esp_image_path,
-        media_type="image/png",
-        filename=f"esp_{result_id}.png",
-        headers={"Content-Disposition": f"inline; filename=esp_{result_id}.png"}
-    )
+    # 检查是否是COS路径（以results/开头）还是本地路径
+    if result.esp_image_path.startswith('results/'):
+        # COS路径，重定向到COS URL
+        from fastapi.responses import RedirectResponse
+        cos_url = f"https://molyte-results-1308567295.cos.ap-beijing.myqcloud.com/{result.esp_image_path}"
+        return RedirectResponse(url=cos_url, status_code=302)
+    else:
+        # 本地路径，检查文件存在性
+        if not os.path.exists(result.esp_image_path):
+            raise HTTPException(status_code=404, detail="ESP image not found")
+
+        return FileResponse(
+            result.esp_image_path,
+            media_type="image/png",
+            filename=f"esp_{result_id}.png",
+            headers={"Content-Disposition": f"inline; filename=esp_{result_id}.png"}
+        )
 
 
 @router.get("/esp-image-download/{result_id}")
@@ -1263,15 +1274,26 @@ def get_homo_image(
     if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    if not result.homo_image_path or not os.path.exists(result.homo_image_path):
-        raise HTTPException(status_code=404, detail="HOMO image not found")
+    if not result.homo_image_path:
+        raise HTTPException(status_code=404, detail="HOMO image not available for this calculation")
 
-    return FileResponse(
-        result.homo_image_path,
-        media_type="image/png",
-        filename=f"homo_{result_id}.png",
-        headers={"Content-Disposition": f"inline; filename=homo_{result_id}.png"}
-    )
+    # 检查是否是COS路径（以results/开头）还是本地路径
+    if result.homo_image_path.startswith('results/'):
+        # COS路径，重定向到COS URL
+        from fastapi.responses import RedirectResponse
+        cos_url = f"https://molyte-results-1308567295.cos.ap-beijing.myqcloud.com/{result.homo_image_path}"
+        return RedirectResponse(url=cos_url, status_code=302)
+    else:
+        # 本地路径，检查文件存在性
+        if not os.path.exists(result.homo_image_path):
+            raise HTTPException(status_code=404, detail="HOMO image not found")
+
+        return FileResponse(
+            result.homo_image_path,
+            media_type="image/png",
+            filename=f"homo_{result_id}.png",
+            headers={"Content-Disposition": f"inline; filename=homo_{result_id}.png"}
+        )
 
 
 @router.get("/lumo-image/{result_id}")
@@ -1291,15 +1313,26 @@ def get_lumo_image(
     if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    if not result.lumo_image_path or not os.path.exists(result.lumo_image_path):
-        raise HTTPException(status_code=404, detail="LUMO image not found")
+    if not result.lumo_image_path:
+        raise HTTPException(status_code=404, detail="LUMO image not available for this calculation")
 
-    return FileResponse(
-        result.lumo_image_path,
-        media_type="image/png",
-        filename=f"lumo_{result_id}.png",
-        headers={"Content-Disposition": f"inline; filename=lumo_{result_id}.png"}
-    )
+    # 检查是否是COS路径（以results/开头）还是本地路径
+    if result.lumo_image_path.startswith('results/'):
+        # COS路径，重定向到COS URL
+        from fastapi.responses import RedirectResponse
+        cos_url = f"https://molyte-results-1308567295.cos.ap-beijing.myqcloud.com/{result.lumo_image_path}"
+        return RedirectResponse(url=cos_url, status_code=302)
+    else:
+        # 本地路径，检查文件存在性
+        if not os.path.exists(result.lumo_image_path):
+            raise HTTPException(status_code=404, detail="LUMO image not found")
+
+        return FileResponse(
+            result.lumo_image_path,
+            media_type="image/png",
+            filename=f"lumo_{result_id}.png",
+            headers={"Content-Disposition": f"inline; filename=lumo_{result_id}.png"}
+        )
 
 
 @router.get("/esp-image-by-smiles/{smiles:path}")
