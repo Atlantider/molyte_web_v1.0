@@ -380,6 +380,70 @@ async def update_job_status(
         )
 
 
+@router.get("/jobs/{job_id}/check_cancelled")
+async def check_job_cancelled(
+    job_id: int,
+    job_type: str = "MD",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    检查任务是否已被用户取消
+
+    Worker 定期调用此接口检查任务是否需要取消
+    """
+    # 验证是否是 Worker 用户（ADMIN 角色）
+    if not is_worker_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only worker users can check job cancellation"
+        )
+
+    job_type = job_type.upper()
+
+    if job_type == "MD":
+        job = db.query(MDJob).filter(MDJob.id == job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"MD Job {job_id} not found"
+            )
+
+        # 检查是否已被取消
+        cancelled = job.status == JobStatus.CANCELLED
+
+        return {
+            "job_id": job_id,
+            "type": "MD",
+            "cancelled": cancelled,
+            "status": job.status.value
+        }
+
+    elif job_type == "QC":
+        job = db.query(QCJob).filter(QCJob.id == job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"QC Job {job_id} not found"
+            )
+
+        # 检查是否已被取消
+        cancelled = job.status == QCJobStatus.CANCELLED
+
+        return {
+            "job_id": job_id,
+            "type": "QC",
+            "cancelled": cancelled,
+            "status": job.status.value
+        }
+
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid job type: {job_type}"
+        )
+
+
 @router.get("/jobs/{job_id}/input")
 async def get_job_input_data(
     job_id: int,

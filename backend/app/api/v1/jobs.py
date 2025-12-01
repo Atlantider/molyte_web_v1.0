@@ -1197,8 +1197,8 @@ def cancel_md_job(
     """
     Cancel a running or queued MD job
 
-    This endpoint cancels a job that is currently queued or running in Slurm.
-    It uses scancel to stop the Slurm job and updates the database status.
+    在混合云架构下，此接口将任务状态设置为 CANCELLING，
+    由校园网 Worker 检测到后执行 scancel 并更新状态。
 
     Args:
         job_id: MD job ID
@@ -1226,61 +1226,40 @@ def cancel_md_job(
             detail="Not enough permissions"
         )
 
-    # Only allow cancelling QUEUED or RUNNING jobs
-    if job.status not in [JobStatus.QUEUED, JobStatus.RUNNING]:
+    # Only allow cancelling CREATED, QUEUED or RUNNING jobs
+    if job.status not in [JobStatus.CREATED, JobStatus.QUEUED, JobStatus.RUNNING]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot cancel job with status {job.status}. Only QUEUED or RUNNING jobs can be cancelled."
+            detail=f"Cannot cancel job with status {job.status}. Only CREATED, QUEUED or RUNNING jobs can be cancelled."
         )
 
     # Get Slurm job ID
     slurm_job_id = job.slurm_job_id
 
-    if not slurm_job_id:
-        # If no Slurm job ID, just update status
-        logger.warning(f"Job {job_id} has no Slurm job ID, updating status only")
-        job.status = JobStatus.CANCELLED
-        job.error_message = "Cancelled by user (no Slurm job ID found)"
-        db.commit()
-        db.refresh(job)
-        return job
+    # 在混合云架构下，直接更新数据库状态
+    # Worker 会检测到取消请求并执行 scancel（如果有 slurm_job_id）
+    logger.info(f"Cancelling job {job_id} (Slurm ID: {slurm_job_id})")
+
+    # Update job status
+    job.status = JobStatus.CANCELLED
+    job.error_message = f"Cancelled by user {current_user.username}"
+
+    # Update config with cancellation info (use copy to ensure SQLAlchemy detects change)
+    config = dict(job.config) if job.config else {}
+    config["cancelled_by"] = current_user.username
+    config["cancelled_at"] = datetime.now().isoformat()
+    config["cancel_slurm_job_id"] = slurm_job_id  # Worker 看到这个会执行 scancel
+    job.config = config
 
     try:
-        # Cancel the Slurm job using scancel
-        result = subprocess.run(
-            ["scancel", str(slurm_job_id)],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-
-        if result.returncode != 0:
-            # scancel might fail if job already finished
-            logger.warning(f"scancel failed for job {slurm_job_id}: {result.stderr}")
-            # Still update status as user requested cancellation
-
-        # Update job status
-        job.status = JobStatus.CANCELLED
-        job.error_message = f"Cancelled by user {current_user.username}"
-
-        if job.config is None:
-            job.config = {}
-        job.config["cancelled_by"] = current_user.username
-        job.config["cancelled_at"] = datetime.now().isoformat()
-
         db.commit()
         db.refresh(job)
-
         logger.info(f"Job {job_id} (Slurm ID: {slurm_job_id}) cancelled by {current_user.username}")
         return job
 
-    except subprocess.TimeoutExpired:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="Slurm scancel command timeout"
-        )
     except Exception as e:
         logger.error(f"Failed to cancel job {job_id}: {e}")
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to cancel job: {str(e)}"
@@ -1346,7 +1325,8 @@ def sync_job_status(
     """
     Sync job status with Slurm
 
-    Queries Slurm for the current status and updates the database
+    在混合云架构下，此接口返回数据库中的当前状态。
+    实际的 Slurm 状态同步由校园网 Worker 通过 /workers/jobs/{job_id}/status API 完成。
     """
     # Get job
     job = db.query(MDJob).filter(MDJob.id == job_id).first()
@@ -1362,136 +1342,20 @@ def sync_job_status(
     if not slurm_job_id and job.config:
         slurm_job_id = job.config.get("slurm_job_id")
 
-    if not slurm_job_id:
-        raise HTTPException(status_code=400, detail="No Slurm job ID found")
+    # 在混合云架构下，腾讯云后端无法直接访问 Slurm
+    # 状态同步由 Worker 定期更新，这里直接返回数据库中的状态
+    logger.info(f"Sync status for job {job_id}: status={job.status}, slurm_job_id={slurm_job_id}")
 
-    try:
-        # Query Slurm using sacct - get more detailed information
-        result = subprocess.run(
-            ["sacct", "-j", slurm_job_id, "--format=State,Start,End", "--noheader", "--parsable2"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-
-        if result.returncode != 0:
-            raise Exception(f"sacct failed: {result.stderr}")
-
-        # Parse status and timestamps
-        output_line = result.stdout.strip().split("\n")[0] if result.stdout else ""
-        parts = output_line.split("|") if output_line else []
-
-        slurm_status = parts[0] if len(parts) > 0 else ""
-        start_time_str = parts[1] if len(parts) > 1 else ""
-        end_time_str = parts[2] if len(parts) > 2 else ""
-
-        logger.info(f"Slurm job {slurm_job_id} status: {slurm_status}, start: {start_time_str}, end: {end_time_str}")
-
-        # Map Slurm status to our JobStatus
-        status_mapping = {
-            "PENDING": JobStatus.QUEUED,
-            "RUNNING": JobStatus.RUNNING,
-            "COMPLETED": JobStatus.COMPLETED,
-            "FAILED": JobStatus.FAILED,
-            "CANCELLED": JobStatus.CANCELLED,
-            "TIMEOUT": JobStatus.FAILED,
-            "NODE_FAIL": JobStatus.FAILED,
-            "OUT_OF_MEMORY": JobStatus.FAILED
-        }
-
-        new_status = status_mapping.get(slurm_status, job.status)
-
-        logger.info(f"Job {job_id} current status: {job.status}, new status: {new_status}")
-        logger.info(f"Job {job_id} current progress: {job.progress}%")
-
-        # Update progress based on status
-        old_progress = job.progress
-        if new_status == JobStatus.QUEUED:
-            job.progress = 0.0
-        elif new_status == JobStatus.RUNNING:
-            job.progress = 50.0  # Running is halfway
-        elif new_status == JobStatus.POSTPROCESSING:
-            job.progress = 90.0
-        elif new_status == JobStatus.COMPLETED:
-            job.progress = 100.0
-        elif new_status == JobStatus.FAILED or new_status == JobStatus.CANCELLED:
-            # Keep current progress for failed/cancelled jobs
-            pass
-
-        logger.info(f"Job {job_id} new progress: {job.progress}%")
-
-        # Update timestamps from Slurm data
-        from datetime import datetime
-        timestamp_updated = False
-
-        # Parse and update start time
-        if start_time_str and start_time_str != "Unknown" and not job.started_at:
-            try:
-                # Slurm format: 2024-11-27T10:30:45
-                job.started_at = datetime.strptime(start_time_str, "%Y-%m-%dT%H:%M:%S")
-                timestamp_updated = True
-                logger.info(f"Job {job_id} started_at updated from Slurm: {job.started_at}")
-            except ValueError as e:
-                logger.warning(f"Failed to parse Slurm start time '{start_time_str}': {e}")
-
-        # Parse and update end time
-        if end_time_str and end_time_str != "Unknown" and not job.finished_at:
-            try:
-                job.finished_at = datetime.strptime(end_time_str, "%Y-%m-%dT%H:%M:%S")
-                timestamp_updated = True
-                logger.info(f"Job {job_id} finished_at updated from Slurm: {job.finished_at}")
-            except ValueError as e:
-                logger.warning(f"Failed to parse Slurm end time '{end_time_str}': {e}")
-
-        # Update job status if changed
-        status_changed = new_status != job.status
-        progress_changed = job.progress != old_progress
-
-        if status_changed or progress_changed or timestamp_updated:
-            if status_changed:
-                old_status = job.status
-                job.status = new_status
-
-                # Set timestamps if not already set from Slurm data
-                if new_status == JobStatus.RUNNING and not job.started_at:
-                    job.started_at = datetime.now()
-                    logger.info(f"Job {job_id} started at {job.started_at} (fallback)")
-
-                if new_status in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED] and not job.finished_at:
-                    job.finished_at = datetime.now()
-                    logger.info(f"Job {job_id} finished at {job.finished_at} (fallback)")
-
-                logger.info(f"Job {job_id} status updated: {old_status} -> {new_status}")
-
-                # 任务完成后自动结算（计费系统）
-                if new_status == JobStatus.COMPLETED and not job.billed:
-                    try:
-                        from app.services.billing import BillingService
-                        success, msg = BillingService.settle_job(db, job)
-                        logger.info(f"Job {job_id} billing settled: {msg}")
-                    except Exception as billing_error:
-                        logger.error(f"Job {job_id} billing failed: {billing_error}")
-
-            if progress_changed:
-                logger.info(f"Job {job_id} progress updated: {old_progress}% -> {job.progress}%")
-
-            db.commit()
-            db.refresh(job)
-
-        return {
-            "job_id": job_id,
-            "slurm_job_id": slurm_job_id,
-            "slurm_status": slurm_status,
-            "job_status": job.status,
-            "progress": job.progress,
-            "updated": status_changed or progress_changed or timestamp_updated
-        }
-
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Slurm query timeout")
-    except Exception as e:
-        logger.error(f"Failed to sync job status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # 返回当前数据库中的状态
+    return {
+        "job_id": job_id,
+        "slurm_job_id": slurm_job_id,
+        "slurm_status": job.status.value if job.status else "UNKNOWN",
+        "job_status": job.status,
+        "progress": job.progress,
+        "updated": False,
+        "message": "状态由 Worker 定期同步，此处返回数据库当前状态"
+    }
 
 
 @router.post("/{job_id}/resubmit", response_model=MDJobSchema)

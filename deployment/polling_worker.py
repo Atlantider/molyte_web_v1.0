@@ -629,28 +629,79 @@ echo "QC calculation completed"
     def _check_running_jobs(self):
         """检查运行中的任务状态"""
         completed_jobs = []
-        
+
         for job_id, job_info in self.running_jobs.items():
             try:
                 slurm_job_id = job_info['slurm_job_id']
+
+                # 检查任务是否被用户取消
+                if self._check_if_cancelled(job_id, job_info['type']):
+                    self.logger.info(f"任务 {job_id} 已被用户取消，执行 scancel")
+                    self._cancel_slurm_job(slurm_job_id)
+                    completed_jobs.append(job_id)
+                    continue
+
                 status = self._check_slurm_status(slurm_job_id)
-                
+
                 if status == 'COMPLETED':
                     self.logger.info(f"任务 {job_id} (Slurm: {slurm_job_id}) 已完成")
                     self._handle_job_completion(job_id, job_info)
                     completed_jobs.append(job_id)
-                    
+
                 elif status == 'FAILED':
                     self.logger.error(f"任务 {job_id} (Slurm: {slurm_job_id}) 失败")
                     self._update_job_status(job_id, 'FAILED', job_info['type'])
                     completed_jobs.append(job_id)
-                    
+
+                elif status == 'CANCELLED':
+                    self.logger.info(f"任务 {job_id} (Slurm: {slurm_job_id}) 已取消")
+                    completed_jobs.append(job_id)
+
             except Exception as e:
                 self.logger.error(f"检查任务 {job_id} 状态失败: {e}")
-        
+
         # 移除已完成的任务
         for job_id in completed_jobs:
             del self.running_jobs[job_id]
+
+    def _check_if_cancelled(self, job_id: int, job_type: str) -> bool:
+        """检查任务是否被用户取消（通过 API 查询）"""
+        try:
+            endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/check_cancelled"
+            params = {'job_type': job_type.upper()}
+
+            response = requests.get(
+                endpoint,
+                headers=self.api_headers,
+                params=params,
+                timeout=self.config['api']['timeout']
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('cancelled', False)
+
+            return False
+
+        except Exception as e:
+            self.logger.warning(f"检查任务 {job_id} 取消状态失败: {e}")
+            return False
+
+    def _cancel_slurm_job(self, slurm_job_id: str):
+        """取消 Slurm 任务"""
+        try:
+            cmd = f"scancel {slurm_job_id}"
+            result = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True, timeout=10
+            )
+
+            if result.returncode == 0:
+                self.logger.info(f"成功取消 Slurm 任务 {slurm_job_id}")
+            else:
+                self.logger.warning(f"取消 Slurm 任务失败: {result.stderr}")
+
+        except Exception as e:
+            self.logger.error(f"取消 Slurm 任务 {slurm_job_id} 失败: {e}")
 
     def _check_slurm_status(self, slurm_job_id: str) -> str:
         """检查 Slurm 任务状态"""
@@ -667,6 +718,8 @@ echo "QC calculation completed"
                     return 'RUNNING'
                 elif status in ['COMPLETED']:
                     return 'COMPLETED'
+                elif status in ['CANCELLED']:
+                    return 'CANCELLED'
                 else:
                     return 'FAILED'
             else:
@@ -679,6 +732,8 @@ echo "QC calculation completed"
                     status = result.stdout.strip().split()[0]
                     if 'COMPLETED' in status:
                         return 'COMPLETED'
+                    elif 'CANCELLED' in status:
+                        return 'CANCELLED'
                     else:
                         return 'FAILED'
                 return 'UNKNOWN'
