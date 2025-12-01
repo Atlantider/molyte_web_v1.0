@@ -1034,32 +1034,78 @@ echo "QC calculation completed"
                         results['rdf_results'] = rdf_data
                         self.logger.info(f"解析到 {len(rdf_data)} 个 RDF 数据对（简化模式）")
 
-            # 2. 解析 MSD 数据（使用后端的 LAMMPSMSDReader）
+            # 2. 解析 MSD 数据（使用后端的完整计算逻辑）
             try:
-                from app.workers.lammps_msd_reader import LAMMPSMSDReader
+                from app.workers.lammps_msd_reader import (
+                    LAMMPSMSDReader,
+                    calculate_diffusion_coefficient,
+                    calculate_ionic_conductivity,
+                    calculate_mobility,
+                )
+                from app.tasks.msd_processor import extract_box_volume_and_ion_counts, get_ion_charge
 
                 msd_reader = LAMMPSMSDReader(work_dir)
                 msd_files = msd_reader.find_msd_files()
 
+                # 提取盒子体积和离子数量（用于电导率计算）
+                box_volume, ion_counts = extract_box_volume_and_ion_counts(work_dir)
+                self.logger.info(f"Box volume: {box_volume}, Ion counts: {ion_counts}")
+
+                temperature = 298.15  # 默认室温
+
                 for msd_file in msd_files:
                     msd_data = msd_reader.read_msd_file(msd_file)
                     if msd_data:
+                        species = msd_data['species']
+                        time_arr = msd_data['time']
+                        msd_total = msd_data['msd_total']
+
+                        # 计算扩散系数
+                        diffusion_coeff = calculate_diffusion_coefficient(time_arr, msd_total)
+
+                        # 获取离子电荷
+                        charge = get_ion_charge(species)
+
+                        # 计算迁移率
+                        mobility = calculate_mobility(diffusion_coeff, charge, temperature)
+
+                        # 计算电导率（需要盒子体积和离子数量）
+                        ionic_conductivity = None
+                        if box_volume and ion_counts and diffusion_coeff:
+                            ion_count = ion_counts.get(species, 0)
+                            # 模糊匹配
+                            if ion_count == 0:
+                                for key, val in ion_counts.items():
+                                    if key in species or species in key:
+                                        ion_count = val
+                                        break
+
+                            if ion_count > 0:
+                                ionic_conductivity = calculate_ionic_conductivity(
+                                    diffusion_coeff, ion_count, box_volume, charge, temperature
+                                )
+
                         # 转换为 API 上传格式
                         msd_item = {
-                            'species': msd_data['species'],
-                            't_values': msd_data['time'],
+                            'species': species,
+                            't_values': time_arr,
                             'msd_x_values': msd_data.get('msd_x'),
                             'msd_y_values': msd_data.get('msd_y'),
                             'msd_z_values': msd_data.get('msd_z'),
-                            'msd_total_values': msd_data['msd_total'],
+                            'msd_total_values': msd_total,
+                            'diffusion_coefficient': diffusion_coeff,
+                            'mobility': mobility,
+                            'ionic_conductivity': ionic_conductivity,
+                            'charge': charge,
                             'labels': msd_data.get('labels'),
                         }
                         results['msd_results'].append(msd_item)
+                        self.logger.info(f"MSD {species}: D={diffusion_coeff}, μ={mobility}, σ={ionic_conductivity}")
 
                 if results['msd_results']:
-                    self.logger.info(f"解析到 {len(results['msd_results'])} 个 MSD 数据")
+                    self.logger.info(f"解析到 {len(results['msd_results'])} 个 MSD 数据（完整计算）")
             except ImportError as e:
-                self.logger.warning(f"无法导入 LAMMPSMSDReader，使用简化解析: {e}")
+                self.logger.warning(f"无法导入后端 MSD 模块，使用简化解析: {e}")
                 # 降级到简化解析 - 正确的文件名模式
                 msd_files = list(work_dir.glob("out_*_msd.dat"))
                 for msd_file in msd_files:
