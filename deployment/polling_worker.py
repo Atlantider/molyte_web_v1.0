@@ -658,11 +658,14 @@ echo "QC calculation completed"
 
                 elif status == 'FAILED':
                     self.logger.error(f"任务 {job_id} (Slurm: {slurm_job_id}) 失败")
-                    self._update_job_status(job_id, 'FAILED', job_info['type'])
+                    # 获取失败原因
+                    error_msg = self._get_job_failure_reason(slurm_job_id, job_info.get('work_dir'))
+                    self._update_job_status(job_id, 'FAILED', job_info['type'], error_message=error_msg)
                     completed_jobs.append(job_id)
 
                 elif status == 'CANCELLED':
                     self.logger.info(f"任务 {job_id} (Slurm: {slurm_job_id}) 已取消")
+                    self._update_job_status(job_id, 'CANCELLED', job_info['type'], error_message="任务被取消")
                     completed_jobs.append(job_id)
 
             except Exception as e:
@@ -758,6 +761,77 @@ echo "QC calculation completed"
         except Exception as e:
             self.logger.error(f"检查 Slurm 状态失败: {e}")
             return 'UNKNOWN'
+
+    def _get_job_failure_reason(self, slurm_job_id: str, work_dir: str = None) -> str:
+        """获取任务失败的原因"""
+        reasons = []
+
+        try:
+            # 1. 从 sacct 获取失败原因
+            cmd = f"sacct -j {slurm_job_id} -n -o State,ExitCode,Reason --parsable2"
+            result = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                lines = result.stdout.strip().split('\n')
+                for line in lines:
+                    parts = line.split('|')
+                    if len(parts) >= 3:
+                        state, exit_code, reason = parts[0], parts[1], parts[2]
+                        if 'FAILED' in state or 'TIMEOUT' in state or 'OUT_OF_MEMORY' in state:
+                            reasons.append(f"Slurm状态: {state}, 退出码: {exit_code}")
+                            if reason and reason != 'None':
+                                reasons.append(f"原因: {reason}")
+                            break
+
+            # 2. 检查 slurm 输出文件
+            if work_dir:
+                work_path = Path(work_dir)
+                slurm_out = work_path / f"slurm-{slurm_job_id}.out"
+                if slurm_out.exists():
+                    # 读取最后 50 行
+                    content = slurm_out.read_text()
+                    last_lines = content.strip().split('\n')[-50:]
+
+                    # 查找错误信息
+                    error_keywords = ['ERROR', 'Error', 'error', 'FATAL', 'Fatal',
+                                     'Segmentation fault', 'OOM', 'Out of memory',
+                                     'CANCELLED', 'TIME LIMIT', 'srun: error']
+                    for line in last_lines:
+                        if any(kw in line for kw in error_keywords):
+                            reasons.append(f"日志: {line.strip()[:200]}")
+                            break
+
+                # 3. 检查 LAMMPS 日志（如果是 MD 任务）
+                log_lammps = work_path / "log.lammps"
+                if log_lammps.exists():
+                    content = log_lammps.read_text()
+                    last_lines = content.strip().split('\n')[-30:]
+                    for line in last_lines:
+                        if 'ERROR' in line or 'error' in line.lower():
+                            reasons.append(f"LAMMPS: {line.strip()[:200]}")
+                            break
+
+                # 4. 检查 Gaussian 日志（如果是 QC 任务）
+                for log_file in work_path.glob("*.log"):
+                    content = log_file.read_text()
+                    if 'Error termination' in content or 'Convergence failure' in content:
+                        # 获取错误行
+                        lines = content.split('\n')
+                        for i, line in enumerate(lines):
+                            if 'Error termination' in line or 'Convergence failure' in line:
+                                reasons.append(f"Gaussian: {line.strip()[:200]}")
+                                break
+                        break
+
+        except Exception as e:
+            self.logger.error(f"获取失败原因时出错: {e}")
+            reasons.append(f"获取详细原因失败: {str(e)}")
+
+        if reasons:
+            return "; ".join(reasons)
+        else:
+            return f"Slurm 任务 {slurm_job_id} 失败，未能获取详细原因"
 
     def _handle_job_completion(self, job_id: int, job_info: Dict):
         """处理任务完成"""
