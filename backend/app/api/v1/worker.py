@@ -290,7 +290,13 @@ async def update_job_status(
         )
     
     job_type = status_update.job_type.upper()
-    
+
+    # 状态映射：Worker 可能发送 PROCESSING，映射到 RUNNING
+    status_mapping = {
+        "PROCESSING": "RUNNING",
+    }
+    mapped_status = status_mapping.get(status_update.status, status_update.status)
+
     if job_type == "MD":
         job = db.query(MDJob).filter(MDJob.id == job_id).first()
         if not job:
@@ -298,40 +304,40 @@ async def update_job_status(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"MD Job {job_id} not found"
             )
-        
+
         # 更新状态
-        job.status = JobStatus[status_update.status]
+        job.status = JobStatus[mapped_status]
         
         if status_update.slurm_job_id:
             job.slurm_job_id = status_update.slurm_job_id
-        
+
         if status_update.work_dir:
             job.work_dir = status_update.work_dir
-        
+
         if status_update.error_message:
             job.error_message = status_update.error_message
-        
-        if status_update.status == "RUNNING" and not job.started_at:
+
+        if mapped_status == "RUNNING" and not job.started_at:
             job.started_at = datetime.now()
-        
-        if status_update.status in ["COMPLETED", "FAILED"]:
+
+        if mapped_status in ["COMPLETED", "FAILED"]:
             job.finished_at = datetime.now()
-        
+
         # 如果有结果文件，可以存储到 config 中
         if status_update.result_files:
             if not job.config:
                 job.config = {}
             job.config['result_files'] = status_update.result_files
-        
+
         db.commit()
-        
+
         logger.info(
-            f"MD Job {job_id} status updated to {status_update.status} "
+            f"MD Job {job_id} status updated to {mapped_status} "
             f"by worker {status_update.worker_name}"
         )
-        
-        return {"status": "ok", "job_id": job_id, "new_status": status_update.status}
-    
+
+        return {"status": "ok", "job_id": job_id, "new_status": mapped_status}
+
     elif job_type == "QC":
         job = db.query(QCJob).filter(QCJob.id == job_id).first()
         if not job:
@@ -339,40 +345,40 @@ async def update_job_status(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"QC Job {job_id} not found"
             )
-        
+
         # 更新状态
-        job.status = QCJobStatus[status_update.status]
+        job.status = QCJobStatus[mapped_status]
         
         if status_update.slurm_job_id:
             job.slurm_job_id = status_update.slurm_job_id
-        
+
         if status_update.work_dir:
             job.work_dir = status_update.work_dir
-        
+
         if status_update.error_message:
             job.error_message = status_update.error_message
-        
-        if status_update.status == "RUNNING" and not job.started_at:
+
+        if mapped_status == "RUNNING" and not job.started_at:
             job.started_at = datetime.now()
-        
-        if status_update.status in ["COMPLETED", "FAILED"]:
+
+        if mapped_status in ["COMPLETED", "FAILED"]:
             job.finished_at = datetime.now()
-        
+
         # 如果有结果文件，可以存储到 config 中
         if status_update.result_files:
             if not job.config:
                 job.config = {}
             job.config['result_files'] = status_update.result_files
-        
+
         db.commit()
-        
+
         logger.info(
-            f"QC Job {job_id} status updated to {status_update.status} "
+            f"QC Job {job_id} status updated to {mapped_status} "
             f"by worker {status_update.worker_name}"
         )
-        
-        return {"status": "ok", "job_id": job_id, "new_status": status_update.status}
-    
+
+        return {"status": "ok", "job_id": job_id, "new_status": mapped_status}
+
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
