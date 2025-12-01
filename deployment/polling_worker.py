@@ -290,10 +290,10 @@ class PollingWorker:
         """处理 MD 任务"""
         job_id = job['id']
         self.logger.info(f"开始处理 MD 任务 {job_id}")
-        
+
         try:
-            # 1. 更新任务状态为 PROCESSING
-            self._update_job_status(job_id, 'PROCESSING', 'md')
+            # 1. 立即更新任务状态为 QUEUED（表示 Worker 已接收，正在准备）
+            self._update_job_status(job_id, 'QUEUED', 'md')
             
             # 2. 导入 MolyteWrapper
             from app.workers.molyte_wrapper import MolyteWrapper
@@ -354,8 +354,8 @@ class PollingWorker:
         self.logger.info(f"开始处理 QC 任务 {job_id}")
 
         try:
-            # 1. 更新任务状态为 PROCESSING
-            self._update_job_status(job_id, 'RUNNING', 'qc')
+            # 1. 立即更新任务状态为 QUEUED（表示 Worker 已接收，正在准备）
+            self._update_job_status(job_id, 'QUEUED', 'qc')
 
             # 2. 获取任务配置
             config = job.get('config', {})
@@ -643,7 +643,15 @@ echo "QC calculation completed"
 
                 status = self._check_slurm_status(slurm_job_id)
 
-                if status == 'COMPLETED':
+                if status == 'QUEUED':
+                    # Slurm 任务还在排队，更新数据库状态为 QUEUED
+                    self._update_job_status(job_id, 'QUEUED', job_info['type'], slurm_job_id=slurm_job_id)
+
+                elif status == 'RUNNING':
+                    # Slurm 任务正在运行，更新数据库状态为 RUNNING
+                    self._update_job_status(job_id, 'RUNNING', job_info['type'], slurm_job_id=slurm_job_id)
+
+                elif status == 'COMPLETED':
                     self.logger.info(f"任务 {job_id} (Slurm: {slurm_job_id}) 已完成")
                     self._handle_job_completion(job_id, job_info)
                     completed_jobs.append(job_id)
@@ -718,12 +726,16 @@ echo "QC calculation completed"
 
             if result.returncode == 0 and result.stdout.strip():
                 status = result.stdout.strip()
-                # PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
-                if status in ['PENDING', 'RUNNING']:
-                    return 'RUNNING'
-                elif status in ['COMPLETED']:
+                # Slurm 状态: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED 等
+                if status == 'PENDING':
+                    return 'QUEUED'  # Slurm 排队中
+                elif status == 'RUNNING':
+                    return 'RUNNING'  # Slurm 正在运行
+                elif status == 'COMPLETING':
+                    return 'RUNNING'  # 正在完成，视为运行中
+                elif status == 'COMPLETED':
                     return 'COMPLETED'
-                elif status in ['CANCELLED']:
+                elif status == 'CANCELLED':
                     return 'CANCELLED'
                 else:
                     return 'FAILED'
@@ -943,7 +955,7 @@ echo "QC calculation completed"
             endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/status"
 
             # 确保状态值有效
-            valid_statuses = ["CREATED", "QUEUED", "RUNNING", "POSTPROCESSING", "COMPLETED", "FAILED", "CANCELLED"]
+            valid_statuses = ["CREATED", "SUBMITTED", "QUEUED", "RUNNING", "POSTPROCESSING", "COMPLETED", "FAILED", "CANCELLED"]
             if status not in valid_statuses:
                 self.logger.error(f"无效的状态值: {status}，有效值: {valid_statuses}")
                 return

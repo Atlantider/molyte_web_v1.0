@@ -11,8 +11,22 @@ from datetime import datetime, timedelta
 
 
 class JobStatus(str, enum.Enum):
-    """Job status enumeration"""
+    """Job status enumeration
+
+    状态流程：
+    CREATED -> SUBMITTED -> QUEUED -> RUNNING -> COMPLETED/FAILED
+
+    - CREATED: 任务创建，可修改配置参数
+    - SUBMITTED: 用户提交，等待 Worker 拉取
+    - QUEUED: Worker 已拉取，Slurm 排队等资源中（对应 Slurm PENDING）
+    - RUNNING: Slurm 正在执行（对应 Slurm RUNNING）
+    - POSTPROCESSING: 后处理中
+    - COMPLETED: 完成
+    - FAILED: 失败
+    - CANCELLED: 取消
+    """
     CREATED = "CREATED"
+    SUBMITTED = "SUBMITTED"  # 新增：用户已提交，等待 Worker 拉取
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     POSTPROCESSING = "POSTPROCESSING"

@@ -739,20 +739,22 @@ def batch_submit_qc_jobs(
                 errors.append({"job_id": job_id, "error": "权限不足"})
                 continue
 
-            # 检查状态
-            if job.status != QCJobStatusModel.CREATED:
+            # 检查状态：只能提交 CREATED 或 FAILED/CANCELLED 的任务
+            if job.status not in [QCJobStatusModel.CREATED, QCJobStatusModel.FAILED, QCJobStatusModel.CANCELLED]:
                 failed_count += 1
                 errors.append({"job_id": job_id, "error": f"任务状态为 {job.status}，无法提交"})
                 continue
 
-            # 混合云架构：任务保持 CREATED 状态，Polling Worker 会自动获取
+            # 更新状态为 SUBMITTED，Polling Worker 会拉取
+            job.status = QCJobStatusModel.SUBMITTED
             job.config = job.config or {}
             job.config["submitted_at"] = datetime.now().isoformat()
             job.config["submitted_by"] = current_user.username
+            job.error_message = None  # 清除之前的错误信息
             db.commit()
 
             success_count += 1
-            logger.info(f"QC job {job_id} marked for submission, waiting for polling worker")
+            logger.info(f"QC job {job_id} status=SUBMITTED, waiting for polling worker")
 
         except Exception as e:
             failed_count += 1
@@ -922,22 +924,24 @@ def submit_qc_job(
     if job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    if job.status != QCJobStatusModel.CREATED:
+    # 只能提交 CREATED 或 FAILED/CANCELLED 的任务
+    if job.status not in [QCJobStatusModel.CREATED, QCJobStatusModel.FAILED, QCJobStatusModel.CANCELLED]:
         raise HTTPException(status_code=400, detail=f"Job cannot be submitted in {job.status} status")
 
-    # 混合云架构：任务保持 CREATED 状态，Polling Worker 会自动获取
-    # 记录提交时间
+    # 更新状态为 SUBMITTED，Polling Worker 会拉取
+    job.status = QCJobStatusModel.SUBMITTED
     job.config = job.config or {}
     job.config["submitted_at"] = datetime.now().isoformat()
     job.config["submitted_by"] = current_user.username
+    job.error_message = None  # 清除之前的错误信息
     db.commit()
 
-    logger.info(f"QC job {job_id} marked for submission, waiting for polling worker")
+    logger.info(f"QC job {job_id} status=SUBMITTED, waiting for polling worker")
 
     return {
         "message": "QC任务已提交，等待计算集群处理",
         "job_id": job_id,
-        "status": "CREATED"
+        "status": "SUBMITTED"
     }
 
 

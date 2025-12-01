@@ -1223,8 +1223,8 @@ def submit_md_job(
                     logger.error(f"Failed to create QC jobs for MD job {job.id}: {qc_error}")
                     # QC任务创建失败不影响MD任务提交
 
-        # 在混合云架构下，只更新状态为 CREATED，等待 Worker 拉取执行
-        job.status = JobStatus.CREATED
+        # 更新状态为 SUBMITTED，等待 Worker 拉取执行
+        job.status = JobStatus.SUBMITTED
         job.error_message = None
         if job.config is None:
             job.config = {}
@@ -1233,7 +1233,7 @@ def submit_md_job(
         db.commit()
         db.refresh(job)
 
-        logger.info(f"MD job {job.id} submitted by {current_user.username}, waiting for Worker to pick up")
+        logger.info(f"MD job {job.id} submitted by {current_user.username}, status=SUBMITTED, waiting for Worker")
         return job
 
     except Exception as e:
@@ -1487,9 +1487,11 @@ def resubmit_md_job(
         if job.config is None:
             job.config = {}
         job.config.pop("error", None)
+        job.config["resubmitted_at"] = datetime.now().isoformat()
+        job.config["resubmitted_by"] = current_user.username
 
-        # Reset job status to CREATED - Worker will pick it up
-        job.status = JobStatus.CREATED
+        # Reset job status to SUBMITTED - Worker will pick it up
+        job.status = JobStatus.SUBMITTED
         job.error_message = None
         job.progress = 0.0
         job.slurm_job_id = None
@@ -1498,7 +1500,7 @@ def resubmit_md_job(
         db.commit()
         db.refresh(job)
 
-        logger.info(f"Job {job.id} reset to CREATED by {current_user.username}, waiting for Worker to pick up")
+        logger.info(f"Job {job.id} resubmitted by {current_user.username}, status=SUBMITTED, waiting for Worker")
         return job
 
     except Exception as e:

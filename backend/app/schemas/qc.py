@@ -9,8 +9,12 @@ from enum import Enum
 
 
 class QCJobStatus(str, Enum):
-    """QC任务状态"""
+    """QC任务状态
+
+    状态流程：CREATED -> SUBMITTED -> QUEUED -> RUNNING -> COMPLETED/FAILED
+    """
     CREATED = "CREATED"
+    SUBMITTED = "SUBMITTED"
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     POSTPROCESSING = "POSTPROCESSING"

@@ -195,11 +195,11 @@ async def get_pending_jobs(
     job_type = job_type.upper()
     
     if job_type == "MD":
-        # 获取 CREATED 状态的 MD 任务（待处理）
+        # 获取 SUBMITTED 状态的 MD 任务（用户已提交，等待 Worker 处理）
         from app.models.electrolyte import ElectrolyteSystem
 
         jobs = db.query(MDJob).filter(
-            MDJob.status == JobStatus.CREATED
+            MDJob.status == JobStatus.SUBMITTED
         ).order_by(MDJob.created_at).limit(limit).all()
 
         result = []
@@ -239,9 +239,9 @@ async def get_pending_jobs(
         return result
     
     elif job_type == "QC":
-        # 获取 CREATED 状态的 QC 任务（待处理）
+        # 获取 SUBMITTED 状态的 QC 任务（用户已提交，等待 Worker 处理）
         jobs = db.query(QCJob).filter(
-            QCJob.status == QCJobStatus.CREATED
+            QCJob.status == QCJobStatus.SUBMITTED
         ).order_by(QCJob.created_at).limit(limit).all()
 
         return [
@@ -295,9 +295,9 @@ async def update_job_status(
     
     job_type = status_update.job_type.upper()
 
-    # 状态映射：Worker 可能发送 PROCESSING，映射到 RUNNING
+    # 状态映射：兼容旧版 Worker 发送的 PROCESSING 状态
     status_mapping = {
-        "PROCESSING": "RUNNING",
+        "PROCESSING": "QUEUED",  # 旧版 Worker 发送 PROCESSING，映射到 QUEUED
     }
     mapped_status = status_mapping.get(status_update.status, status_update.status)
 

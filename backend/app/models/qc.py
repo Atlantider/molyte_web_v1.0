@@ -12,8 +12,22 @@ from app.database import Base
 
 
 class QCJobStatus(str, PyEnum):
-    """QC任务状态枚举"""
+    """QC任务状态枚举
+
+    状态流程：
+    CREATED -> SUBMITTED -> QUEUED -> RUNNING -> COMPLETED/FAILED
+
+    - CREATED: 任务创建，可修改配置参数
+    - SUBMITTED: 用户提交，等待 Worker 拉取
+    - QUEUED: Worker 已拉取，Slurm 排队等资源中
+    - RUNNING: Slurm 正在执行
+    - POSTPROCESSING: 后处理中
+    - COMPLETED: 完成
+    - FAILED: 失败
+    - CANCELLED: 取消
+    """
     CREATED = "CREATED"
+    SUBMITTED = "SUBMITTED"
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     POSTPROCESSING = "POSTPROCESSING"
