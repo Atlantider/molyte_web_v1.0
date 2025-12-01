@@ -316,22 +316,93 @@ def create_qc_jobs_batch(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    批量创建QC计算任务
-    
+    批量创建QC计算任务（带查重）
+
     Args:
         batch_data: 批量创建数据
-        
+
     Returns:
-        创建的QC任务列表
+        创建的QC任务列表（包括复用的任务）
     """
     created_jobs = []
-    
+    reused_count = 0
+    skipped_count = 0
+
     for mol_data in batch_data.molecules:
         # 使用批量参数覆盖单个参数（如果有指定）
         basis_set = mol_data.basis_set or batch_data.basis_set
         functional = mol_data.functional or batch_data.functional
         md_job_id = mol_data.md_job_id or batch_data.md_job_id
-        
+
+        # 提取溶剂配置
+        solvent_model = 'gas'
+        solvent_name = None
+        config = mol_data.config or {}
+        if config.get('solvent_config'):
+            solvent_model = config['solvent_config'].get('model', 'gas')
+            solvent_name = config['solvent_config'].get('solvent_name')
+
+        # ======== 查重逻辑 ========
+        duplicate_query = db.query(QCJob).filter(
+            QCJob.smiles == mol_data.smiles,
+            QCJob.functional == functional,
+            QCJob.basis_set == basis_set,
+            QCJob.charge == mol_data.charge,
+            QCJob.spin_multiplicity == mol_data.spin_multiplicity,
+            QCJob.is_deleted == False
+        )
+
+        # 匹配溶剂配置
+        if solvent_model == 'gas':
+            duplicate_query = duplicate_query.filter(
+                or_(
+                    QCJob.solvent_model == 'gas',
+                    QCJob.solvent_model.is_(None)
+                )
+            )
+        else:
+            duplicate_query = duplicate_query.filter(
+                QCJob.solvent_model == solvent_model
+            )
+            if solvent_name:
+                duplicate_query = duplicate_query.filter(
+                    QCJob.solvent_name == solvent_name
+                )
+
+        existing_job = duplicate_query.first()
+
+        if existing_job:
+            if existing_job.status == QCJobStatusModel.COMPLETED:
+                # 复用已完成的任务
+                logger.info(f"Batch: Reusing completed QC job {existing_job.id} for '{mol_data.molecule_name}'")
+                db_job = QCJob(
+                    user_id=current_user.id,
+                    md_job_id=md_job_id,
+                    molecule_name=mol_data.molecule_name,
+                    smiles=mol_data.smiles,
+                    molecule_type=mol_data.molecule_type,
+                    basis_set=basis_set,
+                    functional=functional,
+                    charge=mol_data.charge,
+                    spin_multiplicity=mol_data.spin_multiplicity,
+                    solvent_model=solvent_model,
+                    solvent_name=solvent_name,
+                    config=config,
+                    status=QCJobStatusModel.COMPLETED,
+                    is_reused=True,
+                    reused_from_job_id=existing_job.id
+                )
+                db.add(db_job)
+                created_jobs.append(db_job)
+                reused_count += 1
+            else:
+                # 跳过未完成的重复任务
+                logger.info(f"Batch: Skipping duplicate QC job for '{mol_data.molecule_name}' "
+                           f"(existing job {existing_job.id} status: {existing_job.status})")
+                skipped_count += 1
+            continue
+        # ======== 查重逻辑结束 ========
+
         db_job = QCJob(
             user_id=current_user.id,
             md_job_id=md_job_id,
@@ -342,19 +413,21 @@ def create_qc_jobs_batch(
             functional=functional,
             charge=mol_data.charge,
             spin_multiplicity=mol_data.spin_multiplicity,
-            config=mol_data.config or {},
+            solvent_model=solvent_model,
+            solvent_name=solvent_name,
+            config=config,
             status=QCJobStatusModel.CREATED
         )
         db.add(db_job)
         created_jobs.append(db_job)
-    
+
     db.commit()
-    
+
     for job in created_jobs:
         db.refresh(job)
-    
-    logger.info(f"Created {len(created_jobs)} QC jobs in batch by user {current_user.username}")
-    
+
+    logger.info(f"Batch created {len(created_jobs)} QC jobs (reused: {reused_count}, skipped: {skipped_count}) by user {current_user.username}")
+
     return created_jobs
 
 

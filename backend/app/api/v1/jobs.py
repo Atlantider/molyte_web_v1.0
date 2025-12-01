@@ -702,6 +702,78 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
                         name_parts.extend([solvent_model, solvent_name])
                     job_mol_name = '_'.join(name_parts)
 
+                    # ======== 查重逻辑 ========
+                    # 检查是否已存在相同参数的QC任务（包括其他用户的已完成任务）
+                    from sqlalchemy import or_
+
+                    duplicate_query = db.query(QCJob).filter(
+                        QCJob.smiles == smiles,
+                        QCJob.functional == functional,
+                        QCJob.basis_set == basis_set,
+                        QCJob.charge == charge,
+                        QCJob.spin_multiplicity == spin_multiplicity,
+                        QCJob.is_deleted == False
+                    )
+
+                    # 匹配溶剂配置
+                    if solvent_model == 'gas':
+                        duplicate_query = duplicate_query.filter(
+                            or_(
+                                QCJob.solvent_model == 'gas',
+                                QCJob.solvent_model.is_(None)
+                            )
+                        )
+                    else:
+                        duplicate_query = duplicate_query.filter(
+                            QCJob.solvent_model == solvent_model
+                        )
+                        if solvent_name:
+                            duplicate_query = duplicate_query.filter(
+                                QCJob.solvent_name == solvent_name
+                            )
+
+                    existing_job = duplicate_query.first()
+
+                    if existing_job:
+                        # 如果找到已完成的任务，复用结果
+                        if existing_job.status == QCJobStatus.COMPLETED:
+                            logger.info(f"Reusing completed QC job {existing_job.id} for '{mol_name}' "
+                                       f"(smiles: {smiles[:30]}..., functional: {functional}, basis: {basis_set})")
+                            # 创建一个复用任务，直接标记为已完成
+                            qc_job = QCJob(
+                                user_id=user.id,
+                                md_job_id=md_job.id,
+                                molecule_name=job_mol_name,
+                                smiles=smiles,
+                                molecule_type=mol_type,
+                                basis_set=params["basis_set"],
+                                functional=params["functional"],
+                                charge=charge,
+                                spin_multiplicity=spin_multiplicity,
+                                status=QCJobStatus.COMPLETED,
+                                is_reused=True,
+                                reused_from_job_id=existing_job.id,
+                                config={
+                                    "accuracy_level": getattr(qc_options, 'accuracy_level', 'standard'),
+                                    "solvent_model": params["solvent_model"],
+                                    "solvent_name": params["solvent_name"] if params["solvent_model"] != "gas" else None,
+                                    "solvent_config": solvent_config,
+                                    "recommendation_reason": params["recommendation_reason"],
+                                    "auto_params": getattr(qc_options, 'use_recommended_params', True),
+                                    "reused_from": existing_job.id,
+                                }
+                            )
+                            db.add(qc_job)
+                            db.commit()
+                            db.refresh(qc_job)
+                            continue  # 跳过创建新任务
+                        else:
+                            # 存在相同参数的任务但未完成，跳过创建
+                            logger.info(f"Skipping duplicate QC job for '{mol_name}' "
+                                       f"(existing job {existing_job.id} status: {existing_job.status})")
+                            continue
+                    # ======== 查重逻辑结束 ========
+
                     # 创建QC任务（所有参数存储在config中）
                     qc_job = QCJob(
                         user_id=user.id,
