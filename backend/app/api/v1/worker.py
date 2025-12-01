@@ -586,6 +586,10 @@ class QCResultUpload(BaseModel):
     esp_image_path: Optional[str] = None
     homo_image_path: Optional[str] = None
     lumo_image_path: Optional[str] = None
+    # 图片内容（base64编码，用于混合云架构）
+    homo_image_content: Optional[str] = None
+    lumo_image_content: Optional[str] = None
+    esp_image_content: Optional[str] = None
     # 额外属性
     additional_properties: Optional[Dict[str, Any]] = None
 
@@ -658,6 +662,9 @@ async def upload_qc_result(
             esp_image_path=result_data.esp_image_path,
             homo_image_path=result_data.homo_image_path,
             lumo_image_path=result_data.lumo_image_path,
+            homo_image_content=result_data.homo_image_content,
+            lumo_image_content=result_data.lumo_image_content,
+            esp_image_content=result_data.esp_image_content,
             additional_properties=result_data.additional_properties or {},
         )
         db.add(new_result)

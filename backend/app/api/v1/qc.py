@@ -1197,6 +1197,9 @@ def get_esp_image(
     current_user: User = Depends(get_current_active_user)
 ):
     """获取QC结果的ESP图片"""
+    from fastapi.responses import Response
+    import base64
+
     result = db.query(QCResult).filter(QCResult.id == result_id).first()
 
     if not result:
@@ -1207,15 +1210,28 @@ def get_esp_image(
     if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    if not result.esp_image_path or not os.path.exists(result.esp_image_path):
-        raise HTTPException(status_code=404, detail="ESP image not found")
+    # 优先使用数据库中的图片内容（混合云架构）
+    if result.esp_image_content:
+        try:
+            image_data = base64.b64decode(result.esp_image_content)
+            return Response(
+                content=image_data,
+                media_type="image/png",
+                headers={"Content-Disposition": f"inline; filename=esp_{result_id}.png"}
+            )
+        except Exception as e:
+            logger.error(f"Failed to decode ESP image content: {e}")
 
-    return FileResponse(
-        result.esp_image_path,
-        media_type="image/png",
-        filename=f"esp_{result_id}.png",
-        headers={"Content-Disposition": f"inline; filename=esp_{result_id}.png"}
-    )
+    # 回退到文件路径（本地部署）
+    if result.esp_image_path and os.path.exists(result.esp_image_path):
+        return FileResponse(
+            result.esp_image_path,
+            media_type="image/png",
+            filename=f"esp_{result_id}.png",
+            headers={"Content-Disposition": f"inline; filename=esp_{result_id}.png"}
+        )
+
+    raise HTTPException(status_code=404, detail="ESP image not found")
 
 
 @router.get("/esp-image-download/{result_id}")
@@ -1253,6 +1269,9 @@ def get_homo_image(
     current_user: User = Depends(get_current_active_user)
 ):
     """获取QC结果的HOMO轨道图片"""
+    from fastapi.responses import Response
+    import base64
+
     result = db.query(QCResult).filter(QCResult.id == result_id).first()
 
     if not result:
@@ -1263,15 +1282,28 @@ def get_homo_image(
     if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    if not result.homo_image_path or not os.path.exists(result.homo_image_path):
-        raise HTTPException(status_code=404, detail="HOMO image not found")
+    # 优先使用数据库中的图片内容（混合云架构）
+    if result.homo_image_content:
+        try:
+            image_data = base64.b64decode(result.homo_image_content)
+            return Response(
+                content=image_data,
+                media_type="image/png",
+                headers={"Content-Disposition": f"inline; filename=homo_{result_id}.png"}
+            )
+        except Exception as e:
+            logger.error(f"Failed to decode HOMO image content: {e}")
 
-    return FileResponse(
-        result.homo_image_path,
-        media_type="image/png",
-        filename=f"homo_{result_id}.png",
-        headers={"Content-Disposition": f"inline; filename=homo_{result_id}.png"}
-    )
+    # 回退到文件路径（本地部署）
+    if result.homo_image_path and os.path.exists(result.homo_image_path):
+        return FileResponse(
+            result.homo_image_path,
+            media_type="image/png",
+            filename=f"homo_{result_id}.png",
+            headers={"Content-Disposition": f"inline; filename=homo_{result_id}.png"}
+        )
+
+    raise HTTPException(status_code=404, detail="HOMO image not found")
 
 
 @router.get("/lumo-image/{result_id}")
@@ -1281,6 +1313,9 @@ def get_lumo_image(
     current_user: User = Depends(get_current_active_user)
 ):
     """获取QC结果的LUMO轨道图片"""
+    from fastapi.responses import Response
+    import base64
+
     result = db.query(QCResult).filter(QCResult.id == result_id).first()
 
     if not result:
@@ -1291,15 +1326,28 @@ def get_lumo_image(
     if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    if not result.lumo_image_path or not os.path.exists(result.lumo_image_path):
-        raise HTTPException(status_code=404, detail="LUMO image not found")
+    # 优先使用数据库中的图片内容（混合云架构）
+    if result.lumo_image_content:
+        try:
+            image_data = base64.b64decode(result.lumo_image_content)
+            return Response(
+                content=image_data,
+                media_type="image/png",
+                headers={"Content-Disposition": f"inline; filename=lumo_{result_id}.png"}
+            )
+        except Exception as e:
+            logger.error(f"Failed to decode LUMO image content: {e}")
 
-    return FileResponse(
-        result.lumo_image_path,
-        media_type="image/png",
-        filename=f"lumo_{result_id}.png",
-        headers={"Content-Disposition": f"inline; filename=lumo_{result_id}.png"}
-    )
+    # 回退到文件路径（本地部署）
+    if result.lumo_image_path and os.path.exists(result.lumo_image_path):
+        return FileResponse(
+            result.lumo_image_path,
+            media_type="image/png",
+            filename=f"lumo_{result_id}.png",
+            headers={"Content-Disposition": f"inline; filename=lumo_{result_id}.png"}
+        )
+
+    raise HTTPException(status_code=404, detail="LUMO image not found")
 
 
 @router.get("/esp-image-by-smiles/{smiles:path}")

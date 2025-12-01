@@ -1266,7 +1266,7 @@ export default function QCJobs() {
                   }
                 ]}
                 tooltip="请使用英文名称，例如: EC, DMC, LiPF6"
-                extra="仅支持英文、数字和符号（+、-、_、,、()），不支持中文"
+                extra="仅支持英文名称，不支持中文"
               >
                 <Input placeholder="例如: EC, DMC, LiPF6" />
               </Form.Item>
