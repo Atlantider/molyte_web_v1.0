@@ -1155,12 +1155,23 @@ echo "QC calculation completed"
             except Exception as e:
                 self.logger.warning(f"溶剂化分析失败: {e}")
 
-            # 5. 提取系统结构（最后一帧 XYZ）
+            # 5. 提取系统结构（使用后端的 get_system_structure）
             try:
-                system_xyz = self._extract_system_xyz(work_dir)
-                if system_xyz:
-                    results['system_xyz_content'] = system_xyz
-                    self.logger.info(f"系统结构提取完成: {len(system_xyz)} 字符")
+                from app.services.solvation import get_system_structure
+
+                system_result = get_system_structure(str(work_dir), frame_idx=-1)
+                if system_result and 'xyz_content' in system_result:
+                    results['system_xyz_content'] = system_result['xyz_content']
+                    # 从系统结构获取盒子尺寸（如果日志解析没有）
+                    if 'box' in system_result and system_result['box']:
+                        box = system_result['box']
+                        if not results.get('box_x') and len(box) >= 3:
+                            results['box_x'] = box[0]
+                            results['box_y'] = box[1]
+                            results['box_z'] = box[2]
+                    self.logger.info(f"系统结构提取完成: {system_result.get('atom_count', 0)} 原子")
+            except ImportError as e:
+                self.logger.warning(f"无法导入 get_system_structure: {e}")
             except Exception as e:
                 self.logger.warning(f"提取系统结构失败: {e}")
 
@@ -1247,94 +1258,6 @@ echo "QC calculation completed"
                 self.logger.warning(f"从 atom_mapping 构建配置失败: {e}")
 
         return None
-
-    def _extract_system_xyz(self, work_dir: Path) -> Optional[str]:
-        """从轨迹文件提取最后一帧的 XYZ 格式内容"""
-        import json
-
-        job_name = work_dir.name
-
-        # 优先使用 after_nvt 文件（只有一帧，速度快）
-        after_nvt_traj = work_dir / f"{job_name}_after_nvt.lammpstrj"
-        nvt_traj = work_dir / f"NVT_{job_name}.lammpstrj"
-
-        traj_file = None
-        if after_nvt_traj.exists():
-            traj_file = after_nvt_traj
-        elif nvt_traj.exists():
-            traj_file = nvt_traj
-
-        if not traj_file:
-            self.logger.warning(f"未找到轨迹文件: {work_dir}")
-            return None
-
-        # 加载原子映射
-        atom_mapping_file = work_dir / "atom_mapping.json"
-        type_to_element = {}
-
-        if atom_mapping_file.exists():
-            try:
-                with open(atom_mapping_file) as f:
-                    mapping = json.load(f)
-                for at in mapping.get('atom_types', []):
-                    type_id = at.get('type_id')
-                    element = at.get('element', 'X')
-                    type_to_element[type_id] = element
-            except Exception as e:
-                self.logger.warning(f"读取 atom_mapping.json 失败: {e}")
-
-        # 解析最后一帧
-        try:
-            atoms = []
-            box = [0, 0, 0]
-            current_frame_atoms = []
-            in_atoms_section = False
-
-            with open(traj_file, 'r') as f:
-                for line in f:
-                    line = line.strip()
-
-                    if line.startswith('ITEM: TIMESTEP'):
-                        # 新的一帧，清空当前帧
-                        if current_frame_atoms:
-                            atoms = current_frame_atoms
-                        current_frame_atoms = []
-                        in_atoms_section = False
-
-                    elif line.startswith('ITEM: BOX BOUNDS'):
-                        in_atoms_section = False
-
-                    elif line.startswith('ITEM: ATOMS'):
-                        in_atoms_section = True
-
-                    elif in_atoms_section and line:
-                        parts = line.split()
-                        if len(parts) >= 5:
-                            try:
-                                atom_type = int(parts[1])
-                                x, y, z = float(parts[2]), float(parts[3]), float(parts[4])
-                                element = type_to_element.get(atom_type, 'X')
-                                current_frame_atoms.append((element, x, y, z))
-                            except (ValueError, IndexError):
-                                pass
-
-            # 使用最后一帧
-            if current_frame_atoms:
-                atoms = current_frame_atoms
-
-            if not atoms:
-                return None
-
-            # 生成 XYZ 格式
-            xyz_lines = [str(len(atoms)), f"System structure from {traj_file.name}"]
-            for element, x, y, z in atoms:
-                xyz_lines.append(f"{element} {x:.4f} {y:.4f} {z:.4f}")
-
-            return '\n'.join(xyz_lines)
-
-        except Exception as e:
-            self.logger.error(f"提取系统 XYZ 失败: {e}")
-            return None
 
     def _calculate_concentration(self, results: Dict, electrolyte_data: Dict) -> Dict[str, float]:
         """根据盒子尺寸计算浓度"""
