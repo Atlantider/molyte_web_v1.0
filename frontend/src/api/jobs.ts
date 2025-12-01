@@ -64,6 +64,14 @@ export const cancelMDJob = async (id: number): Promise<MDJob> => {
 };
 
 /**
+ * 删除 MD 任务
+ */
+export const deleteMDJob = async (id: number): Promise<{ message: string }> => {
+  const response = await client.delete(`/jobs/${id}`);
+  return response.data;
+};
+
+/**
  * 重新提交失败的 MD 任务
  */
 export const resubmitMDJob = async (id: number): Promise<MDJob> => {

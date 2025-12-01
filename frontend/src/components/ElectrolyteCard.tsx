@@ -154,20 +154,20 @@ export default function ElectrolyteCard({
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {cations.slice(0, 2).map((c: any, i: number) => (
                 <Tag key={`c-${i}`} color="blue" style={{ margin: 0, fontSize: 11 }}>
-                  {c.name}×{c.number}
+                  {c.name?.replace('+', '').replace('-', '')}×{c.number}
                 </Tag>
               ))}
               {anions.slice(0, 2).map((a: any, i: number) => (
                 <Tag key={`a-${i}`} color="red" style={{ margin: 0, fontSize: 11 }}>
-                  {a.name}×{a.number}
+                  {a.name?.replace('+', '').replace('-', '')}×{a.number}
                 </Tag>
               ))}
-              {solvents.slice(0, 1).map((s: any, i: number) => (
+              {solvents.slice(0, 3).map((s: any, i: number) => (
                 <Tag key={`s-${i}`} color="green" style={{ margin: 0, fontSize: 11 }}>
                   {s.name}×{s.number}
                 </Tag>
               ))}
-              {(cations.length + anions.length + solvents.length > 5) && (
+              {(cations.length + anions.length + solvents.length > 7) && (
                 <Tag style={{ margin: 0, fontSize: 11 }}>...</Tag>
               )}
             </div>

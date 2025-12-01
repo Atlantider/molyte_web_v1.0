@@ -53,10 +53,17 @@ class MolyteWrapper:
         # 创建必要的目录
         self.work_base_path.mkdir(parents=True, exist_ok=True)
         self.charge_save_path.mkdir(parents=True, exist_ok=True)
-        
+
         # 创建原子映射生成器
         self.atom_mapping_generator = AtomMappingGenerator(self.initial_salts_path)
-    
+
+    @staticmethod
+    def strip_ion_charge(name: str) -> str:
+        """去掉离子名称中的 + 和 - 符号"""
+        if name:
+            return name.replace('+', '').replace('-', '')
+        return name
+
     def run_command(self, command: str) -> bool:
         """
         运行 shell 命令
@@ -200,34 +207,45 @@ class MolyteWrapper:
         """
         import shutil
 
-        # 收集需要的离子名称
-        required_ions = set()
+        # 收集需要的离子名称（原始名称和去掉+/-的名称）
+        required_ions = {}  # {display_name: file_name}
 
         for cation in job_data.get("cations", []):
             if cation.get('name') and cation.get('number', 0) > 0:
-                required_ions.add(cation['name'])
+                display_name = cation['name']
+                # 去掉 + 和 - 符号用于查找文件
+                file_name = display_name.replace('+', '').replace('-', '')
+                required_ions[display_name] = file_name
 
         for anion in job_data.get("anions", []):
             if anion.get('name') and anion.get('number', 0) > 0:
-                required_ions.add(anion['name'])
+                display_name = anion['name']
+                # 去掉 + 和 - 符号用于查找文件
+                file_name = display_name.replace('+', '').replace('-', '')
+                required_ions[display_name] = file_name
 
         logger.info(f"Required ions: {required_ions}")
 
         # 复制每个离子的 .pdb 和 .lt 文件
-        for ion_name in required_ions:
+        for display_name, file_name in required_ions.items():
             for ext in ['.pdb', '.lt']:
-                src_file = self.initial_salts_path / f"{ion_name}{ext}"
-                dst_file = work_dir / f"{ion_name}{ext}"
+                # 优先查找带 +/- 的文件，找不到再查找不带的
+                src_file = self.initial_salts_path / f"{display_name}{ext}"
+                if not src_file.exists():
+                    src_file = self.initial_salts_path / f"{file_name}{ext}"
+
+                # 目标文件名统一使用去掉符号的名称（与 packmol/moltemplate 一致）
+                dst_file = work_dir / f"{file_name}{ext}"
 
                 if src_file.exists():
                     try:
                         shutil.copy2(src_file, dst_file)
-                        logger.info(f"Copied {src_file.name} to work directory")
+                        logger.info(f"Copied {src_file.name} to {dst_file.name}")
                     except Exception as e:
                         logger.error(f"Failed to copy {src_file}: {e}")
                         return False
                 else:
-                    logger.warning(f"Salt file not found: {src_file}")
+                    logger.warning(f"Salt file not found: {display_name}{ext} or {file_name}{ext}")
                     # 对于 .lt 文件，如果不存在也继续（可能是简单离子）
                     if ext == '.pdb':
                         return False
@@ -355,7 +373,7 @@ mpirun -n {mpi_processes} $EXEC <{job_name}.in > {job_name}.log
         # 添加阳离子
         for cation in job_data.get("cations", []):
             if cation.get('name') and cation.get('number', 0) > 0:
-                name = cation['name']
+                name = self.strip_ion_charge(cation['name'])
                 number = cation['number']
                 packmol_input += f"""structure {name}.pdb
    number {number}
@@ -366,7 +384,7 @@ end structure
         # 添加阴离子
         for anion in job_data.get("anions", []):
             if anion.get('name') and anion.get('number', 0) > 0:
-                name = anion['name']
+                name = self.strip_ion_charge(anion['name'])
                 number = anion['number']
                 packmol_input += f"""structure {name}.pdb
    number {number}
@@ -425,11 +443,13 @@ end structure
         # 导入所有分子的 LT 文件
         for cation in job_data.get("cations", []):
             if cation.get('name') and cation.get('number', 0) > 0:
-                moltemplate_content += f'import "{cation["name"]}.lt"\n'
+                name = self.strip_ion_charge(cation["name"])
+                moltemplate_content += f'import "{name}.lt"\n'
 
         for anion in job_data.get("anions", []):
             if anion.get('name') and anion.get('number', 0) > 0:
-                moltemplate_content += f'import "{anion["name"]}.lt"\n'
+                name = self.strip_ion_charge(anion["name"])
+                moltemplate_content += f'import "{name}.lt"\n'
 
         for solvent in job_data.get("solvents", []):
             if solvent.get('name') and solvent.get('number', 0) > 0:
@@ -438,13 +458,13 @@ end structure
         # 实例化分子
         for cation in job_data.get("cations", []):
             if cation.get('name') and cation.get('number', 0) > 0:
-                name = cation['name']
+                name = self.strip_ion_charge(cation['name'])
                 number = cation['number']
                 moltemplate_content += f'{name}s = new {name}[{number}]\n'
 
         for anion in job_data.get("anions", []):
             if anion.get('name') and anion.get('number', 0) > 0:
-                name = anion['name']
+                name = self.strip_ion_charge(anion['name'])
                 number = anion['number']
                 moltemplate_content += f'{name}s = new {name}[{number}]\n'
 
@@ -705,14 +725,14 @@ reset_timestep 0
         # MSD 计算（阴离子）
         for i, anion in enumerate(job_data.get("anions", []), start=1):
             if anion.get('name') and anion.get('number', 0) > 0:
-                name = anion['name']
+                name = self.strip_ion_charge(anion['name'])
                 content += f'compute An{i} {name} msd com yes\n'
                 content += f'fix An{i}msd {name} ave/time ${{Freq_trj_nvt}} 1 ${{Freq_trj_nvt}} c_An{i}[1] c_An{i}[2] c_An{i}[3] c_An{i}[4] file out_{name}_msd.dat title1 "t msd msd msd msd_{name}" title2 "fs {name}_x {name}_y {name}_z {name}_total"\n'
 
         # MSD 计算（阳离子）
         for i, cation in enumerate(job_data.get("cations", []), start=1):
             if cation.get('name') and cation.get('number', 0) > 0:
-                name = cation['name']
+                name = self.strip_ion_charge(cation['name'])
                 content += f'compute Ca{i} {name} msd com yes\n'
                 content += f'fix Ca{i}msd {name} ave/time ${{Freq_trj_nvt}} 1 ${{Freq_trj_nvt}} c_Ca{i}[1] c_Ca{i}[2] c_Ca{i}[3] c_Ca{i}[4] file out_{name}_msd.dat title1 "t msd msd msd msd_{name}" title2 "fs {name}_x {name}_y {name}_z {name}_total"\n'
 
@@ -739,4 +759,70 @@ write_dump all custom ${infile}_after_nvt.lammpstrj id element mol type x y z q 
 """
 
         return content
+
+    def submit_to_slurm(self, work_dir: Path) -> Dict[str, Any]:
+        """
+        提交任务到 Slurm 队列
+
+        Args:
+            work_dir: 工作目录，包含 job.sh 脚本
+
+        Returns:
+            Dict with 'success', 'slurm_job_id' or 'error'
+        """
+        import subprocess
+        import re
+
+        job_script = work_dir / "job.sh"
+
+        if not job_script.exists():
+            return {
+                'success': False,
+                'error': f'Job script not found: {job_script}'
+            }
+
+        try:
+            # 切换到工作目录并提交任务
+            result = subprocess.run(
+                ['sbatch', str(job_script)],
+                cwd=str(work_dir),
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+
+            if result.returncode != 0:
+                return {
+                    'success': False,
+                    'error': f'sbatch failed: {result.stderr}'
+                }
+
+            # 解析 Slurm job ID，格式: "Submitted batch job 12345"
+            output = result.stdout.strip()
+            match = re.search(r'Submitted batch job (\d+)', output)
+
+            if match:
+                slurm_job_id = match.group(1)
+                logger.info(f"Successfully submitted to Slurm: job_id={slurm_job_id}")
+                return {
+                    'success': True,
+                    'slurm_job_id': slurm_job_id
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'Could not parse Slurm job ID from: {output}'
+                }
+
+        except subprocess.TimeoutExpired:
+            return {
+                'success': False,
+                'error': 'sbatch command timed out'
+            }
+        except Exception as e:
+            logger.error(f"Error submitting to Slurm: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
 

@@ -1023,7 +1023,7 @@ export default function QCJobs() {
   ];
 
   return (
-    <div style={{ padding: 24, position: 'relative' }}>
+    <div style={{ padding: 24, position: 'relative', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
       {/* 浮动批量操作栏 */}
       {selectedRowKeys.length > 0 && (
         <div style={{
@@ -1099,28 +1099,32 @@ export default function QCJobs() {
           }
         }
       `}</style>
+
+      {/* 页面标题区域 */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
+              <ExperimentOutlined style={{ marginRight: 12, color: '#1890ff' }} />
+              量子化学计算
+            </Title>
+            <Text type="secondary">管理QC量子化学计算任务，进行精确能量和性质计算</Text>
+          </div>
+          <Space>
+            <Button icon={<ReloadOutlined />} onClick={() => loadJobs(activeTab)} style={{ borderRadius: 8 }}>
+              刷新
+            </Button>
+            <Button icon={<UploadOutlined />} onClick={() => setBatchImportVisible(true)} style={{ borderRadius: 8 }}>
+              批量导入
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)} style={{ borderRadius: 8 }}>
+              新建QC任务
+            </Button>
+          </Space>
+        </div>
+      </div>
+
       <Card>
-        <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-          <Col>
-            <Space>
-              <ExperimentOutlined style={{ fontSize: 24, color: '#1890ff' }} />
-              <Title level={4} style={{ margin: 0 }}>量子化学计算</Title>
-            </Space>
-          </Col>
-          <Col>
-            <Space>
-              <Button icon={<ReloadOutlined />} onClick={() => loadJobs(activeTab)}>
-                刷新
-              </Button>
-              <Button icon={<UploadOutlined />} onClick={() => setBatchImportVisible(true)}>
-                批量导入
-              </Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
-                新建QC任务
-              </Button>
-            </Space>
-          </Col>
-        </Row>
 
         <Tabs
           activeKey={activeTab}

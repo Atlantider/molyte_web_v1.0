@@ -196,26 +196,50 @@ async def get_pending_jobs(
     
     if job_type == "MD":
         # 获取 CREATED 状态的 MD 任务（待处理）
+        from app.models.electrolyte import ElectrolyteSystem
+
         jobs = db.query(MDJob).filter(
             MDJob.status == JobStatus.CREATED
         ).order_by(MDJob.created_at).limit(limit).all()
-        
-        return [
-            PendingJobResponse(
+
+        result = []
+        for job in jobs:
+            # 获取电解质系统数据
+            electrolyte = db.query(ElectrolyteSystem).filter(
+                ElectrolyteSystem.id == job.system_id
+            ).first()
+
+            if electrolyte:
+                # 合并 config 和电解质数据
+                job_config = {
+                    **(job.config or {}),
+                    "name": job.config.get("job_name") if job.config else f"MD-{job.id}",
+                    "cations": electrolyte.cations,
+                    "anions": electrolyte.anions,
+                    "solvents": electrolyte.solvents,
+                    "additives": getattr(electrolyte, 'additives', None),
+                    "box_size": electrolyte.box_size,
+                    "temperature": electrolyte.temperature,
+                    "pressure": electrolyte.pressure,
+                }
+            else:
+                job_config = job.config
+
+            result.append(PendingJobResponse(
                 id=job.id,
                 type="MD",
-                config=job.config,
+                config=job_config,
                 created_at=job.created_at
-            )
-            for job in jobs
-        ]
+            ))
+
+        return result
     
     elif job_type == "QC":
         # 获取 CREATED 状态的 QC 任务（待处理）
         jobs = db.query(QCJob).filter(
             QCJob.status == QCJobStatus.CREATED
         ).order_by(QCJob.created_at).limit(limit).all()
-        
+
         return [
             PendingJobResponse(
                 id=job.id,
@@ -229,6 +253,10 @@ async def get_pending_jobs(
                     "spin_multiplicity": job.spin_multiplicity,
                     "solvent_model": job.solvent_model,
                     "solvent_name": job.solvent_name,
+                    "slurm_partition": job.slurm_partition or "cpu",
+                    "slurm_cpus": job.slurm_cpus or 16,
+                    "slurm_time": job.slurm_time or 7200,
+                    **(job.config or {}),  # 包含额外的配置信息
                 },
                 created_at=job.created_at
             )
@@ -380,11 +408,36 @@ async def get_job_input_data(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"MD Job {job_id} not found"
             )
-        
+
+        # 获取电解质系统数据
+        from app.models.electrolyte import ElectrolyteSystem
+        electrolyte = db.query(ElectrolyteSystem).filter(
+            ElectrolyteSystem.id == job.system_id
+        ).first()
+
+        if not electrolyte:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Electrolyte system {job.system_id} not found"
+            )
+
+        # 合并 config 和电解质数据
+        job_data = {
+            **(job.config or {}),
+            "name": job.config.get("job_name") if job.config else f"MD-{job_id}",
+            "cations": electrolyte.cations,
+            "anions": electrolyte.anions,
+            "solvents": electrolyte.solvents,
+            "additives": getattr(electrolyte, 'additives', None),
+            "box_size": electrolyte.box_size,
+            "temperature": electrolyte.temperature,
+            "pressure": electrolyte.pressure,
+        }
+
         return {
             "job_id": job_id,
             "type": "MD",
-            "config": job.config,
+            "config": job_data,
             "system_id": job.system_id
         }
     

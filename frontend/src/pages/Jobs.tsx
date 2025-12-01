@@ -27,7 +27,7 @@ import {
 } from 'antd';
 import { PlusOutlined, ReloadOutlined, ThunderboltOutlined, RocketOutlined, ExperimentOutlined } from '@ant-design/icons';
 import JobCard from '../components/JobCard';
-import { getMDJobs, createMDJob, cancelMDJob, resubmitMDJob, updateMDJobConfig } from '../api/jobs';
+import { getMDJobs, createMDJob, cancelMDJob, deleteMDJob, resubmitMDJob, updateMDJobConfig } from '../api/jobs';
 import { getElectrolytes } from '../api/electrolytes';
 import { getPartitions, getSlurmSuggestion, type PartitionInfo } from '../api/slurm';
 import type { MDJob, MDJobCreate, ElectrolyteSystem } from '../types';
@@ -245,6 +245,17 @@ export default function Jobs() {
       loadJobs();
     } catch (error: any) {
       message.error(error.response?.data?.detail || '取消失败');
+    }
+  };
+
+  // 删除任务
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteMDJob(id);
+      message.success('任务已删除');
+      loadJobs();
+    } catch (error: any) {
+      message.error(error.response?.data?.detail || '删除失败');
     }
   };
 
@@ -531,6 +542,7 @@ export default function Jobs() {
                     electrolyte={electrolyte}
                     onCancel={handleCancel}
                     onResubmit={handleOpenResubmitModal}
+                    onDelete={handleDelete}
                   />
                 </Col>
               );

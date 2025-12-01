@@ -1287,6 +1287,56 @@ def cancel_md_job(
         )
 
 
+@router.delete("/{job_id}")
+def delete_md_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Delete a MD job
+
+    Only allows deleting jobs in CREATED, CANCELLED, COMPLETED, or FAILED status.
+    Running or queued jobs must be cancelled first.
+
+    Args:
+        job_id: MD job ID
+        db: Database session
+        current_user: Current authenticated user
+
+    Returns:
+        Dict with success message
+
+    Raises:
+        HTTPException: If not found, no permission, or job cannot be deleted
+    """
+    job = db.query(MDJob).filter(MDJob.id == job_id).first()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="MD job not found"
+        )
+
+    # Check permission
+    check_job_permission(job, current_user)
+
+    # Check if job can be deleted (not running or queued)
+    if job.status in [JobStatus.RUNNING, JobStatus.QUEUED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete running or queued job. Please cancel it first."
+        )
+
+    # Delete the job
+    db.delete(job)
+    db.commit()
+
+    logger.info(f"MD job {job_id} deleted by {current_user.username}")
+
+    return {"message": f"Job {job_id} deleted successfully"}
+
+
 @router.post("/{job_id}/sync_status")
 def sync_job_status(
     job_id: int,

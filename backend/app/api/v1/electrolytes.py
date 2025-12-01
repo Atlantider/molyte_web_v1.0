@@ -27,8 +27,11 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
-# Path to initial salts directory
-SALTS_DIR = Path("/public/home/xiaoji/molyte_web/data/initial_salts")
+# Path to initial salts directory - 动态检测环境
+# 优先使用云端路径，找不到则使用校园网路径
+_CLOUD_SALTS_DIR = Path("/opt/molyte_web_v1.0/data/initial_salts")
+_CAMPUS_SALTS_DIR = Path("/public/home/xiaoji/molyte_web/data/initial_salts")
+SALTS_DIR = _CLOUD_SALTS_DIR if _CLOUD_SALTS_DIR.exists() else _CAMPUS_SALTS_DIR
 
 # Cache for ion information (loaded on startup)
 _ions_cache = None

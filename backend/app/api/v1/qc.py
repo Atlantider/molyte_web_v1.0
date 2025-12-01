@@ -644,9 +644,9 @@ def batch_submit_qc_jobs(
 ):
     """
     批量提交QC任务到计算集群
-    """
-    from app.tasks.qc_submission import submit_qc_job_task
 
+    在混合云架构中，任务由 Polling Worker 自动获取并处理。
+    """
     success_count = 0
     failed_count = 0
     errors = []
@@ -672,21 +672,19 @@ def batch_submit_qc_jobs(
                 errors.append({"job_id": job_id, "error": f"任务状态为 {job.status}，无法提交"})
                 continue
 
-            # 提交到Celery
-            task = submit_qc_job_task.delay(job.id)
-
+            # 混合云架构：任务保持 CREATED 状态，Polling Worker 会自动获取
             job.config = job.config or {}
-            job.config["celery_task_id"] = task.id
             job.config["submitted_at"] = datetime.now().isoformat()
+            job.config["submitted_by"] = current_user.username
             db.commit()
 
             success_count += 1
-            logger.info(f"QC job {job_id} submitted to Celery queue: task_id={task.id}")
+            logger.info(f"QC job {job_id} marked for submission, waiting for polling worker")
 
         except Exception as e:
             failed_count += 1
             errors.append({"job_id": job_id, "error": str(e)})
-            logger.error(f"Failed to submit QC job {job_id}: {e}")
+            logger.error(f"Failed to mark QC job {job_id} for submission: {e}")
 
     return {
         "success_count": success_count,
@@ -837,7 +835,12 @@ def submit_qc_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """提交QC任务到计算集群"""
+    """
+    提交QC任务到计算集群
+
+    在混合云架构中，任务由 Polling Worker 自动获取并处理。
+    这里只需要确保任务状态为 CREATED，Worker 会自动处理。
+    """
     job = db.query(QCJob).filter(QCJob.id == job_id).first()
 
     if not job:
@@ -849,27 +852,20 @@ def submit_qc_job(
     if job.status != QCJobStatusModel.CREATED:
         raise HTTPException(status_code=400, detail=f"Job cannot be submitted in {job.status} status")
 
-    # 使用Celery异步提交
-    try:
-        from app.tasks.qc_submission import submit_qc_job_task
+    # 混合云架构：任务保持 CREATED 状态，Polling Worker 会自动获取
+    # 记录提交时间
+    job.config = job.config or {}
+    job.config["submitted_at"] = datetime.now().isoformat()
+    job.config["submitted_by"] = current_user.username
+    db.commit()
 
-        task = submit_qc_job_task.delay(job.id)
+    logger.info(f"QC job {job_id} marked for submission, waiting for polling worker")
 
-        job.config = job.config or {}
-        job.config["celery_task_id"] = task.id
-        job.config["submitted_at"] = datetime.now().isoformat()
-        db.commit()
-
-        logger.info(f"QC job {job_id} submitted to Celery queue: task_id={task.id}")
-
-        return {
-            "message": "QC job submitted successfully",
-            "job_id": job_id,
-            "celery_task_id": task.id
-        }
-    except Exception as e:
-        logger.error(f"Failed to submit QC job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to submit job: {str(e)}")
+    return {
+        "message": "QC任务已提交，等待计算集群处理",
+        "job_id": job_id,
+        "status": "CREATED"
+    }
 
 
 @router.post("/jobs/{job_id}/recalculate", response_model=QCJobSchema)

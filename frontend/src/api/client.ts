@@ -7,7 +7,7 @@ import type { AxiosError, AxiosResponse } from 'axios';
 // 创建 axios 实例
 const client = axios.create({
   baseURL: '/api/v1',
-  timeout: 30000,
+  timeout: 60000, // 增加到 60 秒
   headers: {
     'Content-Type': 'application/json',
   },

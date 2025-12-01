@@ -11,6 +11,7 @@ import {
   RedoOutlined,
   CalendarOutlined,
   ExperimentOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import type { MDJob, ElectrolyteSystem, MDJobCreate } from '../types';
@@ -26,9 +27,10 @@ interface JobCardProps {
   electrolyte?: ElectrolyteSystem;
   onCancel: (id: number) => void;
   onResubmit?: (job: MDJob) => void;
+  onDelete?: (id: number) => void;
 }
 
-export default function JobCard({ job, electrolyte, onCancel, onResubmit }: JobCardProps) {
+export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDelete }: JobCardProps) {
   const navigate = useNavigate();
 
   // 判断是否可以取消（只有已提交到集群的任务才能取消）
@@ -41,6 +43,9 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit }: JobC
 
   // 判断是否可以配置（CREATED 和 CANCELLED 状态可以配置）
   const canConfigure = job.status === JobStatus.CREATED || job.status === JobStatus.CANCELLED;
+
+  // 判断是否可以删除（非运行中和非排队中的任务可以删除）
+  const canDelete = job.status !== JobStatus.QUEUED && job.status !== JobStatus.RUNNING;
 
   // 判断是否启用了QC计算
   const hasQCEnabled = job.config?.qc_enabled === true;
@@ -188,6 +193,20 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit }: JobC
           >
             重新提交
           </Button>
+        ) : null,
+        canDelete && onDelete ? (
+          <Popconfirm
+            key="delete"
+            title="确定要删除这个任务吗？"
+            description="删除后不可恢复。"
+            onConfirm={() => onDelete(job.id)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Button type="link" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()}>
+              删除
+            </Button>
+          </Popconfirm>
         ) : null,
       ].filter(Boolean)}
     >

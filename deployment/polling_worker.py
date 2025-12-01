@@ -352,10 +352,279 @@ class PollingWorker:
         """处理 QC 任务"""
         job_id = job['id']
         self.logger.info(f"开始处理 QC 任务 {job_id}")
-        
-        # TODO: 实现 QC 任务处理逻辑
-        # 类似 MD 任务的流程
-        pass
+
+        try:
+            # 1. 更新任务状态为 PROCESSING
+            self._update_job_status(job_id, 'RUNNING', 'qc')
+
+            # 2. 获取任务配置
+            config = job.get('config', {})
+            molecule_name = config.get('molecule_name', f'QC_{job_id}')
+            smiles = config.get('smiles', '')
+            basis_set = config.get('basis_set', '6-31++g(d,p)')
+            functional = config.get('functional', 'B3LYP')
+            charge = config.get('charge', 0)
+            spin_multiplicity = config.get('spin_multiplicity', 1)
+            solvent_model = config.get('solvent_model', 'gas')
+            solvent_name = config.get('solvent_name', '')
+            slurm_partition = config.get('slurm_partition', 'cpu')
+            slurm_cpus = config.get('slurm_cpus', 16)
+            slurm_time = config.get('slurm_time', 7200)
+
+            # 3. 创建工作目录
+            work_base = Path(self.config['local']['work_base_path'])
+            work_dir = work_base / "qc_work" / f"QC-{job_id}-{molecule_name}"
+            work_dir.mkdir(parents=True, exist_ok=True)
+
+            # 4. 生成安全的文件名
+            safe_name = self._sanitize_filename(molecule_name)
+
+            # 5. 生成 Gaussian 输入文件
+            gjf_path = work_dir / f"{safe_name}.gjf"
+            self._generate_gaussian_input(
+                gjf_path, molecule_name, smiles,
+                charge, spin_multiplicity,
+                functional, basis_set,
+                solvent_model, solvent_name
+            )
+            self.logger.info(f"生成 Gaussian 输入文件: {gjf_path}")
+
+            # 6. 生成 Slurm 作业脚本
+            job_script = work_dir / "job.sh"
+            self._generate_qc_job_script(
+                job_script, safe_name, slurm_partition, slurm_cpus, slurm_time
+            )
+            self.logger.info(f"生成 Slurm 作业脚本: {job_script}")
+
+            # 7. 提交到 Slurm
+            slurm_result = self._submit_to_slurm(work_dir)
+
+            if not slurm_result['success']:
+                raise Exception(slurm_result.get('error', 'Failed to submit to Slurm'))
+
+            slurm_job_id = slurm_result['slurm_job_id']
+
+            # 8. 更新任务状态为 RUNNING
+            self._update_job_status(
+                job_id, 'RUNNING', 'qc',
+                slurm_job_id=slurm_job_id,
+                work_dir=str(work_dir)
+            )
+
+            # 9. 添加到运行中的任务列表
+            self.running_jobs[job_id] = {
+                'type': 'qc',
+                'slurm_job_id': slurm_job_id,
+                'work_dir': work_dir,
+                'start_time': time.time()
+            }
+
+            self.logger.info(f"QC 任务 {job_id} 已提交到 Slurm (Job ID: {slurm_job_id})")
+
+        except Exception as e:
+            self.logger.error(f"处理 QC 任务 {job_id} 失败: {e}", exc_info=True)
+            self._update_job_status(job_id, 'FAILED', 'qc', error_message=str(e))
+
+    def _sanitize_filename(self, name: str) -> str:
+        """清理文件名，去除不安全字符"""
+        import re
+        # 替换不安全字符
+        safe = re.sub(r'[^\w\-.]', '_', name)
+        # 去除连续的下划线
+        safe = re.sub(r'_+', '_', safe)
+        # 去除首尾的下划线
+        safe = safe.strip('_')
+        return safe or 'molecule'
+
+    def _generate_gaussian_input(self, gjf_path: Path, molecule_name: str, smiles: str,
+                                   charge: int, spin_multiplicity: int,
+                                   functional: str, basis_set: str,
+                                   solvent_model: str, solvent_name: str):
+        """生成 Gaussian 输入文件"""
+        # 构建计算关键字
+        keywords = f"opt freq {functional}/{basis_set}"
+
+        # 添加色散校正（对于DFT方法）
+        if functional.upper() not in ["HF"]:
+            keywords += " em=gd3bj"
+
+        # 添加溶剂效应
+        if solvent_model and solvent_model.lower() != 'gas':
+            if solvent_model.lower() == 'pcm':
+                keywords += f" scrf=(pcm,solvent={solvent_name or 'water'})"
+            elif solvent_model.lower() == 'smd':
+                keywords += f" scrf=(smd,solvent={solvent_name or 'water'})"
+
+        safe_name = self._sanitize_filename(molecule_name)
+
+        # 生成 gjf 内容
+        gjf_content = f"""%nprocshared=16
+%mem=8GB
+%chk={safe_name}.chk
+# {keywords}
+
+{molecule_name}
+
+{charge} {spin_multiplicity}
+"""
+
+        # 尝试从 SMILES 生成 3D 坐标
+        coords = self._get_3d_coordinates(smiles, molecule_name)
+        if coords:
+            for atom, x, y, z in coords:
+                gjf_content += f" {atom:<2}  {x:>12.8f}  {y:>12.8f}  {z:>12.8f}\n"
+        else:
+            # 如果无法生成坐标，使用 SMILES 作为注释
+            gjf_content += f"! SMILES: {smiles}\n"
+            gjf_content += "! 请手动添加分子坐标\n"
+
+        gjf_content += "\n"  # 空行结尾
+
+        with open(gjf_path, 'w') as f:
+            f.write(gjf_content)
+
+    def _get_3d_coordinates(self, smiles: str, molecule_name: str):
+        """从 SMILES 或 PDB 文件获取 3D 坐标"""
+        # 首先尝试从 initial_salts 目录加载 PDB 文件
+        initial_salts_path = Path(self.config['local']['initial_salts_path'])
+        clean_name = molecule_name.replace("+", "").replace("-", "").strip()
+
+        possible_paths = [
+            initial_salts_path / f"{clean_name}.pdb",
+            initial_salts_path / f"{molecule_name}.pdb",
+        ]
+
+        for pdb_path in possible_paths:
+            if pdb_path.exists():
+                coords = self._parse_pdb_coordinates(pdb_path)
+                if coords:
+                    self.logger.info(f"从 PDB 文件加载坐标: {pdb_path}")
+                    return coords
+
+        # 尝试使用 RDKit 从 SMILES 生成坐标
+        try:
+            from rdkit import Chem
+            from rdkit.Chem import AllChem
+
+            mol = Chem.MolFromSmiles(smiles)
+            if mol:
+                mol = Chem.AddHs(mol)
+                AllChem.EmbedMolecule(mol, AllChem.ETKDG())
+                AllChem.MMFFOptimizeMolecule(mol)
+
+                coords = []
+                conf = mol.GetConformer()
+                for i, atom in enumerate(mol.GetAtoms()):
+                    pos = conf.GetAtomPosition(i)
+                    coords.append((atom.GetSymbol(), pos.x, pos.y, pos.z))
+
+                self.logger.info(f"从 SMILES 生成 3D 坐标")
+                return coords
+        except ImportError:
+            self.logger.warning("RDKit 未安装，无法从 SMILES 生成坐标")
+        except Exception as e:
+            self.logger.warning(f"从 SMILES 生成坐标失败: {e}")
+
+        return None
+
+    def _parse_pdb_coordinates(self, pdb_path: Path):
+        """解析 PDB 文件坐标"""
+        coords = []
+        try:
+            with open(pdb_path, 'r') as f:
+                for line in f:
+                    if line.startswith('ATOM') or line.startswith('HETATM'):
+                        # PDB 格式: ATOM/HETATM, atom_num, atom_name, ..., x, y, z
+                        atom_name = line[12:16].strip()
+                        # 提取元素符号（去掉数字）
+                        element = ''.join(c for c in atom_name if c.isalpha())
+                        if not element:
+                            element = atom_name[0]
+                        x = float(line[30:38])
+                        y = float(line[38:46])
+                        z = float(line[46:54])
+                        coords.append((element, x, y, z))
+            return coords if coords else None
+        except Exception as e:
+            self.logger.warning(f"解析 PDB 文件失败: {e}")
+            return None
+
+    def _generate_qc_job_script(self, script_path: Path, safe_name: str,
+                                  partition: str, cpus: int, time_limit: int):
+        """生成 QC 任务的 Slurm 作业脚本"""
+        safe_job_name = f"QC_{safe_name}"[:64]
+
+        script_content = f"""#!/bin/bash
+#SBATCH --job-name={safe_job_name}
+#SBATCH --output=qc_out.log
+#SBATCH --error=qc_err.log
+#SBATCH --partition={partition}
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task={cpus}
+#SBATCH --time={time_limit}
+
+# 进入工作目录
+cd $SLURM_SUBMIT_DIR
+
+# 设置 Gaussian 环境
+export g16root=/public/software
+export GAUSS_SCRDIR=/public/software/g16/scratch
+source /public/software/g16/bsd/g16.profile
+
+# 运行 Gaussian
+ulimit -s unlimited
+g16 < "{safe_name}.gjf" > "{safe_name}_out.log" 2>&1
+
+# 转换 checkpoint 文件
+if [ -f "{safe_name}.chk" ]; then
+    formchk "{safe_name}.chk" "{safe_name}.fchk"
+fi
+
+echo "QC calculation completed"
+"""
+
+        with open(script_path, 'w') as f:
+            f.write(script_content)
+
+        import os
+        os.chmod(script_path, 0o755)
+
+    def _submit_to_slurm(self, work_dir: Path) -> Dict[str, Any]:
+        """提交任务到 Slurm"""
+        import re
+
+        job_script = work_dir / "job.sh"
+
+        if not job_script.exists():
+            return {'success': False, 'error': f'Job script not found: {job_script}'}
+
+        try:
+            result = subprocess.run(
+                ['sbatch', str(job_script)],
+                cwd=str(work_dir),
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+
+            if result.returncode != 0:
+                return {'success': False, 'error': f'sbatch failed: {result.stderr}'}
+
+            # 解析 Slurm job ID
+            output = result.stdout.strip()
+            match = re.search(r'Submitted batch job (\d+)', output)
+
+            if match:
+                slurm_job_id = match.group(1)
+                return {'success': True, 'slurm_job_id': slurm_job_id}
+            else:
+                return {'success': False, 'error': f'Could not parse Slurm job ID from: {output}'}
+
+        except subprocess.TimeoutExpired:
+            return {'success': False, 'error': 'sbatch command timed out'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
     
     def _check_running_jobs(self):
         """检查运行中的任务状态"""
