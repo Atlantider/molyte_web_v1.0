@@ -161,14 +161,15 @@ async def update_job_status(
 ):
     """
     更新任务状态
-    
+
     Worker 在任务状态变化时调用此接口
     """
-    # 验证是否是 Worker 用户
-    if current_user.user_type != "admin":
+    # 验证是否是管理员用户（Worker 用户应该是 ADMIN 角色）
+    from app.models.user import UserRole
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only worker users can update job status"
+            detail="Only admin/worker users can update job status"
         )
     
     job_type = status_update.job_type.upper()
