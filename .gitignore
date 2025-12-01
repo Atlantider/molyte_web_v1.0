@@ -85,11 +85,35 @@ logs/
 Thumbs.db
 .DS_Store
 
-# Work directories (task data)
+# Work directories (task data) - 排除所有计算结果文件
 data/md_work/*/
-data/qc_jobs/*/
+data/qc_work/*/
+data/charges/*
 !data/md_work/.gitkeep
-!data/qc_jobs/.gitkeep
+!data/qc_work/.gitkeep
+!data/charges/.gitkeep
+
+# 计算结果文件类型 - 通常很大，不应上传到Git
+*.chk
+*.fchk
+*.log
+*.out
+*.gjf
+*.cub
+*.dat
+*.tga
+*.png
+*.xyz
+*.pdb
+*.lt
+*.txt
+*.vmd
+*.sh
+!data/initial_salts/*.pdb
+!data/initial_salts/*.lt
+!data/initial_salts/job.sh
+!start_complete.sh
+!stop_complete.sh
 
 # Backup
 *_backup/
