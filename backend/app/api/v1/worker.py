@@ -211,9 +211,13 @@ async def get_pending_jobs(
 
             if electrolyte:
                 # 合并 config 和电解质数据
+                job_name = f"MD-{job.id}"
+                if job.config and job.config.get("job_name"):
+                    job_name = job.config.get("job_name")
+
                 job_config = {
                     **(job.config or {}),
-                    "name": job.config.get("job_name") if job.config else f"MD-{job.id}",
+                    "name": job_name,
                     "cations": electrolyte.cations,
                     "anions": electrolyte.anions,
                     "solvents": electrolyte.solvents,
@@ -223,7 +227,7 @@ async def get_pending_jobs(
                     "pressure": electrolyte.pressure,
                 }
             else:
-                job_config = job.config
+                job_config = job.config or {"name": f"MD-{job.id}"}
 
             result.append(PendingJobResponse(
                 id=job.id,
@@ -296,6 +300,14 @@ async def update_job_status(
         "PROCESSING": "RUNNING",
     }
     mapped_status = status_mapping.get(status_update.status, status_update.status)
+
+    # 验证状态值是否有效
+    valid_statuses = [s.value for s in JobStatus] if job_type == "MD" else [s.value for s in QCJobStatus]
+    if mapped_status not in valid_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status: {mapped_status}. Valid statuses: {valid_statuses}"
+        )
 
     if job_type == "MD":
         job = db.query(MDJob).filter(MDJob.id == job_id).first()

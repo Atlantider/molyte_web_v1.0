@@ -937,6 +937,12 @@ echo "QC calculation completed"
         try:
             endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/status"
 
+            # 确保状态值有效
+            valid_statuses = ["CREATED", "QUEUED", "RUNNING", "POSTPROCESSING", "COMPLETED", "FAILED", "CANCELLED"]
+            if status not in valid_statuses:
+                self.logger.error(f"无效的状态值: {status}，有效值: {valid_statuses}")
+                return
+
             data = {
                 'status': status,
                 'job_type': job_type.upper(),
@@ -948,7 +954,8 @@ echo "QC calculation completed"
             if work_dir:
                 data['work_dir'] = work_dir
             if error_message:
-                data['error_message'] = error_message
+                # 截断错误消息，防止过长
+                data['error_message'] = str(error_message)[:500]
             if result_files:
                 data['result_files'] = result_files
 
@@ -965,7 +972,7 @@ echo "QC calculation completed"
                 self.logger.warning(f"更新任务状态失败: {response.status_code} - {response.text}")
 
         except Exception as e:
-            self.logger.error(f"更新任务 {job_id} 状态失败: {e}")
+            self.logger.error(f"更新任务 {job_id} 状态失败: {e}", exc_info=True)
 
 
 def main():
