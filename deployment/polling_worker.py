@@ -1020,6 +1020,7 @@ echo "QC calculation completed"
         使用后端的 qc_postprocess 模块中的函数
         """
         import sys
+        import base64
 
         try:
             # 添加后端模块路径
@@ -1045,6 +1046,15 @@ echo "QC calculation completed"
                     result['esp_image_path'] = esp_image_path
                     self.logger.info(f"ESP 图片生成: {esp_image_path}")
 
+                    # 读取图片并转换为base64（用于混合云架构）
+                    try:
+                        with open(esp_image_path, 'rb') as f:
+                            esp_image_data = f.read()
+                            result['esp_image_content'] = base64.b64encode(esp_image_data).decode('utf-8')
+                            self.logger.info(f"ESP 图片已编码为base64，大小: {len(esp_image_data)} bytes")
+                    except Exception as e:
+                        self.logger.warning(f"读取ESP图片失败: {e}")
+
                 # 提取 ESP 极值
                 surfanalysis_file = work_dir / "surfanalysis.txt"
                 esp_min, esp_max = extract_esp_values(str(surfanalysis_file))
@@ -1061,6 +1071,15 @@ echo "QC calculation completed"
                 if homo_image_path:
                     result['homo_image_path'] = homo_image_path
                     self.logger.info(f"HOMO 图片生成: {homo_image_path}")
+
+                    # 读取图片并转换为base64（用于混合云架构）
+                    try:
+                        with open(homo_image_path, 'rb') as f:
+                            homo_image_data = f.read()
+                            result['homo_image_content'] = base64.b64encode(homo_image_data).decode('utf-8')
+                            self.logger.info(f"HOMO 图片已编码为base64，大小: {len(homo_image_data)} bytes")
+                    except Exception as e:
+                        self.logger.warning(f"读取HOMO图片失败: {e}")
             except Exception as e:
                 self.logger.warning(f"HOMO 可视化生成失败: {e}")
 
@@ -1070,6 +1089,15 @@ echo "QC calculation completed"
                 if lumo_image_path:
                     result['lumo_image_path'] = lumo_image_path
                     self.logger.info(f"LUMO 图片生成: {lumo_image_path}")
+
+                    # 读取图片并转换为base64（用于混合云架构）
+                    try:
+                        with open(lumo_image_path, 'rb') as f:
+                            lumo_image_data = f.read()
+                            result['lumo_image_content'] = base64.b64encode(lumo_image_data).decode('utf-8')
+                            self.logger.info(f"LUMO 图片已编码为base64，大小: {len(lumo_image_data)} bytes")
+                    except Exception as e:
+                        self.logger.warning(f"读取LUMO图片失败: {e}")
             except Exception as e:
                 self.logger.warning(f"LUMO 可视化生成失败: {e}")
 

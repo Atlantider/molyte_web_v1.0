@@ -167,6 +167,11 @@ class QCResult(Base):
     cube_esp_path = Column(Text)
     cube_homo_path = Column(Text)  # HOMO轨道cube文件
     cube_lumo_path = Column(Text)  # LUMO轨道cube文件
+
+    # 图片内容（base64编码，用于混合云架构）
+    homo_image_content = Column(Text)  # HOMO轨道图片base64
+    lumo_image_content = Column(Text)  # LUMO轨道图片base64
+    esp_image_content = Column(Text)  # ESP图片base64
     
     # 其他属性
     dipole_moment = Column(Float)

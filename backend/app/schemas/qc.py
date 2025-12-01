@@ -159,7 +159,7 @@ class QCJobBase(BaseModel):
         min_length=1,
         max_length=255,
         description="分子名称（仅支持英文、数字和符号）",
-        pattern=r'^[A-Za-z0-9+\-_\s]+$'
+        pattern=r'^[A-Za-z0-9+\-_\s,()]+$'
     )
     smiles: str = Field(..., min_length=1, description="SMILES表达式")
     molecule_type: MoleculeType = Field(default=MoleculeType.CUSTOM, description="分子类型")

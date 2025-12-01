@@ -1197,6 +1197,9 @@ def get_esp_image(
     current_user: User = Depends(get_current_active_user)
 ):
     """获取QC结果的ESP图片"""
+    from fastapi.responses import Response
+    import base64
+
     result = db.query(QCResult).filter(QCResult.id == result_id).first()
 
     if not result:
@@ -1207,26 +1210,28 @@ def get_esp_image(
     if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    if not result.esp_image_path:
-        raise HTTPException(status_code=404, detail="ESP image not available for this calculation")
+    # 优先使用数据库中的图片内容（混合云架构）
+    if result.esp_image_content:
+        try:
+            image_data = base64.b64decode(result.esp_image_content)
+            return Response(
+                content=image_data,
+                media_type="image/png",
+                headers={"Content-Disposition": f"inline; filename=esp_{result_id}.png"}
+            )
+        except Exception as e:
+            logger.error(f"Failed to decode ESP image content: {e}")
 
-    # 检查是否是COS路径（以results/开头）还是本地路径
-    if result.esp_image_path.startswith('results/'):
-        # COS路径，重定向到COS URL
-        from fastapi.responses import RedirectResponse
-        cos_url = f"https://molyte-results-1308567295.cos.ap-beijing.myqcloud.com/{result.esp_image_path}"
-        return RedirectResponse(url=cos_url, status_code=302)
-    else:
-        # 本地路径，检查文件存在性
-        if not os.path.exists(result.esp_image_path):
-            raise HTTPException(status_code=404, detail="ESP image not found")
-
+    # 回退到文件路径（本地部署）
+    if result.esp_image_path and os.path.exists(result.esp_image_path):
         return FileResponse(
             result.esp_image_path,
             media_type="image/png",
             filename=f"esp_{result_id}.png",
             headers={"Content-Disposition": f"inline; filename=esp_{result_id}.png"}
         )
+
+    raise HTTPException(status_code=404, detail="ESP image not found")
 
 
 @router.get("/esp-image-download/{result_id}")
@@ -1264,6 +1269,9 @@ def get_homo_image(
     current_user: User = Depends(get_current_active_user)
 ):
     """获取QC结果的HOMO轨道图片"""
+    from fastapi.responses import Response
+    import base64
+
     result = db.query(QCResult).filter(QCResult.id == result_id).first()
 
     if not result:
@@ -1274,26 +1282,28 @@ def get_homo_image(
     if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    if not result.homo_image_path:
-        raise HTTPException(status_code=404, detail="HOMO image not available for this calculation")
+    # 优先使用数据库中的图片内容（混合云架构）
+    if result.homo_image_content:
+        try:
+            image_data = base64.b64decode(result.homo_image_content)
+            return Response(
+                content=image_data,
+                media_type="image/png",
+                headers={"Content-Disposition": f"inline; filename=homo_{result_id}.png"}
+            )
+        except Exception as e:
+            logger.error(f"Failed to decode HOMO image content: {e}")
 
-    # 检查是否是COS路径（以results/开头）还是本地路径
-    if result.homo_image_path.startswith('results/'):
-        # COS路径，重定向到COS URL
-        from fastapi.responses import RedirectResponse
-        cos_url = f"https://molyte-results-1308567295.cos.ap-beijing.myqcloud.com/{result.homo_image_path}"
-        return RedirectResponse(url=cos_url, status_code=302)
-    else:
-        # 本地路径，检查文件存在性
-        if not os.path.exists(result.homo_image_path):
-            raise HTTPException(status_code=404, detail="HOMO image not found")
-
+    # 回退到文件路径（本地部署）
+    if result.homo_image_path and os.path.exists(result.homo_image_path):
         return FileResponse(
             result.homo_image_path,
             media_type="image/png",
             filename=f"homo_{result_id}.png",
             headers={"Content-Disposition": f"inline; filename=homo_{result_id}.png"}
         )
+
+    raise HTTPException(status_code=404, detail="HOMO image not found")
 
 
 @router.get("/lumo-image/{result_id}")
@@ -1303,6 +1313,9 @@ def get_lumo_image(
     current_user: User = Depends(get_current_active_user)
 ):
     """获取QC结果的LUMO轨道图片"""
+    from fastapi.responses import Response
+    import base64
+
     result = db.query(QCResult).filter(QCResult.id == result_id).first()
 
     if not result:
@@ -1313,26 +1326,28 @@ def get_lumo_image(
     if qc_job and qc_job.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    if not result.lumo_image_path:
-        raise HTTPException(status_code=404, detail="LUMO image not available for this calculation")
+    # 优先使用数据库中的图片内容（混合云架构）
+    if result.lumo_image_content:
+        try:
+            image_data = base64.b64decode(result.lumo_image_content)
+            return Response(
+                content=image_data,
+                media_type="image/png",
+                headers={"Content-Disposition": f"inline; filename=lumo_{result_id}.png"}
+            )
+        except Exception as e:
+            logger.error(f"Failed to decode LUMO image content: {e}")
 
-    # 检查是否是COS路径（以results/开头）还是本地路径
-    if result.lumo_image_path.startswith('results/'):
-        # COS路径，重定向到COS URL
-        from fastapi.responses import RedirectResponse
-        cos_url = f"https://molyte-results-1308567295.cos.ap-beijing.myqcloud.com/{result.lumo_image_path}"
-        return RedirectResponse(url=cos_url, status_code=302)
-    else:
-        # 本地路径，检查文件存在性
-        if not os.path.exists(result.lumo_image_path):
-            raise HTTPException(status_code=404, detail="LUMO image not found")
-
+    # 回退到文件路径（本地部署）
+    if result.lumo_image_path and os.path.exists(result.lumo_image_path):
         return FileResponse(
             result.lumo_image_path,
             media_type="image/png",
             filename=f"lumo_{result_id}.png",
             headers={"Content-Disposition": f"inline; filename=lumo_{result_id}.png"}
         )
+
+    raise HTTPException(status_code=404, detail="LUMO image not found")
 
 
 @router.get("/esp-image-by-smiles/{smiles:path}")
@@ -1560,70 +1575,70 @@ def get_common_molecules():
     return {
         "categories": [
             {
-                "name": "常用溶剂",
+                "name": "Common Solvents",
                 "molecules": [
-                    {"name": "Water", "label": "水 (Water)", "smiles": "O", "charge": 0},
-                    {"name": "Acetonitrile", "label": "乙腈 (Acetonitrile)", "smiles": "CC#N", "charge": 0},
-                    {"name": "Methanol", "label": "甲醇 (Methanol)", "smiles": "CO", "charge": 0},
-                    {"name": "Ethanol", "label": "乙醇 (Ethanol)", "smiles": "CCO", "charge": 0},
-                    {"name": "Acetone", "label": "丙酮 (Acetone)", "smiles": "CC(=O)C", "charge": 0},
-                    {"name": "DMSO", "label": "二甲亚砜 (DMSO)", "smiles": "CS(=O)C", "charge": 0},
-                    {"name": "THF", "label": "四氢呋喃 (THF)", "smiles": "C1CCOC1", "charge": 0},
-                    {"name": "DCM", "label": "二氯甲烷 (DCM)", "smiles": "ClCCl", "charge": 0},
-                    {"name": "Chloroform", "label": "氯仿 (Chloroform)", "smiles": "ClC(Cl)Cl", "charge": 0},
-                    {"name": "Benzene", "label": "苯 (Benzene)", "smiles": "c1ccccc1", "charge": 0},
-                    {"name": "Toluene", "label": "甲苯 (Toluene)", "smiles": "Cc1ccccc1", "charge": 0},
-                    {"name": "DMF", "label": "N,N-二甲基甲酰胺 (DMF)", "smiles": "CN(C)C=O", "charge": 0},
+                    {"name": "Water", "label": "Water", "smiles": "O", "charge": 0},
+                    {"name": "Acetonitrile", "label": "Acetonitrile", "smiles": "CC#N", "charge": 0},
+                    {"name": "Methanol", "label": "Methanol", "smiles": "CO", "charge": 0},
+                    {"name": "Ethanol", "label": "Ethanol", "smiles": "CCO", "charge": 0},
+                    {"name": "Acetone", "label": "Acetone", "smiles": "CC(=O)C", "charge": 0},
+                    {"name": "DMSO", "label": "DMSO", "smiles": "CS(=O)C", "charge": 0},
+                    {"name": "THF", "label": "THF", "smiles": "C1CCOC1", "charge": 0},
+                    {"name": "DCM", "label": "DCM", "smiles": "ClCCl", "charge": 0},
+                    {"name": "Chloroform", "label": "Chloroform", "smiles": "ClC(Cl)Cl", "charge": 0},
+                    {"name": "Benzene", "label": "Benzene", "smiles": "c1ccccc1", "charge": 0},
+                    {"name": "Toluene", "label": "Toluene", "smiles": "Cc1ccccc1", "charge": 0},
+                    {"name": "DMF", "label": "DMF", "smiles": "CN(C)C=O", "charge": 0},
                 ]
             },
             {
-                "name": "锂盐阳离子",
+                "name": "Cations",
                 "molecules": [
-                    {"name": "Li_cation", "label": "锂离子 (Li+)", "smiles": "[Li+]", "charge": 1},
-                    {"name": "Na_cation", "label": "钠离子 (Na+)", "smiles": "[Na+]", "charge": 1},
-                    {"name": "K_cation", "label": "钾离子 (K+)", "smiles": "[K+]", "charge": 1},
+                    {"name": "Li", "label": "Li", "smiles": "[Li+]", "charge": 1},
+                    {"name": "Na", "label": "Na", "smiles": "[Na+]", "charge": 1},
+                    {"name": "K", "label": "K", "smiles": "[K+]", "charge": 1},
                 ]
             },
             {
-                "name": "常用阴离子",
+                "name": "Anions",
                 "molecules": [
-                    {"name": "PF6_anion", "label": "六氟磷酸根 (PF6-)", "smiles": "F[P-](F)(F)(F)(F)F", "charge": -1},
-                    {"name": "BF4_anion", "label": "四氟硼酸根 (BF4-)", "smiles": "F[B-](F)(F)F", "charge": -1},
-                    {"name": "TFSI_anion", "label": "双三氟甲磺酰亚胺 (TFSI-)", "smiles": "FC(F)(F)S(=O)(=O)[N-]S(=O)(=O)C(F)(F)F", "charge": -1},
-                    {"name": "FSI_anion", "label": "双氟磺酰亚胺 (FSI-)", "smiles": "FS(=O)(=O)[N-]S(=O)(=O)F", "charge": -1},
-                    {"name": "DFOB_anion", "label": "二氟草酸硼酸根 (DFOB-)", "smiles": "FB1OC(=O)C(=O)O[B-]1F", "charge": -1},
-                    {"name": "ClO4_anion", "label": "高氯酸根 (ClO4-)", "smiles": "[O-]Cl(=O)(=O)=O", "charge": -1},
-                    {"name": "NO3_anion", "label": "硝酸根 (NO3-)", "smiles": "[O-][N+](=O)[O-]", "charge": -1},
-                    {"name": "F_anion", "label": "氟离子 (F-)", "smiles": "[F-]", "charge": -1},
-                    {"name": "Cl_anion", "label": "氯离子 (Cl-)", "smiles": "[Cl-]", "charge": -1},
+                    {"name": "PF6", "label": "PF6", "smiles": "F[P-](F)(F)(F)(F)F", "charge": -1},
+                    {"name": "BF4", "label": "BF4", "smiles": "F[B-](F)(F)F", "charge": -1},
+                    {"name": "TFSI", "label": "TFSI", "smiles": "FC(F)(F)S(=O)(=O)[N-]S(=O)(=O)C(F)(F)F", "charge": -1},
+                    {"name": "FSI", "label": "FSI", "smiles": "FS(=O)(=O)[N-]S(=O)(=O)F", "charge": -1},
+                    {"name": "DFOB", "label": "DFOB", "smiles": "FB1OC(=O)C(=O)O[B-]1F", "charge": -1},
+                    {"name": "ClO4", "label": "ClO4", "smiles": "[O-]Cl(=O)(=O)=O", "charge": -1},
+                    {"name": "NO3", "label": "NO3", "smiles": "[O-][N+](=O)[O-]", "charge": -1},
+                    {"name": "F", "label": "F", "smiles": "[F-]", "charge": -1},
+                    {"name": "Cl", "label": "Cl", "smiles": "[Cl-]", "charge": -1},
                 ]
             },
             {
-                "name": "碳酸酯类溶剂",
+                "name": "Carbonates",
                 "molecules": [
-                    {"name": "EC", "label": "碳酸乙烯酯 (EC)", "smiles": "C1COC(=O)O1", "charge": 0},
-                    {"name": "PC", "label": "碳酸丙烯酯 (PC)", "smiles": "CC1COC(=O)O1", "charge": 0},
-                    {"name": "DMC", "label": "碳酸二甲酯 (DMC)", "smiles": "COC(=O)OC", "charge": 0},
-                    {"name": "DEC", "label": "碳酸二乙酯 (DEC)", "smiles": "CCOC(=O)OCC", "charge": 0},
-                    {"name": "EMC", "label": "碳酸甲乙酯 (EMC)", "smiles": "CCOC(=O)OC", "charge": 0},
+                    {"name": "EC", "label": "EC", "smiles": "C1COC(=O)O1", "charge": 0},
+                    {"name": "PC", "label": "PC", "smiles": "CC1COC(=O)O1", "charge": 0},
+                    {"name": "DMC", "label": "DMC", "smiles": "COC(=O)OC", "charge": 0},
+                    {"name": "DEC", "label": "DEC", "smiles": "CCOC(=O)OCC", "charge": 0},
+                    {"name": "EMC", "label": "EMC", "smiles": "CCOC(=O)OC", "charge": 0},
                 ]
             },
             {
-                "name": "醚类溶剂",
+                "name": "Ethers",
                 "molecules": [
-                    {"name": "DME", "label": "乙二醇二甲醚 (DME)", "smiles": "COCCOC", "charge": 0},
-                    {"name": "DEGDME", "label": "二乙二醇二甲醚 (DEGDME)", "smiles": "COCCOCCOC", "charge": 0},
-                    {"name": "TEGDME", "label": "四乙二醇二甲醚 (TEGDME)", "smiles": "COCCOCCOCCOCCOC", "charge": 0},
-                    {"name": "DOL", "label": "1,3-二氧戊环 (DOL)", "smiles": "C1COCO1", "charge": 0},
+                    {"name": "DME", "label": "DME", "smiles": "COCCOC", "charge": 0},
+                    {"name": "DEGDME", "label": "DEGDME", "smiles": "COCCOCCOC", "charge": 0},
+                    {"name": "TEGDME", "label": "TEGDME", "smiles": "COCCOCCOCCOCCOC", "charge": 0},
+                    {"name": "DOL", "label": "DOL", "smiles": "C1COCO1", "charge": 0},
                 ]
             },
             {
-                "name": "离子液体阳离子",
+                "name": "Ionic Liquids",
                 "molecules": [
-                    {"name": "EMIm_cation", "label": "1-乙基-3-甲基咪唑 (EMIm+)", "smiles": "CC[n+]1ccn(C)c1", "charge": 1},
-                    {"name": "BMIm_cation", "label": "1-丁基-3-甲基咪唑 (BMIm+)", "smiles": "CCCC[n+]1ccn(C)c1", "charge": 1},
-                    {"name": "Pyr13_cation", "label": "N-甲基-N-丙基吡咯烷 (Pyr13+)", "smiles": "CCC[N+]1(C)CCCC1", "charge": 1},
-                    {"name": "TEA_cation", "label": "四乙基铵 (TEA+)", "smiles": "CC[N+](CC)(CC)CC", "charge": 1},
+                    {"name": "EMIm", "label": "EMIm", "smiles": "CC[n+]1ccn(C)c1", "charge": 1},
+                    {"name": "BMIm", "label": "BMIm", "smiles": "CCCC[n+]1ccn(C)c1", "charge": 1},
+                    {"name": "Pyr13", "label": "Pyr13", "smiles": "CCC[N+]1(C)CCCC1", "charge": 1},
+                    {"name": "TEA", "label": "TEA", "smiles": "CC[N+](CC)(CC)CC", "charge": 1},
                 ]
             },
         ]

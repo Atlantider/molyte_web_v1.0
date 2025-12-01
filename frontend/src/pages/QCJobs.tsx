@@ -1261,12 +1261,12 @@ export default function QCJobs() {
                 rules={[
                   { required: true, message: '请输入分子名称' },
                   {
-                    pattern: /^[A-Za-z0-9+\-_\s]+$/,
+                    pattern: /^[A-Za-z0-9+\-_\s,()]+$/,
                     message: '分子名称仅支持英文、数字和符号，不支持中文'
                   }
                 ]}
                 tooltip="请使用英文名称，例如: EC, DMC, LiPF6"
-                extra="仅支持英文、数字和符号（+、-、_），不支持中文"
+                extra="仅支持英文名称，不支持中文"
               >
                 <Input placeholder="例如: EC, DMC, LiPF6" />
               </Form.Item>
