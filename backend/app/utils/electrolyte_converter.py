@@ -169,9 +169,8 @@ def convert_new_to_old_format(data: ElectrolyteCreateNew) -> Dict:
                 f"to ensure electroneutrality (total cation charge: +{total_positive_charge})"
             )
 
-    # Remove charge field from anions_old (not needed in database)
-    for anion in anions_old:
-        anion.pop("charge", None)
+    # Keep charge field in anions_old for QC calculations
+    # The charge field is needed when creating QC jobs from the electrolyte system
 
     # Convert solvents from molar ratio to count
     solvents_old = []

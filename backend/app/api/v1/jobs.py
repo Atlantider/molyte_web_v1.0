@@ -11,7 +11,7 @@ import subprocess
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.electrolyte import ElectrolyteSystem
-from app.models.job import MDJob, JobStatus
+from app.models.job import MDJob, JobStatus, DataVisibility
 from app.models.qc import QCJob, QCJobStatus
 from app.schemas.job import MDJob as MDJobSchema, MDJobCreate, MDJobUpdate, BatchMDJobCreate
 from app.dependencies import get_current_active_user
@@ -655,7 +655,9 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
             for cat in system.cations:
                 smiles = cat.get("smiles")
                 name = cat.get("name", "cation")
-                charge = cat.get("charge", 1)  # 尝试从数据中获取电荷，默认+1
+                charge = cat.get("charge")  # 尝试从数据中获取电荷
+                if charge is None:  # 如果没有设置或为None，使用默认值+1
+                    charge = 1
                 if smiles and smiles not in seen_smiles:
                     molecules_to_calc.append((smiles, name, "cation", charge))
                     seen_smiles.add(smiles)
@@ -665,7 +667,9 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
             for an in system.anions:
                 smiles = an.get("smiles")
                 name = an.get("name", "anion")
-                charge = an.get("charge", -1)  # 尝试从数据中获取电荷，默认-1
+                charge = an.get("charge")  # 尝试从数据中获取电荷
+                if charge is None:  # 如果没有设置或为None，使用默认值-1
+                    charge = -1
                 if smiles and smiles not in seen_smiles:
                     molecules_to_calc.append((smiles, name, "anion", charge))
                     seen_smiles.add(smiles)
