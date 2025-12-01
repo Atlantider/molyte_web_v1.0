@@ -900,50 +900,84 @@ echo "QC calculation completed"
         import re
 
         try:
-            # 查找 .log 文件
-            log_files = list(work_dir.glob("*.log"))
-            if not log_files:
-                self.logger.warning(f"未找到 Gaussian 日志文件: {work_dir}")
+            # 查找真正的 Gaussian 输出文件
+            # 优先级：1. *_out.log (Gaussian输出) 2. *.out (备选) 3. 其他.log文件
+            gaussian_log_file = None
+
+            # 首先查找 *_out.log 格式的文件（这是真正的Gaussian输出）
+            out_log_files = list(work_dir.glob("*_out.log"))
+            if out_log_files:
+                # 排除 qc_out.log（这是Slurm的输出）
+                gaussian_files = [f for f in out_log_files if f.name != "qc_out.log"]
+                if gaussian_files:
+                    gaussian_log_file = gaussian_files[0]
+
+            # 如果没找到，尝试查找 .out 文件
+            if not gaussian_log_file:
+                out_files = list(work_dir.glob("*.out"))
+                if out_files:
+                    gaussian_log_file = out_files[0]
+
+            # 最后尝试其他 .log 文件（排除已知的非Gaussian文件）
+            if not gaussian_log_file:
+                log_files = list(work_dir.glob("*.log"))
+                excluded_names = {"qc_out.log", "qc_err.log", "slurm.log"}
+                gaussian_files = [f for f in log_files if f.name not in excluded_names]
+                if gaussian_files:
+                    gaussian_log_file = gaussian_files[0]
+
+            if not gaussian_log_file:
+                self.logger.warning(f"未找到 Gaussian 输出文件: {work_dir}")
                 return None
 
-            log_file = log_files[0]
-            self.logger.info(f"解析 Gaussian 输出: {log_file.name}")
-
-            content = log_file.read_text(errors='ignore')
+            self.logger.info(f"解析 Gaussian 输出: {gaussian_log_file.name}")
+            content = gaussian_log_file.read_text(errors='ignore')
 
             result = {}
 
-            # 解析 SCF 能量 (最后一个)
-            energy_matches = re.findall(r'SCF Done:.*?=\s*([-\d.]+)', content)
-            if energy_matches:
-                result['energy_au'] = float(energy_matches[-1])
+            # 使用后端成熟的解析逻辑
+            # 正则表达式模式
+            energy_pattern = re.compile(r'SCF Done:.*?=\s*([-\d.]+)')
+            alpha_occ_pattern = re.compile(r'Alpha\s+occ\.\s+eigenvalues\s+--\s+(.*)')
+            alpha_virt_pattern = re.compile(r'Alpha\s+virt\.\s+eigenvalues\s+--\s+(.*)')
+
+            last_energy = None
+            last_homo = None
+            last_lumo = None
+
+            # 逐行处理，确保配对匹配
+            lines = content.splitlines()
+            for i in range(len(lines) - 1):
+                # 匹配SCF能量
+                match_energy = energy_pattern.search(lines[i])
+                if match_energy:
+                    last_energy = float(match_energy.group(1))
+
+                # 匹配HOMO和LUMO（确保是连续的行）
+                match_occ = alpha_occ_pattern.search(lines[i])
+                match_virt = alpha_virt_pattern.search(lines[i + 1]) if i + 1 < len(lines) else None
+
+                if match_occ and match_virt:
+                    occ_values = match_occ.group(1).split()
+                    virt_values = match_virt.group(1).split()
+
+                    if occ_values:
+                        last_homo = float(occ_values[-1])
+                    if virt_values:
+                        last_lumo = float(virt_values[0])
+
+            # 设置结果
+            if last_energy is not None:
+                result['energy_au'] = last_energy
                 self.logger.info(f"SCF 能量: {result['energy_au']} Hartree")
 
-            # 解析 HOMO 和 LUMO
-            # 查找 Alpha 轨道能量
-            orbital_section = re.search(
-                r'Population analysis.*?Alpha\s+occ\.\s+eigenvalues.*?([\s\S]*?)(?:Alpha virt\.|Beta)',
-                content
-            )
-            if orbital_section:
-                occ_text = orbital_section.group(1)
-                # 提取所有占据轨道能量
-                occ_energies = re.findall(r'[-\d.]+', occ_text)
-                if occ_energies:
-                    result['homo'] = float(occ_energies[-1])
-                    self.logger.info(f"HOMO: {result['homo']} Hartree")
+            if last_homo is not None:
+                result['homo'] = last_homo
+                self.logger.info(f"HOMO: {result['homo']} Hartree")
 
-            # 查找虚轨道能量（LUMO）
-            virt_section = re.search(
-                r'Alpha virt\.\s+eigenvalues.*?([-\d.\s]+)',
-                content
-            )
-            if virt_section:
-                virt_text = virt_section.group(1)
-                virt_energies = re.findall(r'[-\d.]+', virt_text)
-                if virt_energies:
-                    result['lumo'] = float(virt_energies[0])
-                    self.logger.info(f"LUMO: {result['lumo']} Hartree")
+            if last_lumo is not None:
+                result['lumo'] = last_lumo
+                self.logger.info(f"LUMO: {result['lumo']} Hartree")
 
             # 计算 HOMO-LUMO gap (转换为 eV)
             if 'homo' in result and 'lumo' in result:
