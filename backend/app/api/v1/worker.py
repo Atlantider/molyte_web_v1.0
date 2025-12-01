@@ -690,10 +690,22 @@ class MSDResultUpload(BaseModel):
     charge: Optional[int] = None
 
 
+class SolvationStructureUpload(BaseModel):
+    """溶剂化结构上传"""
+    center_ion: str
+    structure_type: Optional[str] = 'first_shell'
+    coordination_num: int
+    composition: Dict[str, int]  # {"EC": 3, "DMC": 1, "FSI": 0}
+    file_path: Optional[str] = None
+    snapshot_frame: Optional[int] = None
+    description: Optional[str] = None
+
+
 class MDResultsUpload(BaseModel):
-    """MD 任务结果上传（包含 RDF、MSD 等）"""
+    """MD 任务结果上传（包含 RDF、MSD、溶剂化结构等）"""
     rdf_results: Optional[List[RDFResultUpload]] = None
     msd_results: Optional[List[MSDResultUpload]] = None
+    solvation_structures: Optional[List[SolvationStructureUpload]] = None
     # 结果摘要
     final_density: Optional[float] = None
     final_temperature: Optional[float] = None
@@ -779,7 +791,28 @@ async def upload_md_results(
             db.add(msd_record)
             uploaded_counts["msd"] += 1
 
-    # 3. 保存结果摘要
+    # 3. 保存溶剂化结构
+    if results_data.solvation_structures:
+        from app.models.result import SolvationStructure
+
+        # 先删除旧的溶剂化结构
+        db.query(SolvationStructure).filter(SolvationStructure.md_job_id == job_id).delete()
+
+        for solv_data in results_data.solvation_structures:
+            solv_record = SolvationStructure(
+                md_job_id=job_id,
+                center_ion=solv_data.center_ion,
+                structure_type=solv_data.structure_type,
+                coordination_num=solv_data.coordination_num,
+                composition=solv_data.composition,
+                file_path=solv_data.file_path,
+                snapshot_frame=solv_data.snapshot_frame,
+                description=solv_data.description,
+            )
+            db.add(solv_record)
+        uploaded_counts["solvation"] = len(results_data.solvation_structures)
+
+    # 4. 保存结果摘要
     if any([
         results_data.final_density,
         results_data.final_temperature,
@@ -825,7 +858,7 @@ async def upload_md_results(
             db.add(summary)
         uploaded_counts["summary"] = True
 
-    # 4. 更新任务配置，记录后处理结果
+    # 5. 更新任务配置，记录后处理结果
     if job.config is None:
         job.config = {}
 
@@ -834,6 +867,7 @@ async def upload_md_results(
 
     job.config["postprocess"]["rdf_count"] = uploaded_counts["rdf"]
     job.config["postprocess"]["msd_count"] = uploaded_counts["msd"]
+    job.config["postprocess"]["solvation_count"] = uploaded_counts.get("solvation", 0)
     job.config["postprocess"]["completed_at"] = datetime.now().isoformat()
     job.config["postprocess"]["uploaded_by"] = "worker"
 
@@ -842,7 +876,7 @@ async def upload_md_results(
     logger.info(
         f"MD results uploaded for job {job_id}: "
         f"RDF={uploaded_counts['rdf']}, MSD={uploaded_counts['msd']}, "
-        f"Summary={uploaded_counts['summary']}"
+        f"Solvation={uploaded_counts.get('solvation', 0)}, Summary={uploaded_counts['summary']}"
     )
 
     return {

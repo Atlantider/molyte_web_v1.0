@@ -1076,11 +1076,106 @@ echo "QC calculation completed"
                 summary = self._parse_lammps_log(log_file)
                 results.update(summary)
 
-            return results if (results['rdf_results'] or results['msd_results']) else None
+            # 4. 分析溶剂化结构（使用后端的 solvation 服务）
+            try:
+                from app.services.solvation import analyze_solvation_structures
+
+                # 获取电解液配置（从 electrolyte.json 或 job config）
+                electrolyte_data = self._load_electrolyte_config(work_dir)
+
+                if electrolyte_data:
+                    self.logger.info(f"开始溶剂化结构分析: {work_dir}")
+                    solvation_results = analyze_solvation_structures(
+                        work_dir=str(work_dir),
+                        electrolyte_data=electrolyte_data,
+                        cutoff=3.0,  # 默认截断距离
+                    )
+
+                    if solvation_results:
+                        results['solvation_structures'] = solvation_results
+                        self.logger.info(f"溶剂化结构分析完成: {len(solvation_results)} 个结构")
+                else:
+                    self.logger.warning("未找到电解液配置，跳过溶剂化分析")
+            except ImportError as e:
+                self.logger.warning(f"无法导入溶剂化分析模块: {e}")
+            except Exception as e:
+                self.logger.warning(f"溶剂化分析失败: {e}")
+
+            return results if (results['rdf_results'] or results['msd_results'] or results.get('solvation_structures')) else None
 
         except Exception as e:
             self.logger.error(f"解析 MD 结果失败: {e}", exc_info=True)
             return None
+
+    def _load_electrolyte_config(self, work_dir: Path) -> Optional[Dict[str, Any]]:
+        """加载电解液配置"""
+        import json
+
+        # 尝试从 electrolyte.json 加载
+        electrolyte_file = work_dir / "electrolyte.json"
+        if electrolyte_file.exists():
+            try:
+                with open(electrolyte_file) as f:
+                    return json.load(f)
+            except Exception as e:
+                self.logger.warning(f"读取 electrolyte.json 失败: {e}")
+
+        # 尝试从 job_config.json 加载
+        config_file = work_dir / "job_config.json"
+        if config_file.exists():
+            try:
+                with open(config_file) as f:
+                    config = json.load(f)
+                    if 'electrolyte' in config:
+                        return config['electrolyte']
+            except Exception as e:
+                self.logger.warning(f"读取 job_config.json 失败: {e}")
+
+        # 尝试从 atom_mapping.json 构建基本配置
+        atom_mapping_file = work_dir / "atom_mapping.json"
+        if atom_mapping_file.exists():
+            try:
+                with open(atom_mapping_file) as f:
+                    atom_mapping = json.load(f)
+
+                # 从 atom_mapping 提取分子信息
+                molecules = atom_mapping.get('molecules', [])
+                if molecules:
+                    # 统计各类型分子
+                    from collections import Counter
+                    mol_names = [m.get('molecule_name', '') for m in molecules]
+                    mol_counts = Counter(mol_names)
+
+                    # 构建基本电解液配置
+                    cations = ['Li', 'Na', 'K', 'Mg', 'Ca', 'Zn']
+                    anions = ['FSI', 'TFSI', 'PF6', 'BF4', 'ClO4', 'DCA', 'Cl', 'Br', 'I']
+
+                    electrolyte_config = {
+                        'cations': [],
+                        'anions': [],
+                        'solvents': [],
+                    }
+
+                    for mol_name, count in mol_counts.items():
+                        if any(c in mol_name for c in cations):
+                            electrolyte_config['cations'].append({
+                                'name': mol_name, 'count': count
+                            })
+                        elif any(a in mol_name for a in anions):
+                            electrolyte_config['anions'].append({
+                                'name': mol_name, 'count': count
+                            })
+                        else:
+                            electrolyte_config['solvents'].append({
+                                'name': mol_name, 'count': count
+                            })
+
+                    if electrolyte_config['cations']:
+                        return electrolyte_config
+            except Exception as e:
+                self.logger.warning(f"从 atom_mapping 构建配置失败: {e}")
+
+        return None
 
     def _parse_lammps_rdf_simple(self, rdf_file: Path, work_dir: Path) -> List[Dict[str, Any]]:
         """
