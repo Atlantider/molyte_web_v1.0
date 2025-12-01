@@ -85,13 +85,10 @@ logs/
 Thumbs.db
 .DS_Store
 
-# Work directories (task data) - 排除所有计算结果文件
-data/md_work/*/
-data/qc_work/*/
-data/charges/*
-!data/md_work/.gitkeep
-!data/qc_work/.gitkeep
-!data/charges/.gitkeep
+# Work directories (task data) - 完全排除所有计算工作目录
+data/md_work/
+data/qc_work/
+data/charges/
 
 # 计算结果文件类型 - 通常很大，不应上传到Git
 *.chk
