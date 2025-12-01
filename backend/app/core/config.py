@@ -86,10 +86,9 @@ class Settings:
 
     def __init__(self):
         """Initialize settings and create directories if needed"""
-        # Create work directory if it doesn't exist
+        # Create work directories if they don't exist
         self.MOLYTE_WORK_BASE_PATH.mkdir(parents=True, exist_ok=True)
-        
-        # Create charge save directory if it doesn't exist
+        self.QC_WORK_BASE_PATH.mkdir(parents=True, exist_ok=True)
         self.MOLYTE_CHARGE_SAVE_PATH.mkdir(parents=True, exist_ok=True)
 
 
