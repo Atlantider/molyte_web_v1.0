@@ -43,9 +43,9 @@ import {
   batchUpdateProject,
 } from '../api/electrolytes';
 import { getMDJobs, batchCreateMDJobs } from '../api/jobs';
-import { getProjects } from '../api/projects';
+import { getProjects, createProject } from '../api/projects';
 import { downloadTemplate, batchImportUpload, BatchImportResult } from '../api/batchImport';
-import type { ElectrolyteSystem, Project, MDJob } from '../types';
+import type { ElectrolyteSystem, Project, MDJob, ProjectCreate } from '../types';
 import { JobStatus } from '../types';
 
 const { Title, Text } = Typography;
@@ -92,6 +92,10 @@ export default function Electrolytes() {
   const [batchMDQuota, setBatchMDQuota] = useState<any>(null);
   const [createdMDJobIds, setCreatedMDJobIds] = useState<number[]>([]);
   const [batchMDSubmitToCluster, setBatchMDSubmitToCluster] = useState<boolean>(false);
+
+  // 新建项目相关状态
+  const [projectModalVisible, setProjectModalVisible] = useState(false);
+  const [projectForm] = Form.useForm();
 
   // 加载数据
   const loadData = async () => {
@@ -220,6 +224,40 @@ export default function Electrolytes() {
     setEditingElectrolyte(null);
     setCopyingElectrolyte(null);
     form.resetFields();
+  };
+
+  // 打开新建项目对话框
+  const handleOpenProjectModal = () => {
+    projectForm.resetFields();
+    setProjectModalVisible(true);
+  };
+
+  // 关闭新建项目对话框
+  const handleCloseProjectModal = () => {
+    setProjectModalVisible(false);
+    projectForm.resetFields();
+  };
+
+  // 创建新项目
+  const handleCreateProject = async () => {
+    try {
+      const values = await projectForm.validateFields();
+      const newProject = await createProject(values as ProjectCreate);
+      message.success('项目创建成功');
+
+      // 重新加载项目列表
+      const projectData = await getProjects();
+      setProjects(projectData);
+
+      // 自动选择新创建的项目
+      form.setFieldsValue({ project_id: newProject.id });
+
+      handleCloseProjectModal();
+    } catch (error: any) {
+      if (error.response) {
+        message.error(error.response?.data?.detail || '创建项目失败');
+      }
+    }
   };
 
   // 提交表单
@@ -871,8 +909,43 @@ export default function Electrolytes() {
               setSelectedCations(cations);
               setSelectedAnions(anions);
             }}
+            onCreateProject={handleOpenProjectModal}
           />
         </div>
+      </Modal>
+
+      {/* 新建项目对话框 */}
+      <Modal
+        title="创建新项目"
+        open={projectModalVisible}
+        onOk={handleCreateProject}
+        onCancel={handleCloseProjectModal}
+        okText="创建"
+        cancelText="取消"
+        width={600}
+      >
+        <Form form={projectForm} layout="vertical" style={{ marginTop: 24 }}>
+          <Form.Item
+            name="name"
+            label="项目名称"
+            rules={[
+              { required: true, message: '请输入项目名称' },
+              { max: 100, message: '名称不能超过100个字符' }
+            ]}
+          >
+            <Input placeholder="例如：锂离子电池电解液研究" />
+          </Form.Item>
+          <Form.Item
+            name="description"
+            label="项目描述"
+            rules={[{ max: 500, message: '描述不能超过500个字符' }]}
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder="简要描述项目的研究目标和内容"
+            />
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* 批量导入对话框 - 步骤式流程 */}

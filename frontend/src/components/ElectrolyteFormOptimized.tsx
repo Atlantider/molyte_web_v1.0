@@ -133,6 +133,7 @@ interface ElectrolyteFormOptimizedProps {
   onIonsChange?: (cations: SelectedIon[], anions: SelectedIon[]) => void;
   initialCations?: SelectedIon[];
   initialAnions?: SelectedIon[];
+  onCreateProject?: () => void; // 新增：创建项目的回调
 }
 
 interface SelectedIon {
@@ -147,7 +148,8 @@ export default function ElectrolyteFormOptimized({
   onValuesChange,
   onIonsChange,
   initialCations = [],
-  initialAnions = []
+  initialAnions = [],
+  onCreateProject
 }: ElectrolyteFormOptimizedProps) {
   const navigate = useNavigate();
   const [availableCations, setAvailableCations] = useState<IonInfo[]>([]);
@@ -377,28 +379,48 @@ export default function ElectrolyteFormOptimized({
                         <Button
                           type="primary"
                           icon={<FolderAddOutlined />}
-                          onClick={() => navigate('/workspace/projects?action=create')}
+                          onClick={() => {
+                            if (onCreateProject) {
+                              onCreateProject();
+                            } else {
+                              navigate('/workspace/projects?action=create');
+                            }
+                          }}
                         >
                           新建项目
                         </Button>
                       </div>
                     }
-                    dropdownRender={(menu) => (
-                      <>
-                        {menu}
-                        <Divider style={{ margin: '8px 0' }} />
-                        <div style={{ padding: '4px 8px' }}>
-                          <Button
-                            type="link"
-                            icon={<FolderAddOutlined />}
-                            onClick={() => navigate('/workspace/projects?action=create')}
-                            style={{ width: '100%', textAlign: 'left' }}
-                          >
-                            新建项目
-                          </Button>
-                        </div>
-                      </>
-                    )}
+                    dropdownRender={(menu) => {
+                      // 只在有项目时显示下拉菜单底部的"新建项目"按钮
+                      const hasProjects = projects && projects.length > 0;
+                      return (
+                        <>
+                          {menu}
+                          {hasProjects && (
+                            <>
+                              <Divider style={{ margin: '8px 0' }} />
+                              <div style={{ padding: '4px 8px' }}>
+                                <Button
+                                  type="link"
+                                  icon={<FolderAddOutlined />}
+                                  onClick={() => {
+                                    if (onCreateProject) {
+                                      onCreateProject();
+                                    } else {
+                                      navigate('/workspace/projects?action=create');
+                                    }
+                                  }}
+                                  style={{ width: '100%', textAlign: 'left' }}
+                                >
+                                  新建项目
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </>
+                      );
+                    }}
                   >
                     {projects?.filter(p => p && p.id && p.name).map(p => <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>)}
                   </Select>
