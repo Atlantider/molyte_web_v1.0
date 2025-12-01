@@ -733,12 +733,8 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
                                f"functional: {functional}, basis: {basis_set}, "
                                f"solvent: {solvent_model}/{solvent_name or 'N/A'})")
 
-                    # 提交QC任务到Celery
-                    try:
-                        submit_qc_job_task.delay(qc_job.id)
-                        logger.info(f"Submitted QC job {qc_job.id} to Celery")
-                    except Exception as e:
-                        logger.error(f"Failed to submit QC job {qc_job.id} to Celery: {e}")
+                    # 混合云模式：QC任务由 polling_worker 轮询获取，不需要 Celery
+                    # 任务创建后状态为 CREATED，Worker 会自动拉取并执行
 
 
 @router.get("/quota/check")
