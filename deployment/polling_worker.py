@@ -866,6 +866,13 @@ echo "QC calculation completed"
                             if vis_result:
                                 qc_result.update(vis_result)
                                 self.logger.info(f"QC 可视化生成成功: ESP={vis_result.get('esp_image_path')}, HOMO={vis_result.get('homo_image_path')}, LUMO={vis_result.get('lumo_image_path')}")
+
+                                # 上传新生成的PNG图片文件
+                                png_files = list(work_dir.glob("*.png"))
+                                if png_files:
+                                    additional_uploaded = self._upload_additional_files(job_id, png_files)
+                                    uploaded_files.extend(additional_uploaded)
+                                    self.logger.info(f"额外上传了 {len(additional_uploaded)} 个图片文件")
                         except Exception as e:
                             self.logger.warning(f"QC 可视化生成失败: {e}")
 
@@ -2107,6 +2114,50 @@ echo "QC calculation completed"
         except Exception as e:
             self.logger.error(f"上传结果文件失败: {e}", exc_info=True)
             raise
+
+    def _upload_additional_files(self, job_id: int, file_paths: List[Path]) -> List[str]:
+        """上传额外的文件（如生成的图片）到对象存储"""
+        uploaded_files = []
+
+        try:
+            # 获取结果文件前缀
+            if self.storage_type == 'cos':
+                result_prefix = self.config['cos']['result_prefix']
+            else:
+                result_prefix = self.config['oss']['result_prefix']
+
+            for file_path in file_paths:
+                if not file_path.exists():
+                    continue
+
+                file_size = file_path.stat().st_size
+
+                # 构建对象存储 Key
+                object_key = f"{result_prefix}{job_id}/{file_path.name}"
+
+                self.logger.info(f"上传额外文件: {file_path.name} ({file_size/1024/1024:.1f}MB)")
+
+                # 根据存储类型上传
+                if self.storage_type == 'cos':
+                    # 腾讯云 COS
+                    with open(file_path, 'rb') as f:
+                        self.cos_client.put_object(
+                            Bucket=self.cos_bucket,
+                            Body=f,
+                            Key=object_key
+                        )
+                else:
+                    # 阿里云 OSS
+                    self.oss_bucket.put_object_from_file(object_key, str(file_path))
+
+                uploaded_files.append(object_key)
+                self.logger.info(f"✅ 额外上传成功: {file_path.name}")
+
+            return uploaded_files
+
+        except Exception as e:
+            self.logger.error(f"上传额外文件失败: {e}", exc_info=True)
+            return []
 
     def _update_job_status(
         self,
