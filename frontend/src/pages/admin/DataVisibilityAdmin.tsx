@@ -239,6 +239,7 @@ export default function DataVisibilityAdmin() {
                 borderRadius: 12,
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                 boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                height: '100%',
               }}
             >
               <Statistic
@@ -256,6 +257,7 @@ export default function DataVisibilityAdmin() {
                 borderRadius: 12,
                 background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
                 boxShadow: '0 4px 12px rgba(17, 153, 142, 0.3)',
+                height: '100%',
               }}
             >
               <Statistic
@@ -273,6 +275,7 @@ export default function DataVisibilityAdmin() {
                 borderRadius: 12,
                 background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
                 boxShadow: '0 4px 12px rgba(250, 112, 154, 0.3)',
+                height: '100%',
               }}
             >
               <Statistic
@@ -290,6 +293,7 @@ export default function DataVisibilityAdmin() {
                 borderRadius: 12,
                 background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
                 boxShadow: '0 4px 12px rgba(240, 147, 251, 0.3)',
+                height: '100%',
               }}
             >
               <Statistic
@@ -307,6 +311,7 @@ export default function DataVisibilityAdmin() {
                 borderRadius: 12,
                 background: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
                 boxShadow: '0 4px 12px rgba(48, 207, 208, 0.3)',
+                height: '100%',
               }}
             >
               <Statistic
@@ -324,14 +329,14 @@ export default function DataVisibilityAdmin() {
                 borderRadius: 12,
                 background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
                 boxShadow: '0 4px 12px rgba(168, 237, 234, 0.3)',
+                height: '100%',
               }}
             >
               <Statistic
-                title={<span style={{ color: 'rgba(0,0,0,0.65)' }}>即将公开</span>}
+                title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>即将公开</span>}
                 value={stats.soon_public}
-                valueStyle={{ color: '#eb2f96', fontSize: 28 }}
+                valueStyle={{ color: '#fff', fontSize: 28 }}
                 prefix={<WarningOutlined />}
-                suffix={<span style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>30天内</span>}
               />
             </Card>
           </Col>

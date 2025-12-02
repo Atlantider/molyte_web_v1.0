@@ -117,6 +117,7 @@ const AdminDashboard: React.FC = () => {
               borderRadius: 12,
               background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+              height: '100%',
             }}
           >
             <Statistic
@@ -124,11 +125,6 @@ const AdminDashboard: React.FC = () => {
               value={stats.total_users}
               valueStyle={{ color: '#fff', fontSize: 28 }}
               prefix={<TeamOutlined />}
-              suffix={
-                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }}>
-                  / 活跃 {stats.active_users}
-                </span>
-              }
             />
           </Card>
         </Col>
@@ -140,6 +136,7 @@ const AdminDashboard: React.FC = () => {
               borderRadius: 12,
               background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
               boxShadow: '0 4px 12px rgba(240, 147, 251, 0.3)',
+              height: '100%',
             }}
           >
             <Statistic
@@ -147,11 +144,6 @@ const AdminDashboard: React.FC = () => {
               value={stats.total_jobs}
               valueStyle={{ color: '#fff', fontSize: 28 }}
               prefix={<RocketOutlined />}
-              suffix={
-                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }}>
-                  / 运行中 {stats.running_jobs}
-                </span>
-              }
             />
           </Card>
         </Col>
@@ -163,6 +155,7 @@ const AdminDashboard: React.FC = () => {
               borderRadius: 12,
               background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
               boxShadow: '0 4px 12px rgba(17, 153, 142, 0.3)',
+              height: '100%',
             }}
           >
             <Statistic
@@ -170,11 +163,6 @@ const AdminDashboard: React.FC = () => {
               value={stats.completed_jobs}
               valueStyle={{ color: '#fff', fontSize: 28 }}
               prefix={<CheckCircleOutlined />}
-              suffix={
-                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }}>
-                  / 失败 {stats.failed_jobs}
-                </span>
-              }
             />
           </Card>
         </Col>
@@ -186,25 +174,16 @@ const AdminDashboard: React.FC = () => {
               borderRadius: 12,
               background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
               boxShadow: '0 4px 12px rgba(250, 112, 154, 0.3)',
+              height: '100%',
             }}
           >
-            <div>
-              <div style={{ marginBottom: 8, color: 'rgba(255,255,255,0.85)', fontSize: 14 }}>
-                CPU 核时使用率
-              </div>
-              <div style={{ fontSize: 28, fontWeight: 700, marginBottom: 12, color: '#fff' }}>
-                {cpuUsagePercentage.toFixed(1)}%
-              </div>
-              <Progress
-                percent={cpuUsagePercentage}
-                strokeColor="#fff"
-                trailColor="rgba(255,255,255,0.3)"
-                showInfo={false}
-              />
-              <div style={{ marginTop: 8, fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
-                {stats.total_cpu_hours_used.toFixed(1)} / {stats.total_cpu_hours_allocated.toFixed(1)} 小时
-              </div>
-            </div>
+            <Statistic
+              title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>CPU 核时使用率</span>}
+              value={cpuUsagePercentage.toFixed(1)}
+              valueStyle={{ color: '#fff', fontSize: 28 }}
+              prefix={<ThunderboltOutlined />}
+              suffix={<span style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }}>%</span>}
+            />
           </Card>
         </Col>
       </Row>
