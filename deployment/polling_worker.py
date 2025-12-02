@@ -1310,23 +1310,34 @@ echo "QC calculation completed"
             except Exception as e:
                 self.logger.warning(f"溶剂化分析失败: {e}")
 
-            # 5. 提取系统结构（使用后端的 get_system_structure）
+            # 5. 提取系统结构（混合方案：优先从dump文件，降级到后端服务）
             try:
-                from app.services.solvation import get_system_structure
+                system_xyz = self._extract_system_structure_from_dump(work_dir)
+                if system_xyz:
+                    results['system_xyz_content'] = system_xyz
+                    self.logger.info(f"从dump文件提取系统结构成功")
+                else:
+                    # 降级：尝试使用后端的 get_system_structure
+                    try:
+                        from app.services.solvation import get_system_structure
 
-                system_result = get_system_structure(str(work_dir), frame_idx=-1)
-                if system_result and 'xyz_content' in system_result:
-                    results['system_xyz_content'] = system_result['xyz_content']
-                    # 从系统结构获取盒子尺寸（如果日志解析没有）
-                    if 'box' in system_result and system_result['box']:
-                        box = system_result['box']
-                        if not results.get('box_x') and len(box) >= 3:
-                            results['box_x'] = box[0]
-                            results['box_y'] = box[1]
-                            results['box_z'] = box[2]
-                    self.logger.info(f"系统结构提取完成: {system_result.get('atom_count', 0)} 原子")
-            except ImportError as e:
-                self.logger.warning(f"无法导入 get_system_structure: {e}")
+                        system_result = get_system_structure(str(work_dir), frame_idx=-1)
+                        if system_result and 'xyz_content' in system_result:
+                            results['system_xyz_content'] = system_result['xyz_content']
+                            # 从系统结构获取盒子尺寸（如果日志解析没有）
+                            if 'box' in system_result and system_result['box']:
+                                box = system_result['box']
+                                if not results.get('box_x') and len(box) >= 3:
+                                    results['box_x'] = box[0]
+                                    results['box_y'] = box[1]
+                                    results['box_z'] = box[2]
+                            self.logger.info(f"从后端服务提取系统结构成功: {system_result.get('atom_count', 0)} 原子")
+                        else:
+                            self.logger.warning(f"后端服务返回错误: {system_result.get('error', 'Unknown error')}")
+                    except ImportError as e:
+                        self.logger.warning(f"无法导入 get_system_structure: {e}")
+                    except Exception as e:
+                        self.logger.warning(f"后端服务提取系统结构失败: {e}")
             except Exception as e:
                 self.logger.warning(f"提取系统结构失败: {e}")
 
@@ -1879,6 +1890,181 @@ echo "QC calculation completed"
                 return r[i], g_r[i]
 
         return None, None
+
+    def _extract_system_structure_from_dump(self, work_dir: Path) -> Optional[str]:
+        """
+        从LAMMPS dump文件提取最后一帧的系统结构，转换为XYZ格式
+
+        这是一个轻量级的替代方案，不依赖轨迹文件的完整解析
+        """
+        try:
+            # 查找dump文件
+            dump_files = list(work_dir.glob("*.dump"))
+            if not dump_files:
+                self.logger.debug(f"未找到dump文件: {work_dir}")
+                return None
+
+            dump_file = dump_files[0]
+            self.logger.debug(f"从dump文件提取系统结构: {dump_file.name}")
+
+            # 加载atom_mapping以获取类型到元素的映射
+            type_to_element = self._load_atom_type_mapping(work_dir)
+
+            # 读取最后一帧
+            atoms = {}
+            current_frame = []
+            in_frame = False
+            atom_section = False
+
+            with open(dump_file, 'r') as f:
+                for line in f:
+                    if line.startswith('ITEM: TIMESTEP'):
+                        # 新的一帧开始，保存前一帧
+                        if current_frame and atom_section:
+                            atoms = self._parse_dump_frame(current_frame, type_to_element)
+                        current_frame = [line]
+                        in_frame = True
+                        atom_section = False
+                    elif in_frame:
+                        current_frame.append(line)
+                        if line.startswith('ITEM: ATOMS'):
+                            atom_section = True
+
+                # 处理最后一帧
+                if current_frame and atom_section:
+                    atoms = self._parse_dump_frame(current_frame, type_to_element)
+
+            if not atoms:
+                self.logger.warning("未找到有效的原子数据")
+                return None
+
+            # 转换为XYZ格式
+            xyz_lines = [str(len(atoms)), "System structure (final frame)"]
+            for atom_id in sorted(atoms.keys()):
+                atom = atoms[atom_id]
+                element = atom.get('element', 'C')
+                x = atom.get('x', 0.0)
+                y = atom.get('y', 0.0)
+                z = atom.get('z', 0.0)
+                xyz_lines.append(f"{element} {x:.4f} {y:.4f} {z:.4f}")
+
+            xyz_content = "\n".join(xyz_lines)
+            self.logger.info(f"系统结构XYZ生成成功: {len(atoms)} 原子")
+            return xyz_content
+
+        except Exception as e:
+            self.logger.warning(f"从dump文件提取系统结构失败: {e}")
+            return None
+
+    def _load_atom_type_mapping(self, work_dir: Path) -> Dict[int, str]:
+        """
+        从atom_mapping.json加载原子类型到元素的映射
+
+        Returns:
+            type_id -> element_symbol 的字典
+        """
+        type_to_element = {}
+
+        try:
+            atom_mapping_file = work_dir / "atom_mapping.json"
+            if atom_mapping_file.exists():
+                with open(atom_mapping_file) as f:
+                    atom_mapping = json.load(f)
+
+                # 从 atom_types 提取映射
+                if 'atom_types' in atom_mapping:
+                    for at in atom_mapping['atom_types']:
+                        type_id = at.get('type_id')
+                        element = at.get('element', 'C')
+                        if type_id is not None:
+                            type_to_element[type_id] = element
+
+                self.logger.debug(f"加载atom_mapping成功: {len(type_to_element)} 个类型")
+        except Exception as e:
+            self.logger.warning(f"加载atom_mapping失败: {e}")
+
+        return type_to_element
+
+    def _parse_dump_frame(self, frame_lines: List[str], type_to_element: Dict[int, str] = None) -> Dict[int, Dict[str, Any]]:
+        """
+        解析LAMMPS dump文件的单个帧
+
+        Args:
+            frame_lines: 帧的所有行
+            type_to_element: 原子类型到元素的映射字典
+
+        Returns:
+            原子字典，key为原子ID，value为原子信息（element, x, y, z）
+        """
+        if type_to_element is None:
+            type_to_element = {}
+
+        atoms = {}
+        atom_section = False
+        atom_format = None  # 'id type x y z' 或其他格式
+
+        for line in frame_lines:
+            if line.startswith('ITEM: ATOMS'):
+                atom_section = True
+                # 解析原子列格式
+                parts = line.split()
+                if len(parts) > 2:
+                    atom_format = parts[2:]  # ['id', 'type', 'x', 'y', 'z', ...]
+                continue
+
+            if atom_section and not line.startswith('ITEM:'):
+                parts = line.split()
+                if len(parts) < 5:
+                    continue
+
+                try:
+                    # 标准格式: id type x y z
+                    atom_id = int(parts[0])
+                    atom_type = int(parts[1])
+                    x = float(parts[2])
+                    y = float(parts[3])
+                    z = float(parts[4])
+
+                    # 从映射中获取元素，如果没有则使用默认推断
+                    if atom_type in type_to_element:
+                        element = type_to_element[atom_type]
+                    else:
+                        element = self._get_element_from_type(atom_type)
+
+                    atoms[atom_id] = {
+                        'element': element,
+                        'x': x,
+                        'y': y,
+                        'z': z,
+                        'type': atom_type,
+                    }
+                except (ValueError, IndexError):
+                    continue
+
+        return atoms
+
+    def _get_element_from_type(self, atom_type: int) -> str:
+        """
+        根据LAMMPS原子类型推断元素符号
+
+        这是一个简化版本，假设：
+        - 类型1-2: Li (锂)
+        - 类型3-4: F (氟)
+        - 类型5-6: S (硫)
+        - 类型7-8: C (碳)
+        - 类型9-10: O (氧)
+        - 类型11-12: H (氢)
+        - 其他: C (默认碳)
+        """
+        type_to_element = {
+            1: 'Li', 2: 'Li',
+            3: 'F', 4: 'F',
+            5: 'S', 6: 'S',
+            7: 'C', 8: 'C',
+            9: 'O', 10: 'O',
+            11: 'H', 12: 'H',
+        }
+        return type_to_element.get(atom_type, 'C')
 
     def _parse_lammps_log(self, log_file: Path) -> Dict[str, Any]:
         """从 LAMMPS 日志文件解析能量、温度、密度、盒子尺寸等
