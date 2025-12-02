@@ -240,6 +240,10 @@ export interface MDJob {
     qc_solvent_model?: string;
     qc_solvent_name?: string;
     qc_use_recommended_params?: boolean;
+    // 自定义溶剂参数
+    qc_custom_eps?: number;
+    qc_custom_eps_inf?: number;
+    qc_custom_solvent_name?: string;
   };
   created_at: string;
   updated_at: string;

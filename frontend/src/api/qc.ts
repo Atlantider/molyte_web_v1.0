@@ -156,6 +156,14 @@ export async function recalculateQCJob(
     solvent_config?: {
       model: string;
       solvent_name?: string;
+      // 自定义溶剂参数
+      eps?: number;
+      eps_inf?: number;
+      hbond_acidity?: number;
+      hbond_basicity?: number;
+      surface_tension?: number;
+      carbon_aromaticity?: number;
+      halogenicity?: number;
     };
     accuracy_level?: string;
     slurm_partition?: string;

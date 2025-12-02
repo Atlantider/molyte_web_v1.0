@@ -55,6 +55,10 @@ export default function JobSubmit() {
     solvent_model: string;
     solvent_name: string;
     use_recommended_params: boolean;
+    // 自定义溶剂参数
+    custom_eps?: number;
+    custom_eps_inf?: number;
+    custom_solvent_name?: string;
   } | null>(null);
   // 重复计算检查状态
   const [duplicateCheckResult, setDuplicateCheckResult] = useState<DuplicateCheckResponse | null>(null);
@@ -694,6 +698,9 @@ export default function JobSubmit() {
             solvent_model: job.config?.qc_solvent_model || 'pcm',
             solvent_name: job.config?.qc_solvent_name || 'water',
             use_recommended_params: job.config?.qc_use_recommended_params !== false,
+            custom_eps: job.config?.qc_custom_eps,
+            custom_eps_inf: job.config?.qc_custom_eps_inf,
+            custom_solvent_name: job.config?.qc_custom_solvent_name,
           });
           setEditingGlobalQC(true);
         };
@@ -708,6 +715,10 @@ export default function JobSubmit() {
               qc_solvent_model: globalQCParams.solvent_model,
               qc_solvent_name: globalQCParams.solvent_name,
               qc_use_recommended_params: globalQCParams.use_recommended_params,
+              // 自定义溶剂参数
+              qc_custom_eps: globalQCParams.solvent_model === 'custom' ? globalQCParams.custom_eps : undefined,
+              qc_custom_eps_inf: globalQCParams.solvent_model === 'custom' ? globalQCParams.custom_eps_inf : undefined,
+              qc_custom_solvent_name: globalQCParams.solvent_model === 'custom' ? globalQCParams.custom_solvent_name : undefined,
             };
             await updateMDJobConfig(Number(jobId), updatedConfig);
             setJob({ ...job, config: updatedConfig });
@@ -763,6 +774,7 @@ export default function JobSubmit() {
                       <Select.Option value="gas">气相</Select.Option>
                       <Select.Option value="pcm">PCM</Select.Option>
                       <Select.Option value="smd">SMD</Select.Option>
+                      <Select.Option value="custom">自定义</Select.Option>
                     </Select>
                   </Col>
                   <Col span={6}>
@@ -772,7 +784,7 @@ export default function JobSubmit() {
                       style={{ width: '100%' }}
                       value={globalQCParams.solvent_name}
                       onChange={(v) => setGlobalQCParams({ ...globalQCParams, solvent_name: v })}
-                      disabled={globalQCParams.solvent_model === 'gas'}
+                      disabled={globalQCParams.solvent_model === 'gas' || globalQCParams.solvent_model === 'custom'}
                     >
                       <Select.OptGroup label="常用溶剂">
                         <Select.Option value="water">Water</Select.Option>
@@ -808,6 +820,52 @@ export default function JobSubmit() {
                     />
                   </Col>
                 </Row>
+                {/* 自定义溶剂参数 */}
+                {globalQCParams.solvent_model === 'custom' && (
+                  <div style={{ marginTop: 12, padding: 12, background: '#fffbe6', borderRadius: 6, border: '1px solid #ffe58f' }}>
+                    <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 500, color: '#d48806' }}>
+                      🔧 自定义溶剂参数（SMD模型）
+                    </div>
+                    <Row gutter={16}>
+                      <Col span={8}>
+                        <div style={{ marginBottom: 4, fontSize: 12, color: '#666' }}>介电常数 ε *</div>
+                        <InputNumber
+                          size="small"
+                          style={{ width: '100%' }}
+                          value={globalQCParams.custom_eps}
+                          onChange={(v) => setGlobalQCParams({ ...globalQCParams, custom_eps: v ?? undefined })}
+                          min={1}
+                          max={200}
+                          step={0.1}
+                          placeholder="如: 89.6 (EC)"
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <div style={{ marginBottom: 4, fontSize: 12, color: '#666' }}>光学介电常数 ε∞</div>
+                        <InputNumber
+                          size="small"
+                          style={{ width: '100%' }}
+                          value={globalQCParams.custom_eps_inf}
+                          onChange={(v) => setGlobalQCParams({ ...globalQCParams, custom_eps_inf: v ?? undefined })}
+                          min={1}
+                          max={10}
+                          step={0.01}
+                          placeholder="如: 2.2"
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <div style={{ marginBottom: 4, fontSize: 12, color: '#666' }}>溶剂名称</div>
+                        <Input
+                          size="small"
+                          style={{ width: '100%' }}
+                          value={globalQCParams.custom_solvent_name}
+                          onChange={(e) => setGlobalQCParams({ ...globalQCParams, custom_solvent_name: e.target.value })}
+                          placeholder="如: 高浓LiTFSI"
+                        />
+                      </Col>
+                    </Row>
+                  </div>
+                )}
                 <div style={{ marginTop: 12, textAlign: 'right' }}>
                   <Space>
                     <Button size="small" onClick={() => setEditingGlobalQC(false)}>取消</Button>
@@ -831,10 +889,12 @@ export default function JobSubmit() {
                 <Descriptions.Item label="默认溶剂模型">
                   <Tag color={
                     currentSolventModel === 'gas' ? 'default' :
-                    currentSolventModel === 'pcm' ? 'blue' : 'cyan'
+                    currentSolventModel === 'pcm' ? 'blue' :
+                    currentSolventModel === 'smd' ? 'cyan' : 'orange'
                   }>
                     {currentSolventModel === 'gas' ? '气相' :
-                     currentSolventModel === 'pcm' ? 'PCM' : 'SMD'}
+                     currentSolventModel === 'pcm' ? 'PCM' :
+                     currentSolventModel === 'smd' ? 'SMD' : '自定义'}
                   </Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="智能推荐">
@@ -842,9 +902,18 @@ export default function JobSubmit() {
                     {currentUseRecommended ? '已启用' : '未启用'}
                   </Tag>
                 </Descriptions.Item>
-                {currentSolventModel !== 'gas' && (
+                {currentSolventModel !== 'gas' && currentSolventModel !== 'custom' && (
                   <Descriptions.Item label="隐式溶剂">
                     <Text code>{currentSolventName}</Text>
+                  </Descriptions.Item>
+                )}
+                {currentSolventModel === 'custom' && (
+                  <Descriptions.Item label="自定义溶剂">
+                    <Space size={4}>
+                      {job.config?.qc_custom_solvent_name && <Text>{job.config.qc_custom_solvent_name}</Text>}
+                      {job.config?.qc_custom_eps && <Tag color="orange">ε={job.config.qc_custom_eps}</Tag>}
+                      {job.config?.qc_custom_eps_inf && <Tag>ε∞={job.config.qc_custom_eps_inf}</Tag>}
+                    </Space>
                   </Descriptions.Item>
                 )}
               </Descriptions>
