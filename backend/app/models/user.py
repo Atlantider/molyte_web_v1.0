@@ -107,6 +107,8 @@ class User(Base):
                           foreign_keys="MDJob.user_id")
     qc_jobs = relationship("QCJob", back_populates="user", cascade="all, delete-orphan",
                           foreign_keys="QCJob.user_id")
+    resp_jobs = relationship("RESPJob", back_populates="user", cascade="all, delete-orphan",
+                            foreign_keys="RESPJob.user_id")
     usage_stats = relationship("UserUsageStats", back_populates="user", cascade="all, delete-orphan")
     recharge_orders = relationship("RechargeOrder", back_populates="user", cascade="all, delete-orphan")
     quota_transactions = relationship("QuotaTransaction", back_populates="user", cascade="all, delete-orphan")

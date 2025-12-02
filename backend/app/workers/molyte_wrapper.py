@@ -307,6 +307,7 @@ mpirun -n {mpi_processes} $EXEC <{job_name}.in > {job_name}.log
             charge_method: 电荷计算方法 ("ligpargen" 或 "resp")
         """
         import shutil
+        from .resp_calculator import modify_lmp_charges, copy_charge_file_if_exists
 
         for solvent in solvents:
             if not solvent.get('name'):
@@ -319,10 +320,7 @@ mpirun -n {mpi_processes} $EXEC <{job_name}.in > {job_name}.log
                 logger.warning(f"No SMILES for solvent {name}, skipping")
                 continue
 
-            # 检查电荷文件是否已存在
-            charge_file = self.charge_save_path / f"{name}.charmm.chg"
-
-            # 调用 ligpargen 生成文件
+            # 调用 ligpargen 生成初始文件（PDB、LMP等）
             ligpargen_cmd = f"{self.ligpargen_path}/ligpargen -s '{smiles}' -n {name} -r MOL -c 0 -o 0 -cgen CM1A"
             if not self.run_command(ligpargen_cmd):
                 logger.error(f"Failed to run ligpargen for {name}")
@@ -330,17 +328,32 @@ mpirun -n {mpi_processes} $EXEC <{job_name}.in > {job_name}.log
 
             # 根据电荷方法处理
             if charge_method == "resp":
-                # 使用 RESP 电荷（需要 Gaussian + RESP）
+                # 使用 RESP 电荷
                 logger.info(f"Using RESP charge method for {name}")
 
-                # TODO: 实现 RESP 电荷计算
-                # 1. 运行 Gaussian 优化和 ESP 计算
-                # 2. 运行 RESP 拟合
-                # 3. 修改 LAMMPS 文件中的电荷
+                # 检查是否有已保存的电荷文件
+                charge_file = self.charge_save_path / f"{name}.charmm.chg"
 
-                # 目前先使用 LigParGen 电荷作为后备
-                logger.warning(f"RESP charge calculation not yet implemented, using LigParGen charges")
-                charge_method = "ligpargen"
+                if charge_file.exists():
+                    # 复用已有的电荷文件
+                    logger.info(f"Reusing existing RESP charges from {charge_file}")
+                    lammps_lmp = Path(f"{name}.lammps.lmp")
+                    target_lmp = Path(f"{name}.lmp")
+
+                    if lammps_lmp.exists():
+                        if modify_lmp_charges(lammps_lmp, charge_file, target_lmp):
+                            logger.info(f"Applied RESP charges to {target_lmp}")
+                        else:
+                            logger.error(f"Failed to apply RESP charges to {name}")
+                            return False
+                    else:
+                        logger.error(f"LigParGen output file not found: {lammps_lmp}")
+                        return False
+                else:
+                    # 没有保存的电荷文件，需要返回特殊标记让 worker 处理
+                    # 这种情况应该在 worker 层面提前处理
+                    logger.warning(f"No existing RESP charges for {name}, fallback to LigParGen")
+                    charge_method = "ligpargen"
 
             if charge_method == "ligpargen":
                 # 使用 LigParGen 生成的电荷
@@ -361,6 +374,31 @@ mpirun -n {mpi_processes} $EXEC <{job_name}.in > {job_name}.log
                     return False
 
         return True
+
+    def get_solvents_needing_resp(self, solvents: List[Dict]) -> List[Dict]:
+        """
+        检查哪些溶剂需要 RESP 计算
+
+        Args:
+            solvents: 溶剂列表
+
+        Returns:
+            需要 RESP 计算的溶剂列表
+        """
+        needing_resp = []
+        for solvent in solvents:
+            name = solvent.get('name')
+            if not name:
+                continue
+
+            charge_file = self.charge_save_path / f"{name}.charmm.chg"
+            if not charge_file.exists():
+                needing_resp.append(solvent)
+                logger.info(f"Solvent {name} needs RESP calculation")
+            else:
+                logger.info(f"Solvent {name} has existing RESP charges")
+
+        return needing_resp
 
     def _generate_and_run_packmol(self, job_data: Dict, work_dir: Path) -> bool:
         """生成 Packmol 输入文件并运行"""

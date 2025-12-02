@@ -42,6 +42,15 @@ class PostprocessType(str, enum.Enum):
     SOLVATION = "SOLVATION"
 
 
+class RESPJobStatus(str, enum.Enum):
+    """RESP charge calculation job status"""
+    CREATED = "CREATED"
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
 class DataVisibility(str, enum.Enum):
     """Data visibility enumeration - 数据展示状态"""
     PRIVATE = "PRIVATE"          # 私有 - 仅自己和管理员可见
@@ -73,7 +82,8 @@ class MDJob(Base):
     # 计费相关字段
     cpu_cores = Column(Integer, default=1)  # 使用的CPU核数
     estimated_cpu_hours = Column(Float, default=0.0)  # 预估机时
-    actual_cpu_hours = Column(Float, default=0.0)     # 实际消耗机时
+    actual_cpu_hours = Column(Float, default=0.0)     # 实际消耗机时（MD 计算）
+    resp_cpu_hours = Column(Float, default=0.0)       # RESP 电荷计算消耗机时
     result_locked = Column(Boolean, default=False)    # 结果是否锁定（因欠费）
     locked_reason = Column(String(200))               # 锁定原因
     billed = Column(Boolean, default=False)           # 是否已结算
@@ -105,6 +115,7 @@ class MDJob(Base):
     visibility_changed_by_user = relationship("User", foreign_keys=[visibility_changed_by])
     deleted_by_user = relationship("User", foreign_keys=[deleted_by])
     postprocess_jobs = relationship("PostprocessJob", back_populates="md_job", cascade="all, delete-orphan")
+    resp_jobs = relationship("RESPJob", back_populates="md_job", cascade="all, delete-orphan")
     result_summary = relationship("ResultSummary", back_populates="md_job", uselist=False, cascade="all, delete-orphan")
     rdf_results = relationship("RDFResult", back_populates="md_job", cascade="all, delete-orphan")
     msd_results = relationship("MSDResult", back_populates="md_job", cascade="all, delete-orphan")
@@ -166,7 +177,58 @@ class PostprocessJob(Base):
         Index('idx_postprocess_md_job_id', 'md_job_id'),
         Index('idx_postprocess_status', 'status'),
     )
-    
+
     def __repr__(self):
         return f"<PostprocessJob(id={self.id}, type={self.job_type}, status={self.status})>"
+
+
+class RESPJob(Base):
+    """RESP charge calculation job model"""
+    __tablename__ = "resp_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # 分子信息
+    molecule_name = Column(String(255), nullable=False)
+    smiles = Column(Text)
+
+    # 任务状态
+    status = Column(Enum(RESPJobStatus), default=RESPJobStatus.CREATED, nullable=False, index=True)
+    slurm_job_id = Column(String(50), index=True)
+
+    # 工作目录和文件
+    work_dir = Column(Text)
+    charge_file = Column(Text)  # 生成的电荷文件路径
+    log_file = Column(Text)
+    error_message = Column(Text)
+
+    # 核时数统计
+    cpu_hours = Column(Float, default=0.0)  # 实际消耗的核时数
+    estimated_cpu_hours = Column(Float)  # 预估核时数
+
+    # 配置
+    config = Column(JSONB)  # 存储计算参数
+
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
+
+    # Relationships
+    md_job = relationship("MDJob", back_populates="resp_jobs", foreign_keys=[md_job_id])
+    user = relationship("User", back_populates="resp_jobs", foreign_keys=[user_id])
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_resp_md_job_id', 'md_job_id'),
+        Index('idx_resp_user_id', 'user_id'),
+        Index('idx_resp_status', 'status'),
+        Index('idx_resp_created_at', 'created_at'),
+    )
+
+    def __repr__(self):
+        return f"<RESPJob(id={self.id}, molecule={self.molecule_name}, status={self.status})>"
 

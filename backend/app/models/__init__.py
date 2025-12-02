@@ -4,7 +4,7 @@ SQLAlchemy ORM models
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.models.electrolyte import ElectrolyteSystem
-from app.models.job import MDJob, PostprocessJob, JobStatus, PostprocessType
+from app.models.job import MDJob, PostprocessJob, JobStatus, PostprocessType, RESPJob, RESPJobStatus
 from app.models.result import ResultSummary, RDFResult, MSDResult, SolvationStructure
 from app.models.user_stats import UserUsageStats, AuditLog
 from app.models.billing import (
@@ -23,6 +23,8 @@ __all__ = [
     "PostprocessJob",
     "JobStatus",
     "PostprocessType",
+    "RESPJob",
+    "RESPJobStatus",
     "ResultSummary",
     "RDFResult",
     "MSDResult",

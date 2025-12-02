@@ -294,11 +294,12 @@ class PollingWorker:
         try:
             # 1. 立即更新任务状态为 QUEUED（表示 Worker 已接收，正在准备）
             self._update_job_status(job_id, 'QUEUED', 'md')
-            
-            # 2. 导入 MolyteWrapper
+
+            # 2. 导入模块
             from app.workers.molyte_wrapper import MolyteWrapper
+            from app.workers.resp_calculator import RESPCalculator
             from app.core.config import settings
-            
+
             # 3. 初始化 MolyteWrapper
             wrapper = MolyteWrapper(
                 work_base_path=Path(self.config['local']['work_base_path']),
@@ -309,43 +310,230 @@ class PollingWorker:
                 moltemplate_path=Path(self.config['local']['moltemplate_path']),
                 charge_save_path=Path(self.config['local']['charge_save_path']),
             )
-            
-            # 4. 生成 LAMMPS 输入文件
+
             job_data = job['config']
+            charge_method = job_data.get("charge_method", "ligpargen")
+
+            # 4. 检查是否需要 RESP 计算
+            if charge_method == "resp":
+                solvents = job_data.get("solvents", [])
+                solvents_needing_resp = wrapper.get_solvents_needing_resp(solvents)
+
+                if solvents_needing_resp:
+                    # 需要先运行 RESP 计算
+                    self.logger.info(f"MD 任务 {job_id} 需要 RESP 计算: {[s['name'] for s in solvents_needing_resp]}")
+                    self._start_resp_calculations(job_id, job, solvents_needing_resp, wrapper)
+                    return  # RESP 完成后会继续 MD
+
+            # 5. 直接生成 LAMMPS 输入文件（无需 RESP 或 RESP 已完成）
+            self._continue_md_job(job_id, job, wrapper)
+
+        except Exception as e:
+            self.logger.error(f"处理 MD 任务 {job_id} 失败: {e}", exc_info=True)
+            self._update_job_status(job_id, 'FAILED', 'md', error_message=str(e))
+
+    def _start_resp_calculations(self, job_id: int, job: Dict, solvents: List[Dict], wrapper):
+        """
+        启动 RESP 电荷计算
+
+        Args:
+            job_id: MD 任务 ID
+            job: 任务配置
+            solvents: 需要计算的溶剂列表
+            wrapper: MolyteWrapper 实例
+        """
+        from app.workers.resp_calculator import RESPCalculator
+        import shutil
+
+        try:
+            # 创建 RESP 工作目录
+            resp_base_dir = Path(self.config['local']['work_base_path']) / f"RESP_{job['config']['name']}"
+            resp_base_dir.mkdir(parents=True, exist_ok=True)
+
+            # 初始化 RESP 计算器
+            slurm_partition = self.config.get('slurm', {}).get('partition', 'cpu')
+            resp_calculator = RESPCalculator(
+                charge_save_path=Path(self.config['local']['charge_save_path']),
+                slurm_partition=slurm_partition
+            )
+
+            resp_jobs = []
+
+            for solvent in solvents:
+                name = solvent['name']
+                smiles = solvent.get('smiles', '')
+
+                if not smiles:
+                    self.logger.warning(f"No SMILES for solvent {name}, skipping RESP")
+                    continue
+
+                # 为每个溶剂创建工作目录
+                solvent_dir = resp_base_dir / name
+                solvent_dir.mkdir(parents=True, exist_ok=True)
+
+                # 运行 LigParGen 生成 PDB 文件
+                import subprocess
+                ligpargen_cmd = f"{self.config['local']['ligpargen_path']}/ligpargen -s '{smiles}' -n {name} -r MOL -c 0 -o 0 -cgen CM1A"
+                result = subprocess.run(
+                    ligpargen_cmd, shell=True, cwd=str(solvent_dir),
+                    capture_output=True, text=True
+                )
+
+                if result.returncode != 0:
+                    self.logger.error(f"LigParGen failed for {name}: {result.stderr}")
+                    continue
+
+                # 生成 RESP Slurm 脚本
+                pdb_file = f"{name}.charmm.pdb"
+                script_path = resp_calculator.generate_resp_slurm_script(
+                    work_dir=solvent_dir,
+                    pdb_file=pdb_file,
+                    molecule_name=name,
+                    charge=0,
+                    spin_multiplicity=1,
+                    solvent="water",
+                    cpus=16,
+                    time_limit_hours=24
+                )
+
+                # 提交到 Slurm
+                success, slurm_job_id, error = resp_calculator.submit_resp_job(solvent_dir, script_path)
+
+                if success:
+                    resp_jobs.append({
+                        'molecule_name': name,
+                        'slurm_job_id': slurm_job_id,
+                        'work_dir': str(solvent_dir),
+                        'status': 'RUNNING',
+                        'cpu_hours': 0.0
+                    })
+                    self.logger.info(f"RESP 任务已提交: {name} (Slurm Job: {slurm_job_id})")
+                else:
+                    self.logger.error(f"Failed to submit RESP job for {name}: {error}")
+
+            if resp_jobs:
+                # 将 MD 任务添加到等待 RESP 的队列
+                self.running_jobs[job_id] = {
+                    'type': 'md_waiting_resp',
+                    'job': job,
+                    'wrapper': wrapper,
+                    'resp_jobs': resp_jobs,
+                    'resp_base_dir': str(resp_base_dir),
+                    'start_time': time.time(),
+                    'total_resp_cpu_hours': 0.0
+                }
+                self.logger.info(f"MD 任务 {job_id} 正在等待 {len(resp_jobs)} 个 RESP 计算完成")
+            else:
+                # 没有成功提交任何 RESP 任务，直接继续 MD（使用 LigParGen 电荷）
+                self.logger.warning(f"No RESP jobs submitted for MD job {job_id}, falling back to LigParGen")
+                job['config']['charge_method'] = 'ligpargen'
+                self._continue_md_job(job_id, job, wrapper)
+
+        except Exception as e:
+            self.logger.error(f"启动 RESP 计算失败: {e}", exc_info=True)
+            self._update_job_status(job_id, 'FAILED', 'md', error_message=f"RESP calculation failed: {e}")
+
+    def _check_resp_jobs(self, job_id: int, job_info: Dict) -> bool:
+        """
+        检查 RESP 任务状态
+
+        Args:
+            job_id: MD 任务 ID
+            job_info: 任务信息
+
+        Returns:
+            是否所有 RESP 任务都已完成
+        """
+        from app.workers.resp_calculator import RESPCalculator
+
+        resp_calculator = RESPCalculator(
+            charge_save_path=Path(self.config['local']['charge_save_path'])
+        )
+
+        all_completed = True
+        any_failed = False
+        total_cpu_hours = 0.0
+
+        for resp_job in job_info['resp_jobs']:
+            if resp_job['status'] in ['COMPLETED', 'FAILED']:
+                total_cpu_hours += resp_job.get('cpu_hours', 0.0)
+                continue
+
+            status = resp_calculator.check_job_status(resp_job['slurm_job_id'])
+
+            if status in ['PENDING', 'RUNNING']:
+                all_completed = False
+            elif status == 'COMPLETED':
+                resp_job['status'] = 'COMPLETED'
+                resp_job['cpu_hours'] = resp_calculator.get_job_cpu_hours(resp_job['slurm_job_id'])
+                total_cpu_hours += resp_job['cpu_hours']
+                self.logger.info(f"RESP 计算完成: {resp_job['molecule_name']} (CPU hours: {resp_job['cpu_hours']:.2f})")
+            else:
+                resp_job['status'] = 'FAILED'
+                any_failed = True
+                self.logger.error(f"RESP 计算失败: {resp_job['molecule_name']} (status: {status})")
+
+        job_info['total_resp_cpu_hours'] = total_cpu_hours
+
+        if any_failed:
+            # 有 RESP 任务失败，但仍然可以继续（使用 LigParGen 电荷）
+            self.logger.warning(f"Some RESP jobs failed for MD job {job_id}, using LigParGen for failed molecules")
+
+        return all_completed
+
+    def _continue_md_job(self, job_id: int, job: Dict, wrapper):
+        """
+        继续 MD 任务（RESP 完成后或不需要 RESP）
+
+        Args:
+            job_id: MD 任务 ID
+            job: 任务配置
+            wrapper: MolyteWrapper 实例
+        """
+        try:
+            job_data = job['config']
+
+            # 生成 LAMMPS 输入文件
             result = wrapper.generate_lammps_input(job_data)
-            
+
             if not result['success']:
                 raise Exception(result.get('error', 'Unknown error'))
-            
+
             work_dir = result['work_dir']
-            
-            # 5. 提交到 Slurm
+
+            # 提交到 Slurm
             slurm_result = wrapper.submit_to_slurm(work_dir)
-            
+
             if not slurm_result['success']:
                 raise Exception(slurm_result.get('error', 'Failed to submit to Slurm'))
-            
+
             slurm_job_id = slurm_result['slurm_job_id']
-            
-            # 6. 更新任务状态为 RUNNING
+
+            # 获取 RESP CPU 核时数
+            resp_cpu_hours = 0.0
+            if job_id in self.running_jobs and self.running_jobs[job_id].get('type') == 'md_waiting_resp':
+                resp_cpu_hours = self.running_jobs[job_id].get('total_resp_cpu_hours', 0.0)
+
+            # 更新任务状态为 RUNNING
             self._update_job_status(
                 job_id, 'RUNNING', 'md',
                 slurm_job_id=slurm_job_id,
                 work_dir=str(work_dir)
             )
-            
-            # 7. 添加到运行中的任务列表
+
+            # 更新运行中的任务列表
             self.running_jobs[job_id] = {
                 'type': 'md',
                 'slurm_job_id': slurm_job_id,
                 'work_dir': work_dir,
-                'start_time': time.time()
+                'start_time': time.time(),
+                'resp_cpu_hours': resp_cpu_hours  # 保存 RESP 核时数
             }
-            
-            self.logger.info(f"MD 任务 {job_id} 已提交到 Slurm (Job ID: {slurm_job_id})")
-            
+
+            self.logger.info(f"MD 任务 {job_id} 已提交到 Slurm (Job ID: {slurm_job_id}), RESP CPU hours: {resp_cpu_hours:.2f}")
+
         except Exception as e:
-            self.logger.error(f"处理 MD 任务 {job_id} 失败: {e}", exc_info=True)
+            self.logger.error(f"继续 MD 任务 {job_id} 失败: {e}", exc_info=True)
             self._update_job_status(job_id, 'FAILED', 'md', error_message=str(e))
     
     def _process_qc_job(self, job: Dict):
@@ -843,12 +1031,20 @@ echo "QC calculation completed"
         """检查运行中的任务状态"""
         completed_jobs = []
 
-        for job_id, job_info in self.running_jobs.items():
+        for job_id, job_info in list(self.running_jobs.items()):
             try:
+                job_type = job_info['type']
+
+                # 处理等待 RESP 的 MD 任务
+                if job_type == 'md_waiting_resp':
+                    self._check_md_waiting_resp(job_id, job_info, completed_jobs)
+                    continue
+
                 slurm_job_id = job_info['slurm_job_id']
 
                 # 检查任务是否被用户取消
-                if self._check_if_cancelled(job_id, job_info['type']):
+                actual_type = 'md' if job_type in ['md', 'md_waiting_resp'] else job_type
+                if self._check_if_cancelled(job_id, actual_type):
                     self.logger.info(f"任务 {job_id} 已被用户取消，执行 scancel")
                     self._cancel_slurm_job(slurm_job_id)
                     completed_jobs.append(job_id)
@@ -858,11 +1054,11 @@ echo "QC calculation completed"
 
                 if status == 'QUEUED':
                     # Slurm 任务还在排队，更新数据库状态为 QUEUED
-                    self._update_job_status(job_id, 'QUEUED', job_info['type'], slurm_job_id=slurm_job_id)
+                    self._update_job_status(job_id, 'QUEUED', actual_type, slurm_job_id=slurm_job_id)
 
                 elif status == 'RUNNING':
                     # Slurm 任务正在运行，更新数据库状态为 RUNNING
-                    self._update_job_status(job_id, 'RUNNING', job_info['type'], slurm_job_id=slurm_job_id)
+                    self._update_job_status(job_id, 'RUNNING', actual_type, slurm_job_id=slurm_job_id)
 
                 elif status == 'COMPLETED':
                     self.logger.info(f"任务 {job_id} (Slurm: {slurm_job_id}) 已完成")
@@ -873,12 +1069,12 @@ echo "QC calculation completed"
                     self.logger.error(f"任务 {job_id} (Slurm: {slurm_job_id}) 失败")
                     # 获取失败原因
                     error_msg = self._get_job_failure_reason(slurm_job_id, job_info.get('work_dir'))
-                    self._update_job_status(job_id, 'FAILED', job_info['type'], error_message=error_msg)
+                    self._update_job_status(job_id, 'FAILED', actual_type, error_message=error_msg)
                     completed_jobs.append(job_id)
 
                 elif status == 'CANCELLED':
                     self.logger.info(f"任务 {job_id} (Slurm: {slurm_job_id}) 已取消")
-                    self._update_job_status(job_id, 'CANCELLED', job_info['type'], error_message="任务被取消")
+                    self._update_job_status(job_id, 'CANCELLED', actual_type, error_message="任务被取消")
                     completed_jobs.append(job_id)
 
             except Exception as e:
@@ -886,7 +1082,57 @@ echo "QC calculation completed"
 
         # 移除已完成的任务
         for job_id in completed_jobs:
-            del self.running_jobs[job_id]
+            if job_id in self.running_jobs:
+                del self.running_jobs[job_id]
+
+    def _check_md_waiting_resp(self, job_id: int, job_info: Dict, completed_jobs: List):
+        """
+        检查等待 RESP 完成的 MD 任务
+
+        Args:
+            job_id: MD 任务 ID
+            job_info: 任务信息
+            completed_jobs: 已完成任务列表
+        """
+        try:
+            # 检查任务是否被取消
+            if self._check_if_cancelled(job_id, 'md'):
+                self.logger.info(f"MD 任务 {job_id} 已被用户取消，取消所有 RESP 任务")
+                for resp_job in job_info.get('resp_jobs', []):
+                    if resp_job['status'] == 'RUNNING':
+                        self._cancel_slurm_job(resp_job['slurm_job_id'])
+                completed_jobs.append(job_id)
+                return
+
+            # 检查所有 RESP 任务状态
+            all_completed = self._check_resp_jobs(job_id, job_info)
+
+            if all_completed:
+                self.logger.info(f"MD 任务 {job_id} 的所有 RESP 计算已完成，继续 MD 模拟")
+
+                # 从 job_info 恢复 wrapper 和 job
+                job = job_info['job']
+
+                # 重新初始化 wrapper
+                from app.workers.molyte_wrapper import MolyteWrapper
+                wrapper = MolyteWrapper(
+                    work_base_path=Path(self.config['local']['work_base_path']),
+                    initial_salts_path=Path(self.config['local']['initial_salts_path']),
+                    ligpargen_path=Path(self.config['local']['ligpargen_path']),
+                    packmol_path=Path(self.config['local']['packmol_path']),
+                    ltemplify_path=Path(self.config['local']['ltemplify_path']),
+                    moltemplate_path=Path(self.config['local']['moltemplate_path']),
+                    charge_save_path=Path(self.config['local']['charge_save_path']),
+                )
+
+                # 继续 MD 任务
+                self._continue_md_job(job_id, job, wrapper)
+                # 注意：_continue_md_job 会更新 running_jobs[job_id]，所以不需要删除
+
+        except Exception as e:
+            self.logger.error(f"检查 RESP 状态失败: {e}", exc_info=True)
+            self._update_job_status(job_id, 'FAILED', 'md', error_message=f"RESP check failed: {e}")
+            completed_jobs.append(job_id)
 
     def _check_if_cancelled(self, job_id: int, job_type: str) -> bool:
         """检查任务是否被用户取消或删除（通过 API 查询）"""
@@ -1116,11 +1362,28 @@ echo "QC calculation completed"
                 else:
                     self.logger.warning(f"MD 任务 {job_id} 未能解析结果数据")
 
-            # 3. 更新任务状态为 COMPLETED
+            # 3. 获取核时数
+            cpu_hours = None
+            resp_cpu_hours = None
+
+            if job_type in ['md', 'qc']:
+                slurm_job_id = job_info.get('slurm_job_id')
+                if slurm_job_id:
+                    cpu_hours = self._get_job_cpu_hours(slurm_job_id)
+                    self.logger.info(f"任务 {job_id} MD/QC CPU hours: {cpu_hours:.2f}")
+
+                # 获取 RESP 核时数（如果有）
+                resp_cpu_hours = job_info.get('resp_cpu_hours', 0.0)
+                if resp_cpu_hours > 0:
+                    self.logger.info(f"任务 {job_id} RESP CPU hours: {resp_cpu_hours:.2f}")
+
+            # 4. 更新任务状态为 COMPLETED
             self._update_job_status(
                 job_id, 'COMPLETED', job_type,
                 result_files=uploaded_files,
-                progress=100.0
+                progress=100.0,
+                cpu_hours=cpu_hours,
+                resp_cpu_hours=resp_cpu_hours
             )
 
             self.logger.info(f"任务 {job_id} 处理完成，上传了 {len(uploaded_files)} 个文件")
@@ -1128,6 +1391,36 @@ echo "QC calculation completed"
         except Exception as e:
             self.logger.error(f"处理任务 {job_id} 完成失败: {e}", exc_info=True)
             self._update_job_status(job_id, 'FAILED', job_info['type'], error_message=str(e))
+
+    def _get_job_cpu_hours(self, slurm_job_id: str) -> float:
+        """
+        获取 Slurm 任务的 CPU 核时数
+
+        Args:
+            slurm_job_id: Slurm 任务 ID
+
+        Returns:
+            CPU 核时数
+        """
+        try:
+            # sacct -j JOB_ID -o CPUTimeRAW -n -X
+            result = subprocess.run(
+                ['sacct', '-j', slurm_job_id, '-o', 'CPUTimeRAW', '-n', '-X'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                cpu_time_seconds = int(result.stdout.strip().split()[0])
+                cpu_hours = cpu_time_seconds / 3600.0
+                return cpu_hours
+
+            return 0.0
+
+        except Exception as e:
+            self.logger.error(f"Failed to get CPU hours for job {slurm_job_id}: {e}")
+            return 0.0
 
     def _parse_gaussian_output(self, work_dir: Path) -> Optional[Dict[str, Any]]:
         """解析 Gaussian 输出文件，提取能量、HOMO、LUMO 等"""
@@ -2693,7 +2986,9 @@ echo "QC calculation completed"
         work_dir: Optional[str] = None,
         error_message: Optional[str] = None,
         result_files: Optional[List[str]] = None,
-        progress: Optional[float] = None
+        progress: Optional[float] = None,
+        cpu_hours: Optional[float] = None,
+        resp_cpu_hours: Optional[float] = None
     ):
         """更新任务状态到阿里云"""
         try:
@@ -2722,6 +3017,10 @@ echo "QC calculation completed"
                 data['result_files'] = result_files
             if progress is not None:
                 data['progress'] = progress
+            if cpu_hours is not None:
+                data['cpu_hours'] = cpu_hours
+            if resp_cpu_hours is not None:
+                data['resp_cpu_hours'] = resp_cpu_hours
 
             response = requests.put(
                 endpoint,

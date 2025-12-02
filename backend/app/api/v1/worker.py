@@ -78,6 +78,8 @@ class JobStatusUpdate(BaseModel):
     error_message: Optional[str] = None
     result_files: Optional[List[str]] = None
     progress: Optional[float] = None  # 任务进度 0-100
+    cpu_hours: Optional[float] = None  # MD/QC 计算消耗的 CPU 核时数
+    resp_cpu_hours: Optional[float] = None  # RESP 电荷计算消耗的 CPU 核时数
 
 
 class PendingJobResponse(BaseModel):
@@ -348,11 +350,18 @@ async def update_job_status(
                 job.config = {}
             job.config['result_files'] = status_update.result_files
 
+        # 保存 CPU 核时数
+        if status_update.cpu_hours is not None:
+            job.actual_cpu_hours = status_update.cpu_hours
+        if status_update.resp_cpu_hours is not None:
+            job.resp_cpu_hours = status_update.resp_cpu_hours
+
         db.commit()
 
         logger.info(
             f"MD Job {job_id} status updated to {mapped_status} "
             f"by worker {status_update.worker_name}"
+            f", cpu_hours={status_update.cpu_hours}, resp_cpu_hours={status_update.resp_cpu_hours}"
         )
 
         return {"status": "ok", "job_id": job_id, "new_status": mapped_status}
