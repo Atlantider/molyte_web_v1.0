@@ -72,8 +72,8 @@ class ElectrolyteCreateNew(BaseModel):
     cations: List[IonSpec]
     anions: List[IonSpec]
 
-    # Solvents with molar ratio
-    solvents: List[SolventSpec]
+    # Solvents with molar ratio (optional)
+    solvents: Optional[List[SolventSpec]] = Field(default=None)
 
     # Box configuration
     box: BoxConfig

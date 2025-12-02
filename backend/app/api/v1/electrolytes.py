@@ -139,6 +139,9 @@ def create_electrolyte_new_format(
     Raises:
         HTTPException: If project not found or validation fails
     """
+    logger.info(f"Creating electrolyte (new format) by {current_user.username}")
+    logger.debug(f"Request data: {electrolyte_data}")
+
     # Check if project exists and user has permission
     project = db.query(Project).filter(Project.id == electrolyte_data.project_id).first()
     if not project:
@@ -157,7 +160,7 @@ def create_electrolyte_new_format(
     try:
         old_format_data = convert_new_to_old_format(electrolyte_data)
     except Exception as e:
-        logger.error(f"Error converting electrolyte data: {e}")
+        logger.error(f"Error converting electrolyte data: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error converting electrolyte data: {str(e)}"
