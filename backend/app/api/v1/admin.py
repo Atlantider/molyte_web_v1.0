@@ -218,11 +218,16 @@ async def get_user_detail(
         "username": user.username,
         "email": user.email,
         "role": user.role,
+        "user_type": user.user_type,
+        "organization": user.organization,
+        "department": user.department,
         "is_active": user.is_active,
         "total_cpu_hours": user.total_cpu_hours,
+        "balance_cpu_hours": user.balance_cpu_hours,
         "daily_job_limit": user.daily_job_limit,
         "concurrent_job_limit": user.concurrent_job_limit,
         "storage_quota_gb": user.storage_quota_gb,
+        "allowed_partitions": user.allowed_partitions,
         "last_login_at": user.last_login_at,
         "created_at": user.created_at,
         "updated_at": user.updated_at,
@@ -233,7 +238,7 @@ async def get_user_detail(
         "completed_jobs": completed_jobs,
         "failed_jobs": failed_jobs
     }
-    
+
     return UserDetail(**user_dict)
 
 
