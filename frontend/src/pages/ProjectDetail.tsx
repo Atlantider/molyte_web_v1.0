@@ -221,20 +221,31 @@ export default function ProjectDetail() {
                     </Button>
                   </Empty>
                 ) : (
-                  <Row gutter={[16, 16]}>
-                    {electrolytes.map((electrolyte) => (
-                      <Col xs={24} sm={24} md={12} lg={8} key={electrolyte.id}>
-                        <ElectrolyteCard
-                          electrolyte={electrolyte}
-                          jobs={jobs}
-                          onEdit={() => navigate('/workspace/electrolytes')}
-                          onCopy={() => navigate('/workspace/electrolytes')}
-                          onDelete={handleDeleteElectrolyte}
-                          onCreateJob={() => navigate('/workspace/jobs')}
-                        />
-                      </Col>
-                    ))}
-                  </Row>
+                  <div>
+                    <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                      <Button
+                        type="primary"
+                        icon={<ExperimentOutlined />}
+                        onClick={() => navigate('/workspace/electrolytes', { state: { openCreateModal: true, projectId: parseInt(id!) } })}
+                      >
+                        新建配方
+                      </Button>
+                    </div>
+                    <Row gutter={[16, 16]}>
+                      {electrolytes.map((electrolyte) => (
+                        <Col xs={24} sm={24} md={12} lg={8} key={electrolyte.id}>
+                          <ElectrolyteCard
+                            electrolyte={electrolyte}
+                            jobs={jobs}
+                            onEdit={() => navigate('/workspace/electrolytes')}
+                            onCopy={() => navigate('/workspace/electrolytes')}
+                            onDelete={handleDeleteElectrolyte}
+                            onCreateJob={() => navigate('/workspace/jobs')}
+                          />
+                        </Col>
+                      ))}
+                    </Row>
+                  </div>
                 )}
               </div>
             ),
@@ -264,13 +275,18 @@ export default function ProjectDetail() {
                   </Empty>
                 ) : (
                   <div>
-                    {jobs.map((job) => (
-                      <JobCard
-                        key={job.id}
-                        job={job}
-                        onCancel={handleCancelJob}
-                      />
-                    ))}
+                    {jobs.map((job) => {
+                      // 找到对应的电解质配方
+                      const electrolyte = electrolytes.find(e => e.id === job.system_id);
+                      return (
+                        <JobCard
+                          key={job.id}
+                          job={job}
+                          electrolyte={electrolyte}
+                          onCancel={handleCancelJob}
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>

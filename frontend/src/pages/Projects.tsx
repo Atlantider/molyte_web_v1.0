@@ -55,12 +55,17 @@ export default function Projects() {
     }
   }, [searchText, projects]);
 
-  // 检查是否需要自动打开创建对话框
+  // 检查是否需要自动打开创建/编辑对话框
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     if (location.state?.openCreateModal || searchParams.get('action') === 'create') {
       setModalVisible(true);
       // 清除 state 和 URL 参数，避免刷新时重复打开
+      window.history.replaceState({}, document.title, location.pathname);
+    } else if (location.state?.editProject) {
+      // 处理编辑项目
+      handleOpenModal(location.state.editProject);
+      // 清除 state，避免刷新时重复打开
       window.history.replaceState({}, document.title, location.pathname);
     }
   }, [location]);

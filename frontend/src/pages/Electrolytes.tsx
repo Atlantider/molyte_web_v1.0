@@ -162,6 +162,10 @@ export default function Electrolytes() {
   // 检查是否需要自动打开创建对话框
   useEffect(() => {
     if (location.state?.openCreateModal) {
+      // 如果有指定项目ID，设置默认项目
+      if (location.state?.projectId) {
+        form.setFieldsValue({ project_id: location.state.projectId });
+      }
       setModalVisible(true);
       // 清除 state，避免刷新时重复打开
       window.history.replaceState({}, document.title);
