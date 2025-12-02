@@ -202,41 +202,46 @@ def convert_new_to_old_format(data: ElectrolyteCreateNew) -> Dict:
     box_size = round(volume ** (1/3), 2)
 
     # Generate description part of the name
-    user_description = data.name if data.name and data.name.strip() else None
+    # 命名规则：阳离子-阴离子-溶剂 (自动生成)，用户自定义名称加在最后
+    user_custom_name = data.name.strip() if data.name and data.name.strip() else None
 
-    if not user_description:
-        # Auto-generate description: 阳离子-阴离子-溶剂
-        parts = []
+    # 始终自动生成基础名称：阳离子-阴离子-溶剂
+    parts = []
 
-        # Add cations (sorted by concentration, take top 2) - 使用清理后的名称
-        sorted_cations = sorted(data.cations, key=lambda x: x.concentration, reverse=True)
-        top_cations = [strip_ion_charge(c.name) for c in sorted_cations[:2]]
-        if top_cations:
-            parts.append('-'.join(top_cations))
+    # Add cations (sorted by concentration, take top 2) - 使用清理后的名称
+    sorted_cations = sorted(data.cations, key=lambda x: x.concentration, reverse=True)
+    top_cations = [strip_ion_charge(c.name) for c in sorted_cations[:2]]
+    if top_cations:
+        parts.append('-'.join(top_cations))
 
-        # Add anions (sorted by concentration, take top 2) - 使用清理后的名称
-        sorted_anions = sorted(data.anions, key=lambda x: x.concentration, reverse=True)
-        top_anions = [strip_ion_charge(a.name) for a in sorted_anions[:2]]
-        if top_anions:
-            parts.append('-'.join(top_anions))
+    # Add anions (sorted by concentration, take top 2) - 使用清理后的名称
+    sorted_anions = sorted(data.anions, key=lambda x: x.concentration, reverse=True)
+    top_anions = [strip_ion_charge(a.name) for a in sorted_anions[:2]]
+    if top_anions:
+        parts.append('-'.join(top_anions))
 
-        # Add solvents (sorted by molar ratio, take top 3)
-        sorted_solvents = sorted(data.solvents, key=lambda x: x.molar_ratio, reverse=True)
-        top_solvents = [s.name for s in sorted_solvents[:3]]
-        if top_solvents:
-            parts.append('/'.join(top_solvents))
+    # Add solvents (sorted by molar ratio, take top 3)
+    sorted_solvents = sorted(data.solvents, key=lambda x: x.molar_ratio, reverse=True)
+    top_solvents = [s.name for s in sorted_solvents[:3]]
+    if top_solvents:
+        parts.append('-'.join(top_solvents))
 
-        user_description = '-'.join(parts) if parts else 'Electrolyte'
-        logger.info(f"Auto-generated description: {user_description}")
+    auto_description = '-'.join(parts) if parts else 'Electrolyte'
+    logger.info(f"Auto-generated base description: {auto_description}")
+
+    # 如果用户提供了自定义名称，加在自动生成名称后面
+    if user_custom_name:
+        final_description = f"{auto_description}-{user_custom_name}"
+        logger.info(f"Final description with user suffix: {final_description}")
     else:
-        logger.info(f"User-provided description: {user_description}")
+        final_description = auto_description
 
     # Build old format dictionary
     # Note: The full name with EL-YYYYMMDD-序号 prefix will be added in the API endpoint
     # after counting existing electrolytes for the day
     result = {
         "project_id": data.project_id,
-        "name": user_description,  # Store description part only, will be prefixed in API
+        "name": final_description,  # Store description part only, will be prefixed in API
         "cations": cations_old,
         "anions": anions_old,
         "solvents": solvents_old,
