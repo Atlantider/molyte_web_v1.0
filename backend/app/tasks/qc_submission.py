@@ -129,18 +129,47 @@ def parse_pdb_coordinates(pdb_path):
 
 
 def get_charge_and_spin_from_smiles(smiles: str):
-    """从SMILES获取电荷和自旋多重度"""
+    """
+    从SMILES获取电荷和自旋多重度
+
+    返回: (charge, spin_multiplicity)
+
+    注意：必须添加氢原子后再计算电子数！
+    """
     try:
         from rdkit import Chem
         mol = Chem.MolFromSmiles(smiles)
         if mol is None:
             return 0, 1
 
+        # 计算总电荷
         total_charge = sum(atom.GetFormalCharge() for atom in mol.GetAtoms())
-        unpaired_electrons = sum(atom.GetNumRadicalElectrons() for atom in mol.GetAtoms())
-        spin_multiplicity = unpaired_electrons + 1
 
+        # 添加氢原子以获得完整的电子数
+        mol_with_h = Chem.AddHs(mol)
+
+        # 计算总电子数
+        total_electrons = sum(atom.GetAtomicNum() for atom in mol_with_h.GetAtoms())
+        total_electrons -= total_charge  # 减去电荷
+
+        # 检查是否有显式自由基
+        unpaired_electrons = sum(atom.GetNumRadicalElectrons() for atom in mol.GetAtoms())
+
+        if unpaired_electrons > 0:
+            # 有显式自由基
+            spin_multiplicity = unpaired_electrons + 1
+        else:
+            # 根据电子数判断
+            # 偶数电子 -> 闭壳层 -> 自旋多重度 = 1
+            # 奇数电子 -> 开壳层 -> 自旋多重度 = 2
+            if total_electrons % 2 == 0:
+                spin_multiplicity = 1
+            else:
+                spin_multiplicity = 2
+
+        logger.debug(f"Charge and spin from SMILES {smiles[:30]}...: charge={total_charge}, electrons={total_electrons}, radicals={unpaired_electrons}, spin={spin_multiplicity}")
         return total_charge, spin_multiplicity
+
     except Exception as e:
         logger.warning(f"Failed to parse SMILES {smiles}: {e}")
         return 0, 1

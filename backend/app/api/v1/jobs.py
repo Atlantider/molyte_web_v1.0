@@ -585,10 +585,12 @@ def _calculate_spin_multiplicity(smiles: str, charge: int) -> int:
     """
     根据SMILES和电荷计算自旋多重度
 
-    简化规则：
-    - 对于常见离子，使用预定义值
-    - 对于其他分子，尝试使用RDKit计算
-    - 默认返回1（单重态）
+    自旋多重度 = 2S + 1，其中S是总自旋量子数
+    - 闭壳层分子（偶数电子）: S=0, 自旋多重度=1
+    - 开壳层分子（奇数电子）: S=0.5, 自旋多重度=2
+    - 自由基: 根据未配对电子数计算
+
+    注意：必须添加氢原子后再计算电子数！
     """
     try:
         from rdkit import Chem
@@ -597,15 +599,31 @@ def _calculate_spin_multiplicity(smiles: str, charge: int) -> int:
             logger.warning(f"无法解析SMILES: {smiles[:50]}..., 使用默认自旋多重度1")
             return 1
 
+        # 添加氢原子以获得完整的电子数
+        mol_with_h = Chem.AddHs(mol)
+
         # 计算总电子数
-        total_electrons = sum(atom.GetAtomicNum() for atom in mol.GetAtoms())
+        total_electrons = sum(atom.GetAtomicNum() for atom in mol_with_h.GetAtoms())
         total_electrons -= charge  # 电荷影响电子数
 
-        # 如果电子数为偶数，通常是单重态；如果为奇数，通常是二重态
-        if total_electrons % 2 == 0:
-            return 1  # 单重态
+        # 检查是否有显式自由基
+        num_radical_electrons = sum(atom.GetNumRadicalElectrons() for atom in mol.GetAtoms())
+
+        if num_radical_electrons > 0:
+            # 有显式自由基
+            spin_multiplicity = num_radical_electrons + 1
         else:
-            return 2  # 二重态
+            # 根据电子数判断
+            # 偶数电子 -> 闭壳层 -> 自旋多重度 = 1
+            # 奇数电子 -> 开壳层 -> 自旋多重度 = 2
+            if total_electrons % 2 == 0:
+                spin_multiplicity = 1  # 单重态
+            else:
+                spin_multiplicity = 2  # 二重态
+
+        logger.debug(f"Spin calculation for {smiles[:30]}...: charge={charge}, electrons={total_electrons}, radicals={num_radical_electrons}, spin={spin_multiplicity}")
+        return spin_multiplicity
+
     except ImportError:
         logger.warning(f"RDKit未安装，使用默认自旋多重度1 (smiles: {smiles[:30]}...)")
         return 1  # 默认单重态

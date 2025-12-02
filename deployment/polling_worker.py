@@ -457,6 +457,22 @@ class PollingWorker:
 
         safe_name = self._sanitize_filename(molecule_name)
 
+        # 尝试从 SMILES 生成 3D 坐标
+        coords = self._get_3d_coordinates(smiles, molecule_name)
+
+        # 验证和纠正自旋多重度
+        corrected_charge, corrected_spin = self._validate_and_correct_spin(
+            smiles, charge, spin_multiplicity, coords
+        )
+
+        if corrected_charge != charge or corrected_spin != spin_multiplicity:
+            self.logger.warning(
+                f"自旋多重度已纠正: charge {charge}->{corrected_charge}, "
+                f"spin {spin_multiplicity}->{corrected_spin} for {molecule_name}"
+            )
+            charge = corrected_charge
+            spin_multiplicity = corrected_spin
+
         # 生成 gjf 内容
         gjf_content = f"""%nprocshared=16
 %mem=8GB
@@ -468,15 +484,18 @@ class PollingWorker:
 {charge} {spin_multiplicity}
 """
 
-        # 尝试从 SMILES 生成 3D 坐标
-        coords = self._get_3d_coordinates(smiles, molecule_name)
         if coords:
             for atom, x, y, z in coords:
                 gjf_content += f" {atom:<2}  {x:>12.8f}  {y:>12.8f}  {z:>12.8f}\n"
         else:
-            # 如果无法生成坐标，使用 SMILES 作为注释
+            # 如果无法生成坐标，记录错误并使用注释
+            self.logger.error(
+                f"无法为 {molecule_name} (SMILES: {smiles}) 生成3D坐标。"
+                f"请在 {self.config['local']['initial_salts_path']} 目录下添加对应的 PDB 文件。"
+            )
             gjf_content += f"! SMILES: {smiles}\n"
-            gjf_content += "! 请手动添加分子坐标\n"
+            gjf_content += "! 错误: 无法生成3D坐标\n"
+            gjf_content += "! 请手动添加分子坐标或提供 PDB 文件\n"
 
         gjf_content += "\n"  # 空行结尾
 
@@ -487,11 +506,23 @@ class PollingWorker:
         """从 SMILES 或 PDB 文件获取 3D 坐标"""
         # 首先尝试从 initial_salts 目录加载 PDB 文件
         initial_salts_path = Path(self.config['local']['initial_salts_path'])
-        clean_name = molecule_name.replace("+", "").replace("-", "").strip()
 
+        # 提取基础分子名称（去除计算参数）
+        # 例如: "FSI-B3LYP-6-31ppgd,p-pcm-TetraHydroFuran" -> "FSI"
+        import re
+        base_name = molecule_name.split('-')[0] if '-' in molecule_name else molecule_name
+        base_name = base_name.split('_')[0] if '_' in molecule_name else base_name
+
+        # 清理名称（去除 +/- 符号）
+        clean_name = molecule_name.replace("+", "").replace("-", "").strip()
+        clean_base_name = base_name.replace("+", "").replace("-", "").strip()
+
+        # 尝试多种可能的文件名
         possible_paths = [
-            initial_salts_path / f"{clean_name}.pdb",
-            initial_salts_path / f"{molecule_name}.pdb",
+            initial_salts_path / f"{base_name}.pdb",  # 基础名称（保留符号）
+            initial_salts_path / f"{clean_base_name}.pdb",  # 基础名称（去除符号）
+            initial_salts_path / f"{molecule_name}.pdb",  # 完整名称
+            initial_salts_path / f"{clean_name}.pdb",  # 完整名称（去除符号）
         ]
 
         for pdb_path in possible_paths:
@@ -509,8 +540,31 @@ class PollingWorker:
             mol = Chem.MolFromSmiles(smiles)
             if mol:
                 mol = Chem.AddHs(mol)
-                AllChem.EmbedMolecule(mol, AllChem.ETKDG())
-                AllChem.MMFFOptimizeMolecule(mol)
+
+                # 尝试多种方法生成3D坐标
+                result = AllChem.EmbedMolecule(mol, randomSeed=42)
+
+                if result == -1:
+                    # 第一次失败，尝试使用随机坐标
+                    self.logger.warning(f"第一次尝试失败，使用随机坐标方法: {smiles}")
+                    result = AllChem.EmbedMolecule(mol, useRandomCoords=True, maxAttempts=100, randomSeed=42)
+
+                if result == -1:
+                    # 第二次失败，尝试使用ETKDGv3方法
+                    self.logger.warning(f"第二次尝试失败，使用ETKDGv3方法: {smiles}")
+                    params = AllChem.ETKDGv3()
+                    params.randomSeed = 42
+                    result = AllChem.EmbedMolecule(mol, params)
+
+                if result == -1:
+                    self.logger.error(f"无法为 {smiles} 生成3D坐标")
+                    return None
+
+                # 尝试优化几何结构
+                try:
+                    AllChem.MMFFOptimizeMolecule(mol)
+                except Exception as opt_error:
+                    self.logger.warning(f"MMFF优化失败: {opt_error}，使用未优化的坐标")
 
                 coords = []
                 conf = mol.GetConformer()
@@ -518,7 +572,7 @@ class PollingWorker:
                     pos = conf.GetAtomPosition(i)
                     coords.append((atom.GetSymbol(), pos.x, pos.y, pos.z))
 
-                self.logger.info(f"从 SMILES 生成 3D 坐标")
+                self.logger.info(f"从 SMILES 生成 3D 坐标 (共 {len(coords)} 个原子)")
                 return coords
         except ImportError:
             self.logger.warning("RDKit 未安装，无法从 SMILES 生成坐标")
@@ -526,6 +580,89 @@ class PollingWorker:
             self.logger.warning(f"从 SMILES 生成坐标失败: {e}")
 
         return None
+
+    def _validate_and_correct_spin(self, smiles: str, charge: int, spin_multiplicity: int,
+                                     coords: list = None) -> tuple:
+        """
+        验证并纠正自旋多重度
+
+        Args:
+            smiles: SMILES 字符串
+            charge: 电荷
+            spin_multiplicity: 自旋多重度
+            coords: 坐标列表 [(atom, x, y, z), ...]
+
+        Returns:
+            (corrected_charge, corrected_spin)
+        """
+        try:
+            from rdkit import Chem
+
+            # 如果有坐标，从坐标计算电子数
+            if coords:
+                total_electrons = 0
+                for atom_symbol, x, y, z in coords:
+                    # 原子序数映射
+                    atomic_numbers = {
+                        'H': 1, 'C': 6, 'N': 7, 'O': 8, 'F': 9, 'P': 15, 'S': 16, 'Cl': 17,
+                        'Li': 3, 'Na': 11, 'K': 19, 'Mg': 12, 'Ca': 20, 'Al': 13, 'Si': 14,
+                        'B': 5, 'Br': 35, 'I': 53
+                    }
+                    total_electrons += atomic_numbers.get(atom_symbol, 0)
+                total_electrons -= charge
+
+                # 根据电子数判断自旋多重度
+                if total_electrons % 2 == 0:
+                    correct_spin = 1
+                else:
+                    correct_spin = 2
+
+                if correct_spin != spin_multiplicity:
+                    self.logger.warning(
+                        f"从坐标验证: {len(coords)} 个原子, {total_electrons} 个电子, "
+                        f"自旋多重度应为 {correct_spin} (当前为 {spin_multiplicity})"
+                    )
+                    return charge, correct_spin
+
+            # 如果没有坐标，从 SMILES 计算
+            else:
+                mol = Chem.MolFromSmiles(smiles)
+                if mol is None:
+                    return charge, spin_multiplicity
+
+                # 添加氢原子以获得完整的电子数
+                mol_with_h = Chem.AddHs(mol)
+
+                # 计算总电荷
+                total_charge = sum(atom.GetFormalCharge() for atom in mol.GetAtoms())
+
+                # 计算总电子数
+                total_electrons = sum(atom.GetAtomicNum() for atom in mol_with_h.GetAtoms())
+                total_electrons -= total_charge
+
+                # 检查是否有显式自由基
+                num_radical_electrons = sum(atom.GetNumRadicalElectrons() for atom in mol.GetAtoms())
+
+                if num_radical_electrons > 0:
+                    correct_spin = num_radical_electrons + 1
+                else:
+                    if total_electrons % 2 == 0:
+                        correct_spin = 1
+                    else:
+                        correct_spin = 2
+
+                if correct_spin != spin_multiplicity or total_charge != charge:
+                    self.logger.warning(
+                        f"从 SMILES 验证: {total_electrons} 个电子, {num_radical_electrons} 个自由基电子, "
+                        f"电荷应为 {total_charge} (当前为 {charge}), "
+                        f"自旋多重度应为 {correct_spin} (当前为 {spin_multiplicity})"
+                    )
+                    return total_charge, correct_spin
+
+        except Exception as e:
+            self.logger.warning(f"验证自旋多重度失败: {e}")
+
+        return charge, spin_multiplicity
 
     def _parse_pdb_coordinates(self, pdb_path: Path):
         """解析 PDB 文件坐标"""
