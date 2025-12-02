@@ -32,6 +32,8 @@ import {
   Checkbox,
   Steps,
   Result,
+  DatePicker,
+  Statistic,
 } from 'antd';
 import {
   PlusOutlined,
@@ -52,7 +54,10 @@ import {
   FileExcelOutlined,
   InboxOutlined,
   StopOutlined,
+  SearchOutlined,
+  FilterOutlined,
 } from '@ant-design/icons';
+import dayjs, { Dayjs } from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import {
   getQCJobs,
@@ -80,6 +85,7 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Panel } = Collapse;
 const { Step } = Steps;
+const { RangePicker } = DatePicker;
 
 // QC任务状态映射
 const statusMap: Record<string, { color: string; text: string }> = {
@@ -176,6 +182,16 @@ export default function QCJobs() {
   const [importStep, setImportStep] = useState(0);
   const [importResult, setImportResult] = useState<BatchImportResult | null>(null);
 
+  // 筛选和排序状态
+  const [searchText, setSearchText] = useState('');
+  const [moleculeTypeFilter, setMoleculeTypeFilter] = useState<string | undefined>(undefined);
+  const [basisSetFilter, setBasisSetFilter] = useState<string | undefined>(undefined);
+  const [functionalFilter, setFunctionalFilter] = useState<string | undefined>(undefined);
+  const [solventModelFilter, setSolventModelFilter] = useState<string | undefined>(undefined);
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [sortBy, setSortBy] = useState<'created_at' | 'molecule_name'>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
   // 加载QC任务列表
   const loadJobs = useCallback(async (status?: string) => {
     try {
@@ -191,6 +207,119 @@ export default function QCJobs() {
       console.error('加载QC任务列表失败:', error);
     }
   }, [pagination]);
+
+  // 获取筛选后的任务列表
+  const getFilteredJobs = () => {
+    let filtered = [...jobs];
+
+    // 搜索过滤（分子名称、SMILES）
+    if (searchText) {
+      const search = searchText.toLowerCase();
+      filtered = filtered.filter((job) =>
+        (job.molecule_name && job.molecule_name.toLowerCase().includes(search)) ||
+        (job.smiles && job.smiles.toLowerCase().includes(search))
+      );
+    }
+
+    // 分子类型筛选
+    if (moleculeTypeFilter) {
+      filtered = filtered.filter((job) => job.molecule_type === moleculeTypeFilter);
+    }
+
+    // 基组筛选
+    if (basisSetFilter) {
+      filtered = filtered.filter((job) => job.basis_set === basisSetFilter);
+    }
+
+    // 泛函筛选
+    if (functionalFilter) {
+      filtered = filtered.filter((job) => job.functional === functionalFilter);
+    }
+
+    // 溶剂模型筛选
+    if (solventModelFilter) {
+      filtered = filtered.filter((job) => {
+        const solventConfig = job.solvent_config || job.config?.solvent_config;
+        return solventConfig?.model === solventModelFilter;
+      });
+    }
+
+    // 时间范围筛选
+    if (dateRange && dateRange[0] && dateRange[1]) {
+      const startDate = dateRange[0].startOf('day');
+      const endDate = dateRange[1].endOf('day');
+      filtered = filtered.filter((job) => {
+        const createdDate = dayjs(job.created_at);
+        return createdDate.isAfter(startDate) && createdDate.isBefore(endDate);
+      });
+    }
+
+    // 排序
+    filtered.sort((a, b) => {
+      let aValue: any, bValue: any;
+
+      if (sortBy === 'created_at') {
+        aValue = new Date(a.created_at).getTime();
+        bValue = new Date(b.created_at).getTime();
+        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+      } else {
+        // molecule_name
+        aValue = (a.molecule_name || '').toLowerCase();
+        bValue = (b.molecule_name || '').toLowerCase();
+        return sortOrder === 'asc'
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      }
+    });
+
+    return filtered;
+  };
+
+  // 重置筛选
+  const handleResetFilters = () => {
+    setSearchText('');
+    setMoleculeTypeFilter(undefined);
+    setBasisSetFilter(undefined);
+    setFunctionalFilter(undefined);
+    setSolventModelFilter(undefined);
+    setDateRange(null);
+    setSortBy('created_at');
+    setSortOrder('desc');
+  };
+
+  // 获取所有唯一的基组
+  const getAllBasisSets = (): string[] => {
+    const basisSetsSet = new Set<string>();
+    jobs.forEach(job => {
+      if (job.basis_set) {
+        basisSetsSet.add(job.basis_set);
+      }
+    });
+    return Array.from(basisSetsSet).sort();
+  };
+
+  // 获取所有唯一的泛函
+  const getAllFunctionals = (): string[] => {
+    const functionalsSet = new Set<string>();
+    jobs.forEach(job => {
+      if (job.functional) {
+        functionalsSet.add(job.functional);
+      }
+    });
+    return Array.from(functionalsSet).sort();
+  };
+
+  // 获取所有唯一的溶剂模型
+  const getAllSolventModels = (): string[] => {
+    const modelsSet = new Set<string>();
+    jobs.forEach(job => {
+      const solventConfig = job.solvent_config || job.config?.solvent_config;
+      if (solventConfig?.model) {
+        modelsSet.add(solventConfig.model);
+      }
+    });
+    return Array.from(modelsSet).sort();
+  };
 
   // 加载所有配置选项
   const loadOptions = async () => {
@@ -1133,13 +1262,138 @@ export default function QCJobs() {
           style={{ marginBottom: 16 }}
         />
 
+        {/* 筛选栏 */}
+        <Card
+          style={{
+            marginBottom: 16,
+            background: '#fafafa',
+            border: '1px solid #f0f0f0',
+          }}
+          size="small"
+        >
+          <Row gutter={[16, 16]}>
+            <Col xs={24} sm={12} md={8} lg={6}>
+              <Input
+                placeholder="搜索分子名称、SMILES"
+                prefix={<SearchOutlined />}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                allowClear
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={4}>
+              <Select
+                placeholder="分子类型"
+                value={moleculeTypeFilter}
+                onChange={setMoleculeTypeFilter}
+                allowClear
+                style={{ width: '100%' }}
+              >
+                <Select.Option value="solvent">溶剂</Select.Option>
+                <Select.Option value="cation">阳离子</Select.Option>
+                <Select.Option value="anion">阴离子</Select.Option>
+                <Select.Option value="custom">自定义</Select.Option>
+              </Select>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={4}>
+              <Select
+                placeholder="基组"
+                value={basisSetFilter}
+                onChange={setBasisSetFilter}
+                allowClear
+                style={{ width: '100%' }}
+                showSearch
+              >
+                {getAllBasisSets().map((bs) => (
+                  <Select.Option key={bs} value={bs}>
+                    {bs}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={4}>
+              <Select
+                placeholder="泛函"
+                value={functionalFilter}
+                onChange={setFunctionalFilter}
+                allowClear
+                style={{ width: '100%' }}
+                showSearch
+              >
+                {getAllFunctionals().map((f) => (
+                  <Select.Option key={f} value={f}>
+                    {f}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={6}>
+              <Select
+                placeholder="溶剂模型"
+                value={solventModelFilter}
+                onChange={setSolventModelFilter}
+                allowClear
+                style={{ width: '100%' }}
+              >
+                {getAllSolventModels().map((sm) => (
+                  <Select.Option key={sm} value={sm}>
+                    {sm.toUpperCase()}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Col>
+          </Row>
+          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+            <Col xs={24} sm={12} md={8} lg={6}>
+              <DatePicker.RangePicker
+                value={dateRange}
+                onChange={setDateRange}
+                style={{ width: '100%' }}
+                placeholder={['开始日期', '结束日期']}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={4}>
+              <Select
+                placeholder="排序方式"
+                value={sortBy}
+                onChange={setSortBy}
+                style={{ width: '100%' }}
+              >
+                <Select.Option value="created_at">创建时间</Select.Option>
+                <Select.Option value="molecule_name">分子名称</Select.Option>
+              </Select>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={4}>
+              <Select
+                placeholder="排序顺序"
+                value={sortOrder}
+                onChange={setSortOrder}
+                style={{ width: '100%' }}
+              >
+                <Select.Option value="desc">降序</Select.Option>
+                <Select.Option value="asc">升序</Select.Option>
+              </Select>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={4}>
+              <Button onClick={handleResetFilters} icon={<ReloadOutlined />} block>
+                重置筛选
+              </Button>
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={6} style={{ textAlign: 'right' }}>
+              <Text type="secondary">
+                显示 {getFilteredJobs().length} / {jobs.length} 个任务
+              </Text>
+            </Col>
+          </Row>
+        </Card>
+
         <Spin spinning={loading}>
           {jobs.length === 0 ? (
             <Empty description="暂无QC计算任务" />
           ) : (
             <Table
               columns={columns}
-              dataSource={jobs}
+              dataSource={getFilteredJobs()}
               rowKey="id"
               rowSelection={{
                 selectedRowKeys,
@@ -1148,10 +1402,11 @@ export default function QCJobs() {
               pagination={{
                 current: pagination.current,
                 pageSize: pagination.pageSize,
-                total,
+                total: getFilteredJobs().length,
                 showSizeChanger: true,
                 showTotal: (total) => `共 ${total} 条`,
                 onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
+                pageSizeOptions: ['10', '20', '50', '100'],
               }}
               scroll={{ x: 1200 }}
             />
