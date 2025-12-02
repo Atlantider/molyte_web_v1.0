@@ -243,6 +243,10 @@ class QCJobInDB(QCJobBase):
     slurm_cpus: Optional[int] = None  # CPU核心数
     slurm_time: Optional[int] = None  # 最大运行时间
 
+    # 复用已有计算结果
+    is_reused: bool = False  # 是否复用已有计算结果
+    reused_from_job_id: Optional[int] = None  # 原始任务ID
+
     # 可见性管理字段
     visibility: Optional[str] = "PRIVATE"  # PUBLIC, DELAYED, PRIVATE
     visibility_delay_until: Optional[datetime] = None  # 延期公开日期

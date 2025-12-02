@@ -1061,10 +1061,19 @@ export default function QCJobs() {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 100,
-      render: (status: string) => {
+      width: 140,
+      render: (status: string, record: QCJob) => {
         const { color, text } = statusMap[status] || { color: 'default', text: status };
-        return <Tag color={color}>{text}</Tag>;
+        return (
+          <Space size={4}>
+            <Tag color={color}>{text}</Tag>
+            {record.is_reused && (
+              <Tooltip title={`复用已有计算结果 (来自任务 #${record.reused_from_job_id})`}>
+                <Tag color="success" style={{ fontSize: 10, padding: '0 4px' }}>复用</Tag>
+              </Tooltip>
+            )}
+          </Space>
+        );
       },
     },
     {

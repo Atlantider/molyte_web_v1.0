@@ -51,6 +51,9 @@ export interface QCJob {
   slurm_partition?: string;
   slurm_cpus?: number;
   slurm_time?: number;
+  // 复用已有计算结果
+  is_reused?: boolean;
+  reused_from_job_id?: number;
 }
 
 // 精度等级
