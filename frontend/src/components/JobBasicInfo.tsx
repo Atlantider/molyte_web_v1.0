@@ -244,7 +244,7 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
           </Card>
         </Col>
 
-        {/* 2. 配方信息（100%宽度） */}
+        {/* 2. 溶液配方（100%宽度） */}
         <Col xs={24}>
           <Card
             className="dashboard-card"
@@ -263,30 +263,43 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
                 <Text strong>{electrolyte.name}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="温度 (K)">
-                {job.config?.temperature || electrolyte.temperature}
+                <Text>{job.config?.temperature || electrolyte.temperature}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="压力 (atm)">
-                {job.config?.pressure || electrolyte.pressure}
+                <Text>{job.config?.pressure || electrolyte.pressure}</Text>
               </Descriptions.Item>
-              <Descriptions.Item label="组分详情" span={2}>
+              <Descriptions.Item label="盒子尺寸 (Å)">
+                <Text>{electrolyte.box_size || '-'}</Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="阳离子" span={2}>
                 <Space size={[8, 8]} wrap>
                   {electrolyte.cations.map((cation, idx) => (
                     <Tag key={`cation-${idx}`} color="red">
                       {cation.name} × {cation.number}
                     </Tag>
                   ))}
+                </Space>
+              </Descriptions.Item>
+              <Descriptions.Item label="阴离子" span={2}>
+                <Space size={[8, 8]} wrap>
                   {electrolyte.anions.map((anion, idx) => (
                     <Tag key={`anion-${idx}`} color="blue">
                       {anion.name} × {anion.number}
                     </Tag>
                   ))}
-                  {electrolyte.solvents && electrolyte.solvents.map((solvent, idx) => (
-                    <Tag key={`solvent-${idx}`} color="green">
-                      {solvent.name} × {solvent.number}
-                    </Tag>
-                  ))}
                 </Space>
               </Descriptions.Item>
+              {electrolyte.solvents && electrolyte.solvents.length > 0 && (
+                <Descriptions.Item label="溶剂" span={2}>
+                  <Space size={[8, 8]} wrap>
+                    {electrolyte.solvents.map((solvent, idx) => (
+                      <Tag key={`solvent-${idx}`} color="green">
+                        {solvent.name} × {solvent.number}
+                      </Tag>
+                    ))}
+                  </Space>
+                </Descriptions.Item>
+              )}
             </Descriptions>
           </Card>
         </Col>
@@ -395,7 +408,7 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
           </Card>
         </Col>
 
-        {/* 5. 计算参数（100%） */}
+        {/* 4. 计算参数（100%宽度） */}
         <Col xs={24}>
           <Card
             className="dashboard-card"
@@ -409,27 +422,47 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
               </Space>
             }
           >
-            <Descriptions column={4} size="small" bordered>
-              <Descriptions.Item label="盒子大小 (Å)">
-                {electrolyte.box_size != null ? Number(electrolyte.box_size).toFixed(1) : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="NPT 步数">
-                {(job.config?.nsteps_npt || electrolyte.nsteps_npt)?.toLocaleString()}
-              </Descriptions.Item>
-              <Descriptions.Item label="NVT 步数">
-                {(job.config?.nsteps_nvt || electrolyte.nsteps_nvt)?.toLocaleString()}
-              </Descriptions.Item>
-              <Descriptions.Item label="时间步长 (fs)">
-                {job.config?.timestep || electrolyte.timestep}
-              </Descriptions.Item>
-              <Descriptions.Item label="力场" span={4}>
-                {electrolyte.force_field || 'OPLS-AA'}
-              </Descriptions.Item>
-            </Descriptions>
+            <Row gutter={16}>
+              {/* 左侧：模拟参数 */}
+              <Col xs={24} lg={12}>
+                <Descriptions column={1} size="small" bordered title={<Text strong style={{ fontSize: 13 }}>模拟参数</Text>}>
+                  <Descriptions.Item label="NPT 步数">
+                    <Text>{(job.config?.nsteps_npt || electrolyte.nsteps_npt)?.toLocaleString() || '-'}</Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="NVT 步数">
+                    <Text>{(job.config?.nsteps_nvt || electrolyte.nsteps_nvt)?.toLocaleString() || '-'}</Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="时间步长 (fs)">
+                    <Text>{job.config?.timestep || electrolyte.timestep || '-'}</Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="总模拟时间 (ps)">
+                    <Text strong style={{ color: '#1890ff' }}>{getTotalSimulationTime()}</Text>
+                  </Descriptions.Item>
+                </Descriptions>
+              </Col>
+
+              {/* 右侧：系统参数 */}
+              <Col xs={24} lg={12}>
+                <Descriptions column={1} size="small" bordered title={<Text strong style={{ fontSize: 13 }}>系统参数</Text>}>
+                  <Descriptions.Item label="力场">
+                    <Tag color="purple">{electrolyte.force_field || 'OPLS-AA'}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="温度 (K)">
+                    <Text>{job.config?.temperature || electrolyte.temperature || '-'}</Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="压力 (atm)">
+                    <Text>{job.config?.pressure || electrolyte.pressure || '-'}</Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="初始盒子尺寸 (Å)">
+                    <Text>{electrolyte.box_size || '-'}</Text>
+                  </Descriptions.Item>
+                </Descriptions>
+              </Col>
+            </Row>
           </Card>
         </Col>
 
-        {/* 6. QC计算配置（仅当启用QC时显示） */}
+        {/* 5. QC计算配置（仅当启用QC时显示） */}
         {job.config?.qc_enabled && (
           <Col xs={24}>
             <Card
@@ -448,8 +481,7 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
                 </Space>
               }
             >
-              {/* 全局配置 */}
-              <Descriptions column={4} size="small" bordered>
+              <Descriptions column={2} size="small" bordered>
                 <Descriptions.Item label="精度等级">
                   <Tag color={
                     job.config.qc_accuracy_level === 'fast' ? 'green' :
@@ -459,6 +491,11 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
                     {job.config.qc_accuracy_level === 'fast' ? '快速' :
                      job.config.qc_accuracy_level === 'standard' ? '标准' :
                      job.config.qc_accuracy_level === 'accurate' ? '精确' : '自定义'}
+                  </Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="智能推荐">
+                  <Tag color={job.config.qc_use_recommended_params !== false ? 'green' : 'default'}>
+                    {job.config.qc_use_recommended_params !== false ? '已启用' : '未启用'}
                   </Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="泛函">
@@ -478,126 +515,30 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
                   </Tag>
                 </Descriptions.Item>
                 {job.config.qc_solvent_model !== 'gas' && job.config.qc_solvent_name && (
-                  <Descriptions.Item label="隐式溶剂" span={2}>
+                  <Descriptions.Item label="隐式溶剂">
                     <Text code>{job.config.qc_solvent_name}</Text>
                   </Descriptions.Item>
                 )}
-                <Descriptions.Item label="智能推荐" span={job.config.qc_solvent_model === 'gas' || !job.config.qc_solvent_name ? 3 : 1}>
-                  <Tag color={job.config.qc_use_recommended_params !== false ? 'green' : 'default'}>
-                    {job.config.qc_use_recommended_params !== false ? '已启用' : '未启用'}
-                  </Tag>
+                <Descriptions.Item label="待计算分子" span={2}>
+                  <Space size={[8, 8]} wrap>
+                    {electrolyte.cations?.map((mol, idx) => (
+                      <Tag key={`qc-cation-${idx}`} color="red">
+                        {mol.name}
+                      </Tag>
+                    ))}
+                    {electrolyte.anions?.map((mol, idx) => (
+                      <Tag key={`qc-anion-${idx}`} color="blue">
+                        {mol.name}
+                      </Tag>
+                    ))}
+                    {electrolyte.solvents?.map((mol, idx) => (
+                      <Tag key={`qc-solvent-${idx}`} color="green">
+                        {mol.name}
+                      </Tag>
+                    ))}
+                  </Space>
                 </Descriptions.Item>
               </Descriptions>
-
-              {/* 分子详情列表 */}
-              <div style={{ marginTop: 16 }}>
-                <Text strong style={{ fontSize: 13, color: '#374151' }}>
-                  📋 待计算分子列表 ({
-                    (electrolyte.cations?.length || 0) +
-                    (electrolyte.anions?.length || 0) +
-                    (electrolyte.solvents?.length || 0)
-                  } 个分子)
-                </Text>
-                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {/* 阳离子 */}
-                  {electrolyte.cations?.map((mol, idx) => {
-                    const charge = mol.smiles?.includes('+') ? 1 : 0;
-                    const recommended = job.config?.qc_use_recommended_params !== false;
-                    const recFunctional = recommended ? 'B3LYP' : (job.config?.qc_functional || 'B3LYP');
-                    const recBasisSet = recommended ? '6-31+G(d,p)' : (job.config?.qc_basis_set || '6-31++G(d,p)');
-                    return (
-                      <div key={`cation-${idx}`} style={{
-                        padding: '8px 12px',
-                        background: '#fef2f2',
-                        borderRadius: 6,
-                        border: '1px solid #fecaca'
-                      }}>
-                        <Space size={12} wrap>
-                          <Tag color="red">阳离子</Tag>
-                          <Text strong>{mol.name}</Text>
-                          <Text type="secondary" style={{ fontSize: 11 }}>SMILES: {mol.smiles}</Text>
-                          <span style={{ fontSize: 11, color: '#666' }}>
-                            泛函: <Text code style={{ fontSize: 10 }}>{recFunctional}</Text>
-                          </span>
-                          <span style={{ fontSize: 11, color: '#666' }}>
-                            基组: <Text code style={{ fontSize: 10 }}>{recBasisSet}</Text>
-                          </span>
-                          <span style={{ fontSize: 11, color: '#666' }}>
-                            电荷: <Text code style={{ fontSize: 10 }}>{charge}</Text>
-                          </span>
-                          {recommended && (
-                            <Tag color="cyan" style={{ fontSize: 10 }}>智能推荐</Tag>
-                          )}
-                        </Space>
-                      </div>
-                    );
-                  })}
-
-                  {/* 阴离子 */}
-                  {electrolyte.anions?.map((mol, idx) => {
-                    const charge = mol.smiles?.includes('-') ? -1 : 0;
-                    const recommended = job.config?.qc_use_recommended_params !== false;
-                    const recFunctional = recommended ? 'B3LYP' : (job.config?.qc_functional || 'B3LYP');
-                    const recBasisSet = recommended ? '6-31++G(d,p)' : (job.config?.qc_basis_set || '6-31++G(d,p)');
-                    return (
-                      <div key={`anion-${idx}`} style={{
-                        padding: '8px 12px',
-                        background: '#eff6ff',
-                        borderRadius: 6,
-                        border: '1px solid #bfdbfe'
-                      }}>
-                        <Space size={12} wrap>
-                          <Tag color="blue">阴离子</Tag>
-                          <Text strong>{mol.name}</Text>
-                          <Text type="secondary" style={{ fontSize: 11 }}>SMILES: {mol.smiles}</Text>
-                          <span style={{ fontSize: 11, color: '#666' }}>
-                            泛函: <Text code style={{ fontSize: 10 }}>{recFunctional}</Text>
-                          </span>
-                          <span style={{ fontSize: 11, color: '#666' }}>
-                            基组: <Text code style={{ fontSize: 10 }}>{recBasisSet}</Text>
-                          </span>
-                          <span style={{ fontSize: 11, color: '#666' }}>
-                            电荷: <Text code style={{ fontSize: 10 }}>{charge}</Text>
-                          </span>
-                          {recommended && (
-                            <Tag color="cyan" style={{ fontSize: 10 }}>智能推荐: 使用弥散函数(++)</Tag>
-                          )}
-                        </Space>
-                      </div>
-                    );
-                  })}
-
-                  {/* 溶剂 */}
-                  {electrolyte.solvents?.map((mol, idx) => {
-                    const recommended = job.config?.qc_use_recommended_params !== false;
-                    const recFunctional = job.config?.qc_functional || 'B3LYP';
-                    const recBasisSet = job.config?.qc_basis_set || '6-31++G(d,p)';
-                    return (
-                      <div key={`solvent-${idx}`} style={{
-                        padding: '8px 12px',
-                        background: '#f0fdf4',
-                        borderRadius: 6,
-                        border: '1px solid #bbf7d0'
-                      }}>
-                        <Space size={12} wrap>
-                          <Tag color="green">溶剂</Tag>
-                          <Text strong>{mol.name}</Text>
-                          <Text type="secondary" style={{ fontSize: 11 }}>SMILES: {mol.smiles}</Text>
-                          <span style={{ fontSize: 11, color: '#666' }}>
-                            泛函: <Text code style={{ fontSize: 10 }}>{recFunctional}</Text>
-                          </span>
-                          <span style={{ fontSize: 11, color: '#666' }}>
-                            基组: <Text code style={{ fontSize: 10 }}>{recBasisSet}</Text>
-                          </span>
-                          <span style={{ fontSize: 11, color: '#666' }}>
-                            电荷: <Text code style={{ fontSize: 10 }}>0</Text>
-                          </span>
-                        </Space>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
 
               <div style={{ marginTop: 12 }}>
                 <Text type="secondary" style={{ fontSize: 12 }}>
