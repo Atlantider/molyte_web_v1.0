@@ -17,8 +17,8 @@ Cl {
   }
  
    write_once("In Settings") {
-    pair_coeff @atom:Cl  @atom:Cl   0.1      4.4        
- }
+    pair_coeff @atom:Cl  @atom:Cl  0.1      4.4
+  }
   
   write("Data Atoms") {
     $atom:id1 $mol:id1 @atom:Cl -1 0.000 0.00000 0.00000   # Na Ion

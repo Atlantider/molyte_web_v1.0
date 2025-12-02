@@ -4,10 +4,11 @@ TFSI {
   write_once("In Init") {
     atom_style full
     units        real
-    pair_style   hybrid lj/cut/coul/long 10.0
-    bond_style   hybrid harmonic
-    angle_style  hybrid harmonic
-    improper_style hybrid harmonic
+    pair_style   lj/cut/coul/long 10.0
+    bond_style   harmonic
+    angle_style  harmonic
+    dihedral_style opls
+    improper_style cvff
     kspace_style pppm 0.0001
     pair_modify  mix arithmetic
   }
@@ -23,12 +24,12 @@ write_once("Data Masses") {
     pair_coeff @atom:S @atom:S 0.250 3.55
     pair_coeff @atom:O @atom:O 0.210 2.96
     pair_coeff @atom:C @atom:C 0.066 3.50
-    pair_coeff @atom:N @atom:N 0.170 3.25    
-    pair_coeff @atom:F @atom:F 0.053 2.95	
+    pair_coeff @atom:N @atom:N 0.170 3.25
+    pair_coeff @atom:F @atom:F 0.053 2.95
     bond_coeff @bond:SN    374.88 1.570
     bond_coeff @bond:SO    637.07 1.437
     bond_coeff @bond:SC    233.03 1.818
-    bond_coeff @bond:CF    441.92 1.323	
+    bond_coeff @bond:CF    441.92 1.323
     angle_coeff  @angle:F-C-F  93.33 107.1
     angle_coeff  @angle:S-C-F  82.93 111.7
     angle_coeff  @angle:C-S-O  103.97 102.6
@@ -40,7 +41,7 @@ write_once("Data Masses") {
     dihedral_coeff @dihedral:S-N-S-O 0.0    0.0   -0.004 0.0
     dihedral_coeff @dihedral:F-C-S-N 0.0    0.0    0.316 0.0
     dihedral_coeff @dihedral:S-N-S-C 7.833 -2.490 -0.764 0.0
-    
+
   }
 write_once("In Charges"){
     set type @atom:S  charge 0.816
