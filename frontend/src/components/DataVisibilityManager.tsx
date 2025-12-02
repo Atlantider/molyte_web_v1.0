@@ -298,7 +298,8 @@ export default function DataVisibilityManager() {
               style={{
                 borderRadius: 12,
                 background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
-                boxShadow: '0 4px 12px rgba(168, 237, 234, 0.3)'
+                boxShadow: '0 4px 12px rgba(168, 237, 234, 0.3)',
+                height: '100%',
               }}
             >
               <Statistic
@@ -308,17 +309,6 @@ export default function DataVisibilityManager() {
                 valueStyle={{ color: '#722ed1', fontSize: 28 }}
                 prefix={<TrophyOutlined />}
               />
-              {(stats.contribution_points || 0) >= 10 && (
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<SwapOutlined />}
-                  onClick={handleOpenExchange}
-                  style={{ marginTop: 8 }}
-                >
-                  兑换核时
-                </Button>
-              )}
             </Card>
           </Col>
           <Col xs={24} sm={12} md={8} lg={6}>
@@ -327,7 +317,8 @@ export default function DataVisibilityManager() {
               style={{
                 borderRadius: 12,
                 background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
-                boxShadow: '0 4px 12px rgba(17, 153, 142, 0.3)'
+                boxShadow: '0 4px 12px rgba(17, 153, 142, 0.3)',
+                height: '100%',
               }}
             >
               <Statistic
@@ -338,6 +329,22 @@ export default function DataVisibilityManager() {
                 prefix={<ThunderboltOutlined />}
                 suffix="核时"
               />
+              {(stats.contribution_points || 0) >= 10 && (
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<SwapOutlined />}
+                  onClick={handleOpenExchange}
+                  style={{
+                    marginTop: 12,
+                    background: 'rgba(255,255,255,0.2)',
+                    borderColor: 'rgba(255,255,255,0.4)',
+                    color: '#fff',
+                  }}
+                >
+                  兑换核时
+                </Button>
+              )}
             </Card>
           </Col>
         </Row>
