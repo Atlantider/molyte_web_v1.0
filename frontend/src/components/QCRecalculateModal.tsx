@@ -59,22 +59,49 @@ export default function QCRecalculateModal({
 
   // 溶剂模型选项
   const solventModels = [
-    { value: 'gas', label: '气相', description: '无溶剂效应' },
+    { value: 'gas', label: '气相 (Gas Phase)', description: '无溶剂效应' },
     { value: 'pcm', label: 'PCM', description: '极化连续介质模型' },
-    { value: 'smd', label: 'SMD', description: '溶剂密度模型' },
+    { value: 'smd', label: 'SMD', description: '溶剂密度模型（更精确）' },
   ];
 
-  // 常用溶剂
-  const solvents = [
-    { value: 'Water', label: '水 (Water)' },
-    { value: 'Acetonitrile', label: '乙腈 (Acetonitrile)' },
-    { value: 'Methanol', label: '甲醇 (Methanol)' },
-    { value: 'Ethanol', label: '乙醇 (Ethanol)' },
-    { value: 'Acetone', label: '丙酮 (Acetone)' },
-    { value: 'DiMethylSulfoxide', label: 'DMSO' },
-    { value: 'Dichloromethane', label: '二氯甲烷 (DCM)' },
-    { value: 'Chloroform', label: '氯仿 (Chloroform)' },
-    { value: 'TetraHydroFuran', label: 'THF' },
+  // 常用溶剂 - 按介电常数分组
+  const solventGroups = [
+    {
+      label: '📌 水系电解液 (ε>50)',
+      options: [
+        { value: 'Water', label: '水 (Water) ε=78.4' },
+      ],
+    },
+    {
+      label: '📌 高介电常数 (ε=40-90)',
+      options: [
+        { value: 'DiMethylSulfoxide', label: 'DMSO ε=46.8 (离子液体参考)' },
+        { value: '1,2-EthaneDiol', label: '乙二醇 ε=40.2' },
+      ],
+    },
+    {
+      label: '📌 中等介电常数 (ε=15-40)',
+      options: [
+        { value: 'Acetonitrile', label: '乙腈 ε=35.7' },
+        { value: 'Methanol', label: '甲醇 ε=32.6' },
+        { value: 'Ethanol', label: '乙醇 ε=24.9' },
+        { value: 'Acetone', label: '丙酮 ε=20.5 (高浓电解液)' },
+        { value: '1-Propanol', label: '正丙醇 ε=20.5' },
+      ],
+    },
+    {
+      label: '📌 低介电常数 (ε<15) - DMC/EMC/DEC体系',
+      options: [
+        { value: 'DiChloroEthane', label: '二氯乙烷 ε=10.1' },
+        { value: 'Dichloromethane', label: '二氯甲烷 ε=8.9' },
+        { value: 'TetraHydroFuran', label: '四氢呋喃 (THF) ε=7.4' },
+        { value: 'Chloroform', label: '氯仿 ε=4.7 (线性碳酸酯参考)' },
+        { value: 'DiethylEther', label: '乙醚 ε=4.2' },
+        { value: 'CarbonTetraChloride', label: '四氯化碳 ε=2.2' },
+        { value: 'Toluene', label: '甲苯 ε=2.4' },
+        { value: 'Benzene', label: '苯 ε=2.3' },
+      ],
+    },
   ];
 
   const handleSubmit = async () => {
@@ -224,11 +251,18 @@ export default function QCRecalculateModal({
               <Col span={12}>
                 <Form.Item
                   name="solvent_model"
-                  label="溶剂模型"
-                  rules={[{ required: true, message: '请选择溶剂模型' }]}
+                  label="溶剂环境"
+                  rules={[{ required: true, message: '请选择溶剂环境' }]}
+                  tooltip={
+                    <div>
+                      <p><strong>气相 (Gas)</strong>: 真空环境，无溶剂效应</p>
+                      <p><strong>PCM</strong>: 极化连续介质模型</p>
+                      <p><strong>SMD</strong>: 溶剂密度模型（更精确）</p>
+                    </div>
+                  }
                 >
                   <Select
-                    placeholder="选择溶剂模型"
+                    placeholder="选择溶剂环境"
                     onChange={setSelectedSolventModel}
                   >
                     {solventModels.map(sm => (
@@ -242,7 +276,15 @@ export default function QCRecalculateModal({
               <Col span={12}>
                 <Form.Item
                   name="solvent_name"
-                  label="溶剂"
+                  label="隐式溶剂"
+                  tooltip={
+                    <div>
+                      <p><strong>选择原则</strong>：选择介电常数(ε)接近您电解液的溶剂</p>
+                      <p>• 水系电解液 → Water (ε=78.4)</p>
+                      <p>• 高浓电解液 → Acetone (ε=20.5)</p>
+                      <p>• DMC/EMC体系 → Chloroform (ε≈4.7)</p>
+                    </div>
+                  }
                   rules={[
                     {
                       required: selectedSolventModel !== 'gas',
@@ -251,13 +293,18 @@ export default function QCRecalculateModal({
                   ]}
                 >
                   <Select
-                    placeholder="选择溶剂"
+                    placeholder="选择隐式溶剂"
                     disabled={selectedSolventModel === 'gas'}
+                    showSearch
                   >
-                    {solvents.map(s => (
-                      <Select.Option key={s.value} value={s.value}>
-                        {s.label}
-                      </Select.Option>
+                    {solventGroups.map(group => (
+                      <Select.OptGroup key={group.label} label={group.label}>
+                        {group.options.map(s => (
+                          <Select.Option key={s.value} value={s.value}>
+                            {s.label}
+                          </Select.Option>
+                        ))}
+                      </Select.OptGroup>
                     ))}
                   </Select>
                 </Form.Item>

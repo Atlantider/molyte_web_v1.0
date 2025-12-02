@@ -238,23 +238,41 @@ export default function Jobs() {
     try {
       const values = await electrolyteForm.validateFields();
 
-      // 构建请求数据
+      // 获取盒子尺寸
+      const boxSize = values.box_size || 40;
+      const box = {
+        type: 'cubic' as const,
+        dimensions: [boxSize],
+      };
+
+      // 构建请求数据（新格式 - 使用浓度）
       const electrolyteData = {
         project_id: values.project_id,
         name: values.name,
-        temperature: values.temperature,
+        description: values.description,
+        temperature: values.temperature || 298.15,
+        pressure: 1.0,
+        nsteps_npt: 5000000,
+        nsteps_nvt: 10000000,
+        timestep: 1.0,
+        force_field: 'OPLS',
         solvents: values.solvents || [],
+        box: box,
+        // 使用 charge 和 concentration，而不是 smiles 和 count
         cations: selectedCations.map(cat => ({
           name: cat.name,
-          smiles: cat.smiles,
-          count: cat.count,
+          charge: cat.charge,
+          concentration: cat.concentration,
         })),
         anions: selectedAnions.map(an => ({
           name: an.name,
-          smiles: an.smiles,
-          count: an.count,
+          charge: an.charge,
+          concentration: an.concentration,
         })),
       };
+
+      console.log('=== Jobs.tsx 创建电解质请求数据 ===');
+      console.log('electrolyteData:', JSON.stringify(electrolyteData, null, 2));
 
       const newElectrolyte = await createElectrolyteNew(electrolyteData);
       message.success('配方创建成功');
@@ -267,8 +285,21 @@ export default function Jobs() {
 
       handleCloseElectrolyteModal();
     } catch (error: any) {
+      console.error('=== Jobs.tsx 创建电解质失败 ===');
+      console.error('error:', error);
+      console.error('error.response:', error.response);
+      console.error('error.response.data:', error.response?.data);
       if (error.response) {
-        message.error(error.response?.data?.detail || '创建配方失败');
+        const detail = error.response?.data?.detail;
+        if (Array.isArray(detail)) {
+          // Pydantic validation errors
+          const errorMessages = detail.map((err: any) =>
+            `${err.loc.join('.')}: ${err.msg}`
+          ).join('; ');
+          message.error(`验证失败: ${errorMessages}`);
+        } else {
+          message.error(detail || '创建配方失败');
+        }
       }
     }
   };
@@ -934,20 +965,27 @@ export default function Jobs() {
                     </Row>
                   )}
 
-                  {/* 溶剂模型 */}
+                  {/* 溶剂环境设置 */}
                   <Row gutter={16} style={{ marginBottom: 12 }}>
                     <Col span={12}>
                       <Form.Item
                         name="qc_solvent_model"
-                        label="溶剂模型"
+                        label="溶剂环境"
                         initialValue="pcm"
                         style={{ marginBottom: 0 }}
-                        tooltip="离子在气相中可能不稳定，建议使用隐式溶剂模型"
+                        tooltip={
+                          <div>
+                            <p><strong>气相 (Gas)</strong>: 真空环境，无溶剂效应</p>
+                            <p><strong>PCM</strong>: 极化连续介质模型，使用介电常数描述溶剂</p>
+                            <p><strong>SMD</strong>: 溶剂密度模型，更精确但计算量更大</p>
+                            <p>离子在气相中可能不稳定，建议使用PCM/SMD</p>
+                          </div>
+                        }
                       >
                         <Select>
-                          <Select.Option value="gas">气相 (无溶剂)</Select.Option>
-                          <Select.Option value="pcm">PCM隐式溶剂 (推荐)</Select.Option>
-                          <Select.Option value="smd">SMD隐式溶剂 (精确)</Select.Option>
+                          <Select.Option value="gas">气相 (Gas Phase) - 无溶剂效应</Select.Option>
+                          <Select.Option value="pcm">PCM - 极化连续介质模型 (推荐)</Select.Option>
+                          <Select.Option value="smd">SMD - 溶剂密度模型 (更精确)</Select.Option>
                         </Select>
                       </Form.Item>
                     </Col>
@@ -955,26 +993,38 @@ export default function Jobs() {
                       {(solventModel === 'pcm' || solventModel === 'smd') && (
                         <Form.Item
                           name="qc_solvent_name"
-                          label="溶剂"
-                          initialValue="water"
+                          label="隐式溶剂"
+                          initialValue="Water"
                           style={{ marginBottom: 0 }}
+                          tooltip={
+                            <div>
+                              <p><strong>选择原则</strong>：选择介电常数(ε)接近您电解液的溶剂</p>
+                              <p>• 水系电解液 → Water (ε=78.4)</p>
+                              <p>• 高浓电解液 → Acetone (ε=20.5)</p>
+                              <p>• DMC/EMC体系 → Chloroform (ε≈4.7)</p>
+                            </div>
+                          }
                         >
                           <Select showSearch optionFilterProp="children">
-                            <Select.OptGroup label="常用溶剂">
-                              <Select.Option value="water">水 (Water, ε=78.4)</Select.Option>
-                              <Select.Option value="acetonitrile">乙腈 (Acetonitrile, ε=35.7)</Select.Option>
-                              <Select.Option value="dmso">二甲亚砜 (DMSO, ε=46.8)</Select.Option>
-                              <Select.Option value="methanol">甲醇 (Methanol, ε=32.6)</Select.Option>
-                              <Select.Option value="ethanol">乙醇 (Ethanol, ε=24.9)</Select.Option>
+                            <Select.OptGroup label="📌 水系电解液 (ε>50)">
+                              <Select.Option value="Water">水 (Water) ε=78.4</Select.Option>
                             </Select.OptGroup>
-                            <Select.OptGroup label="电解液常用">
-                              <Select.Option value="acetone">丙酮 (Acetone, ε=20.5)</Select.Option>
-                              <Select.Option value="dichloromethane">二氯甲烷 (DCM, ε=8.9)</Select.Option>
-                              <Select.Option value="thf">四氢呋喃 (THF, ε=7.4)</Select.Option>
-                              <Select.Option value="diethylether">乙醚 (ε=4.2)</Select.Option>
-                              <Select.Option value="propylene_carbonate">碳酸丙烯酯 (PC, ε=64.9)</Select.Option>
-                              <Select.Option value="dimethyl_carbonate">碳酸二甲酯 (DMC, ε=3.1)</Select.Option>
-                              <Select.Option value="ethyl_methyl_carbonate">碳酸甲乙酯 (EMC, ε=2.9)</Select.Option>
+                            <Select.OptGroup label="📌 高介电常数 (ε=40-90)">
+                              <Select.Option value="DiMethylSulfoxide">DMSO ε=46.8 (离子液体参考)</Select.Option>
+                              <Select.Option value="1,2-EthaneDiol">乙二醇 ε=40.2</Select.Option>
+                            </Select.OptGroup>
+                            <Select.OptGroup label="📌 中等介电常数 (ε=15-40)">
+                              <Select.Option value="Acetonitrile">乙腈 ε=35.7</Select.Option>
+                              <Select.Option value="Methanol">甲醇 ε=32.6</Select.Option>
+                              <Select.Option value="Ethanol">乙醇 ε=24.9</Select.Option>
+                              <Select.Option value="Acetone">丙酮 ε=20.5 (高浓电解液)</Select.Option>
+                            </Select.OptGroup>
+                            <Select.OptGroup label="📌 低介电常数 (ε<15) - DMC/EMC/DEC体系">
+                              <Select.Option value="DiChloroEthane">二氯乙烷 ε=10.1</Select.Option>
+                              <Select.Option value="Dichloromethane">二氯甲烷 ε=8.9</Select.Option>
+                              <Select.Option value="TetraHydroFuran">四氢呋喃 (THF) ε=7.4</Select.Option>
+                              <Select.Option value="Chloroform">氯仿 ε=4.7 (线性碳酸酯参考)</Select.Option>
+                              <Select.Option value="DiethylEther">乙醚 ε=4.2</Select.Option>
                             </Select.OptGroup>
                             <Select.OptGroup label="自定义">
                               <Select.Option value="custom">自定义溶剂参数...</Select.Option>

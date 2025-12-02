@@ -233,15 +233,21 @@ export default function JobCreate() {
       slurm_time: values.slurm_time || 7200,
     };
 
-    // QC计算选项
+    // QC计算选项 - 支持多选
     if (values.qc_enabled) {
       jobData.qc_options = {
         enabled: true,
+        // 使用复数形式的数组字段（后端已支持）
+        functionals: values.qc_functionals || ['B3LYP'],
+        basis_sets: values.qc_basis_sets || ['6-31++g(d,p)'],
+        solvent_models: values.qc_solvent_models || ['pcm'],
+        solvents: values.qc_solvents || ['Water'],
+        molecules: [], // 将由后端从电解质配方中提取
+        // 兼容旧版字段（取第一个值）
         functional: values.qc_functionals?.[0] || 'B3LYP',
         basis_set: values.qc_basis_sets?.[0] || '6-31++g(d,p)',
         solvent_model: values.qc_solvent_models?.[0] || 'pcm',
         solvent_name: values.qc_solvents?.[0] || 'Water',
-        molecules: [], // 将由后端从电解质配方中提取
       } as any;
     }
 
@@ -752,52 +758,85 @@ export default function JobCreate() {
                     <Col span={12}>
                       <Form.Item
                         name="qc_solvent_models"
-                        label="隐式溶剂模型"
+                        label="溶剂环境"
                         initialValue={['pcm']}
                         style={{ marginBottom: 8 }}
-                        tooltip="可选择多个模型进行对比计算"
+                        tooltip={
+                          <div>
+                            <p><strong>气相 (Gas)</strong>: 真空环境，无溶剂效应</p>
+                            <p><strong>PCM</strong>: 极化连续介质模型，使用介电常数描述溶剂</p>
+                            <p><strong>SMD</strong>: 溶剂密度模型，更精确但计算量更大</p>
+                            <p>可多选进行对比计算</p>
+                          </div>
+                        }
                       >
-                        <Select mode="multiple" placeholder="选择溶剂模型（可多选）">
-                          <Select.Option value="gas">气相 (Gas Phase)</Select.Option>
-                          <Select.Option value="pcm">PCM (极化连续介质模型)</Select.Option>
-                          <Select.Option value="smd">SMD (溶剂密度模型)</Select.Option>
+                        <Select mode="multiple" placeholder="选择溶剂环境（可多选）">
+                          <Select.Option value="gas">气相 (Gas Phase) - 无溶剂效应</Select.Option>
+                          <Select.Option value="pcm">PCM - 极化连续介质模型</Select.Option>
+                          <Select.Option value="smd">SMD - 溶剂密度模型（更精确）</Select.Option>
                         </Select>
                       </Form.Item>
                     </Col>
                     <Col span={12}>
                       <Form.Item
                         name="qc_solvents"
-                        label="溶剂"
+                        label="隐式溶剂"
                         initialValue={['Water']}
                         style={{ marginBottom: 8 }}
-                        tooltip="可选择多个溶剂进行对比计算"
+                        tooltip={
+                          <div>
+                            <p><strong>选择原则</strong>：选择介电常数(ε)接近您电解液的溶剂</p>
+                            <hr style={{ margin: '4px 0', borderColor: 'rgba(255,255,255,0.3)' }} />
+                            <p>• <strong>水系电解液</strong>: 选择 Water (ε=78.4)</p>
+                            <p>• <strong>高浓电解液</strong>: 选择 Acetone (ε=20.5)</p>
+                            <p>• <strong>EC基电解液</strong>: 选择 Water 或 PC (ε≈65-90)</p>
+                            <p>• <strong>DMC/EMC/DEC电解液</strong>: 选择 Chloroform (ε≈3-5)</p>
+                            <p>• <strong>离子液体</strong>: 选择 DMSO (ε=46.8)</p>
+                          </div>
+                        }
                       >
-                        <Select mode="multiple" placeholder="选择溶剂（可多选）" showSearch>
-                          <Select.OptGroup label="常用溶剂">
-                            <Select.Option value="Water">水 (Water, ε=78.4)</Select.Option>
-                            <Select.Option value="Acetonitrile">乙腈 (Acetonitrile, ε=35.7)</Select.Option>
-                            <Select.Option value="DMSO">二甲亚砜 (DMSO, ε=46.8)</Select.Option>
-                            <Select.Option value="Methanol">甲醇 (Methanol, ε=32.6)</Select.Option>
-                            <Select.Option value="Ethanol">乙醇 (Ethanol, ε=24.9)</Select.Option>
+                        <Select mode="multiple" placeholder="选择隐式溶剂（可多选）" showSearch>
+                          <Select.OptGroup label="📌 水系电解液 (ε>50)">
+                            <Select.Option value="Water">水 (Water) ε=78.4</Select.Option>
                           </Select.OptGroup>
-                          <Select.OptGroup label="电解液常用">
-                            <Select.Option value="Acetone">丙酮 (Acetone, ε=20.5)</Select.Option>
-                            <Select.Option value="EC">碳酸乙烯酯 (EC, ε=89.8)</Select.Option>
-                            <Select.Option value="DMC">碳酸二甲酯 (DMC, ε=3.1)</Select.Option>
-                            <Select.Option value="EMC">碳酸甲乙酯 (EMC, ε=2.9)</Select.Option>
-                            <Select.Option value="DEC">碳酸二乙酯 (DEC, ε=2.8)</Select.Option>
-                            <Select.Option value="PC">碳酸丙烯酯 (PC, ε=64.9)</Select.Option>
+                          <Select.OptGroup label="📌 高介电常数碳酸酯 (ε=40-90)">
+                            <Select.Option value="DiMethylSulfoxide">DMSO ε=46.8 (离子液体参考)</Select.Option>
+                            <Select.Option value="1,2-EthaneDiol">乙二醇 ε=40.2</Select.Option>
                           </Select.OptGroup>
-                          <Select.OptGroup label="其他">
-                            <Select.Option value="Chloroform">氯仿 (Chloroform, ε=4.7)</Select.Option>
-                            <Select.Option value="Dichloromethane">二氯甲烷 (DCM, ε=8.9)</Select.Option>
-                            <Select.Option value="THF">四氢呋喃 (THF, ε=7.4)</Select.Option>
-                            <Select.Option value="Toluene">甲苯 (Toluene, ε=2.4)</Select.Option>
+                          <Select.OptGroup label="📌 中等介电常数 (ε=15-40)">
+                            <Select.Option value="Acetonitrile">乙腈 ε=35.7</Select.Option>
+                            <Select.Option value="Methanol">甲醇 ε=32.6</Select.Option>
+                            <Select.Option value="Ethanol">乙醇 ε=24.9</Select.Option>
+                            <Select.Option value="Acetone">丙酮 ε=20.5 (高浓电解液)</Select.Option>
+                            <Select.Option value="1-Propanol">正丙醇 ε=20.5</Select.Option>
+                          </Select.OptGroup>
+                          <Select.OptGroup label="📌 低介电常数 (ε<15) - DMC/EMC/DEC体系">
+                            <Select.Option value="DiChloroEthane">二氯乙烷 ε=10.1</Select.Option>
+                            <Select.Option value="Dichloromethane">二氯甲烷 ε=8.9</Select.Option>
+                            <Select.Option value="TetraHydroFuran">四氢呋喃 (THF) ε=7.4</Select.Option>
+                            <Select.Option value="Chloroform">氯仿 ε=4.7 (线性碳酸酯参考)</Select.Option>
+                            <Select.Option value="DiethylEther">乙醚 ε=4.2</Select.Option>
+                            <Select.Option value="CarbonTetraChloride">四氯化碳 ε=2.2</Select.Option>
+                            <Select.Option value="Toluene">甲苯 ε=2.4</Select.Option>
+                            <Select.Option value="Benzene">苯 ε=2.3</Select.Option>
                           </Select.OptGroup>
                         </Select>
                       </Form.Item>
                     </Col>
                   </Row>
+
+                  {/* 溶剂选择提示 */}
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message={
+                      <Text style={{ fontSize: 12 }}>
+                        <strong>隐式溶剂选择提示：</strong>选择介电常数(ε)接近您电解液的溶剂。
+                        例如：EC体系选Water(ε≈78)，DMC/EMC体系选Chloroform(ε≈4.7)，高浓电解液选Acetone(ε≈20)。
+                      </Text>
+                    }
+                  />
 
                   {/* 显示将要计算的分子列表和任务数量 */}
                   <Form.Item noStyle shouldUpdate={(prevValues, currentValues) =>

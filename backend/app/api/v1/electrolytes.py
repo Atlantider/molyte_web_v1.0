@@ -140,7 +140,10 @@ def create_electrolyte_new_format(
         HTTPException: If project not found or validation fails
     """
     logger.info(f"Creating electrolyte (new format) by {current_user.username}")
-    logger.debug(f"Request data: {electrolyte_data}")
+    try:
+        logger.info(f"Request data: {electrolyte_data.dict()}")
+    except:
+        logger.info(f"Request data: {electrolyte_data}")
 
     # Check if project exists and user has permission
     project = db.query(Project).filter(Project.id == electrolyte_data.project_id).first()
