@@ -32,6 +32,7 @@ import {
   DatabaseOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import AdminNav from '../../components/AdminNav';
 import * as visibilityApi from '../../api/visibility';
 import { DataVisibility, JobVisibility, VisibilityStats } from '../../api/visibility';
 
@@ -225,6 +226,8 @@ export default function DataVisibilityAdmin() {
           管理所有用户的数据可见性设置
         </Text>
       </div>
+
+      <AdminNav />
 
       {/* 统计卡片 */}
       {stats && (

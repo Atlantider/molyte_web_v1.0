@@ -19,7 +19,10 @@ import {
   Row,
   Col,
   Statistic,
+  Typography,
 } from 'antd';
+
+const { Title, Text } = Typography;
 import {
   PlusOutlined,
   EditOutlined,
@@ -31,6 +34,7 @@ import {
   TeamOutlined,
   CrownOutlined,
   UserSwitchOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import AdminNav from '../../components/AdminNav';
@@ -384,55 +388,99 @@ const UserManagement: React.FC = () => {
   const premiumUsers = users.filter((u) => u.role === 'PREMIUM').length;
 
   return (
-    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: '100vh' }}>
+    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+      {/* 页面标题 */}
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
+          <TeamOutlined style={{ marginRight: 12, color: '#1677ff' }} />
+          用户管理
+        </Title>
+        <Text type="secondary">
+          管理系统用户、配额和权限
+        </Text>
+      </div>
+
       <AdminNav />
 
       {/* 统计卡片 */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
+          <Card
+            bordered={false}
+            style={{
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+            }}
+          >
             <Statistic
-              title="总用户数"
+              title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>总用户数</span>}
               value={totalUsers}
               prefix={<TeamOutlined />}
-              valueStyle={{ color: '#1677ff' }}
+              valueStyle={{ color: '#fff', fontSize: 28 }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
+          <Card
+            bordered={false}
+            style={{
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+              boxShadow: '0 4px 12px rgba(17, 153, 142, 0.3)',
+            }}
+          >
             <Statistic
-              title="活跃用户"
+              title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>活跃用户</span>}
               value={activeUsers}
-              prefix={<UserSwitchOutlined />}
-              valueStyle={{ color: '#52c41a' }}
+              prefix={<CheckCircleOutlined />}
+              valueStyle={{ color: '#fff', fontSize: 28 }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
+          <Card
+            bordered={false}
+            style={{
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              boxShadow: '0 4px 12px rgba(240, 147, 251, 0.3)',
+            }}
+          >
             <Statistic
-              title="管理员"
+              title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>管理员</span>}
               value={adminUsers}
               prefix={<CrownOutlined />}
-              valueStyle={{ color: '#ff4d4f' }}
+              valueStyle={{ color: '#fff', fontSize: 28 }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
+          <Card
+            bordered={false}
+            style={{
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+              boxShadow: '0 4px 12px rgba(250, 112, 154, 0.3)',
+            }}
+          >
             <Statistic
-              title="高级用户"
+              title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>高级用户</span>}
               value={premiumUsers}
               prefix={<CrownOutlined />}
-              valueStyle={{ color: '#faad14' }}
+              valueStyle={{ color: '#fff', fontSize: 28 }}
             />
           </Card>
         </Col>
       </Row>
 
       <Card
-        title="用户管理"
+        title={
+          <Space>
+            <UserOutlined style={{ color: '#1677ff' }} />
+            <span>用户列表</span>
+          </Space>
+        }
         bordered={false}
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
@@ -440,8 +488,9 @@ const UserManagement: React.FC = () => {
           </Button>
         }
         style={{
-          borderRadius: '12px',
-          boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+          borderRadius: 12,
+          border: 'none',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
         }}
       >
         {/* 筛选栏 */}
