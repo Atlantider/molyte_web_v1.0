@@ -256,6 +256,44 @@ class QCJobInDB(QCJobBase):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
 
+    @model_validator(mode='before')
+    @classmethod
+    def build_solvent_config(cls, data: Any) -> Any:
+        """从数据库的solvent_model和solvent_name字段构建solvent_config对象"""
+        if isinstance(data, dict):
+            # 如果已经有solvent_config，直接返回
+            if data.get('solvent_config'):
+                return data
+
+            # 从solvent_model和solvent_name构建solvent_config
+            solvent_model = data.get('solvent_model')
+            solvent_name = data.get('solvent_name')
+
+            if solvent_model:
+                data['solvent_config'] = {
+                    'model': solvent_model,
+                    'solvent_name': solvent_name
+                }
+        else:
+            # 处理ORM对象
+            if hasattr(data, 'solvent_model') and data.solvent_model:
+                if not hasattr(data, 'solvent_config') or data.solvent_config is None:
+                    # 创建一个临时字典来存储solvent_config
+                    # 注意：这里我们需要将ORM对象转换为字典
+                    from sqlalchemy.inspection import inspect
+                    mapper = inspect(data.__class__)
+                    result = {}
+                    for column in mapper.columns:
+                        result[column.name] = getattr(data, column.name)
+
+                    result['solvent_config'] = {
+                        'model': data.solvent_model,
+                        'solvent_name': data.solvent_name if hasattr(data, 'solvent_name') else None
+                    }
+                    return result
+
+        return data
+
     class Config:
         from_attributes = True
 
