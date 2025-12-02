@@ -148,8 +148,14 @@ class MDAnalysisRDFCalculator:
         """
         根据标签获取原子 ID
 
+        支持以下标签格式:
+        - "Li_Li": 精确匹配
+        - "EC_O01": 精确匹配原子名称
+        - "FSI_F*": 通配符匹配所有以F开头的原子
+        - "EC_O(carbonyl)": 化学环境匹配（匹配所有环境为carbonyl的O原子）
+
         Args:
-            label: 原子标签，格式如 "Li_Li", "EC_O01", "FSI_*"
+            label: 原子标签
 
         Returns:
             原子 ID 列表
@@ -157,24 +163,61 @@ class MDAnalysisRDFCalculator:
         atom_ids = []
 
         # 解析标签
-        parts = label.split('_')
+        parts = label.split('_', 1)  # 只分割一次，保留后面的完整部分
         if len(parts) < 2:
             logger.warning(f"Invalid label format: {label}")
             return atom_ids
 
         molecule_name = parts[0]
-        atom_label = '_'.join(parts[1:])
+        atom_label = parts[1]
+
+        # 检查是否是化学环境匹配模式: 元素(环境)
+        import re
+        env_match = re.match(r'^([A-Z][a-z]?)\((\w+)\)$', atom_label)
+
+        # 检查是否是通配符模式: 元素*
+        wildcard_match = re.match(r'^([A-Z][a-z]?)\*$', atom_label)
 
         # 遍历所有分子
-        for mol in self.atom_mapping['molecules']:
-            if mol['name'] != molecule_name:
+        for mol in self.atom_mapping.get('molecules', []):
+            mol_name = mol.get('molecule_name') or mol.get('name')
+            if mol_name != molecule_name:
                 continue
 
             # 遍历分子中的原子
-            for atom in mol['atoms']:
-                # 支持通配符匹配
-                if atom_label == '*' or atom['label'] == atom_label:
-                    atom_ids.append(atom['lammps_id'])
+            for atom in mol.get('atoms', []):
+                atom_id = atom.get('atom_id') or atom.get('lammps_id')
+                if not atom_id:
+                    continue
+
+                atom_name = atom.get('atom_name') or atom.get('label') or atom.get('name', '')
+                atom_element = atom.get('element', '')
+                atom_env = atom.get('environment', '')
+                atom_full_label = atom.get('label', '')
+
+                matched = False
+
+                if env_match:
+                    # 化学环境匹配: 元素和环境都必须匹配
+                    target_element = env_match.group(1)
+                    target_env = env_match.group(2)
+                    if atom_element == target_element and atom_env == target_env:
+                        matched = True
+                elif wildcard_match:
+                    # 通配符匹配: 只需元素匹配
+                    target_element = wildcard_match.group(1)
+                    if atom_element == target_element:
+                        matched = True
+                elif atom_label == '*':
+                    # 全匹配
+                    matched = True
+                else:
+                    # 精确匹配：检查原子名称或完整标签
+                    if atom_name == atom_label or atom_full_label == atom_label:
+                        matched = True
+
+                if matched:
+                    atom_ids.append(atom_id)
 
         return atom_ids
 

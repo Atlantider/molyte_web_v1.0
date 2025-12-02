@@ -148,11 +148,18 @@ class SmartRDFGenerator:
     def _extract_coordination_atoms(self, molecule_name: str) -> Dict[str, List[Dict]]:
         """提取分子中的所有配位原子（通用方法）
 
+        **重要**: 同一分子中相同化学环境的原子会被合并
+        - 根据 environment 字段判断化学环境
+        - 相同环境的原子合并为一个RDF对（如FSI的6个F都是fluorosulfonyl，合并为一个）
+        - 不同环境的原子分开（如EC的O01是carbonyl，O02/O03是ether，不合并）
+
         Returns:
             {
-                'O': [{'label': 'EC_O01', 'atom_name': 'O01', ...}, ...],
-                'F': [...],
-                'N': [...],
+                'O': [
+                    {'label': 'EC_O(carbonyl)', 'environment': 'carbonyl', 'count': 1, ...},
+                    {'label': 'EC_O(ether)', 'environment': 'ether', 'count': 2, ...}
+                ],
+                'F': [{'label': 'FSI_F(fluorosulfonyl)', 'environment': 'fluorosulfonyl', 'count': 6, ...}],
                 ...
             }
         """
@@ -161,21 +168,49 @@ class SmartRDFGenerator:
             logger.warning(f"No atom info found for molecule: {molecule_name}")
             return {}
 
-        # 按元素分组
-        coord_atoms = defaultdict(list)
+        # 按 (元素, 环境) 统计原子数量
+        # key: (element, environment), value: count
+        env_counts = defaultdict(int)
+        env_mol_type = {}
 
         for atom in mol_info['atoms']:
             element = atom.get('element', '')
 
             # 只关注常见的配位元素
             if element in self.ELEMENT_PRIORITY:
-                coord_atoms[element].append({
-                    'label': atom.get('label', ''),
-                    'atom_name': atom.get('atom_name', ''),
-                    'element': element,
-                    'molecule': molecule_name,
-                    'molecule_type': mol_info.get('molecule_type', 'unknown')
-                })
+                # 获取化学环境，默认为元素本身
+                environment = atom.get('environment', element)
+                if not environment:
+                    environment = element
+
+                key = (element, environment)
+                env_counts[key] += 1
+                env_mol_type[key] = mol_info.get('molecule_type', 'unknown')
+
+        # 生成合并后的配位原子信息（按化学环境分组）
+        coord_atoms = defaultdict(list)
+
+        for (element, environment), count in env_counts.items():
+            # 根据环境生成标签
+            if environment and environment != element:
+                # 有具体化学环境，使用 "分子名_元素(环境)" 格式
+                merged_label = f"{molecule_name}_{element}({environment})"
+                display_env = environment
+            else:
+                # 没有特定环境，使用 "分子名_元素*" 通配符格式
+                merged_label = f"{molecule_name}_{element}*"
+                display_env = element
+
+            coord_atoms[element].append({
+                'label': merged_label,
+                'atom_name': f'{element}({display_env})',
+                'element': element,
+                'environment': environment,
+                'molecule': molecule_name,
+                'molecule_type': env_mol_type[(element, environment)],
+                'count': count  # 记录原子数量，用于日志和描述
+            })
+            logger.debug(f"Merged {count} {element}({environment}) atoms in {molecule_name} -> {merged_label}")
 
         return dict(coord_atoms)
 
@@ -208,25 +243,27 @@ class SmartRDFGenerator:
     def _generate_description(self, cation: str, atom_info: Dict, is_water: bool = False) -> str:
         """生成 RDF 对的描述
 
-        格式: {阳离子}-{元素}_{分子名}
-        例如: Li-O_EC, Na-F_PF6, K-N_ACN
+        格式: {阳离子}-{元素}({环境})_{分子名} x{数量}
+        例如: Li-O(carbonyl)_EC x1, Li-O(ether)_EC x2, Na-F(fluorosulfonyl)_FSI x6
         """
         if is_water:
             return f"{cation}-O(water)_H2O"
 
         element = atom_info.get('element', '')
         molecule = atom_info.get('molecule', '')
-        atom_name = atom_info.get('atom_name', '')
+        environment = atom_info.get('environment', element)
+        count = atom_info.get('count', 1)
 
-        # 尝试推断化学环境（可选）
-        env_hint = ""
-        if element == 'O':
-            if 'O01' in atom_name or 'O1' in atom_name:
-                env_hint = "(carbonyl)"
-            elif 'O02' in atom_name or 'O03' in atom_name or 'O2' in atom_name or 'O3' in atom_name:
-                env_hint = "(ether)"
+        # 使用化学环境信息
+        if environment and environment != element:
+            env_hint = f"({environment})"
+        else:
+            env_hint = ""
 
-        return f"{cation}-{element}{env_hint}_{molecule}"
+        # 如果有多个等价原子，显示数量
+        count_hint = f" x{count}" if count > 1 else ""
+
+        return f"{cation}-{element}{env_hint}_{molecule}{count_hint}"
 
     def generate_rdf_pairs(self, composition: Dict) -> List[Tuple[str, str, str]]:
         """生成 RDF 对（主方法 - 通用版本）
