@@ -15,6 +15,9 @@ import {
   Row,
   Col,
   Statistic,
+  Modal,
+  Form,
+  Input,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -22,13 +25,15 @@ import {
   ExperimentOutlined,
   RocketOutlined,
 } from '@ant-design/icons';
-import { getProject } from '../api/projects';
+import { getProject, updateProject } from '../api/projects';
 import { getElectrolytes } from '../api/electrolytes';
 import { getMDJobs } from '../api/jobs';
 import type { Project, ElectrolyteSystem, MDJob } from '../types';
 import ElectrolyteCard from '../components/ElectrolyteCard';
 import JobCard from '../components/JobCard';
 import dayjs from 'dayjs';
+
+const { TextArea } = Input;
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
@@ -37,6 +42,8 @@ export default function ProjectDetail() {
   const [project, setProject] = useState<Project | null>(null);
   const [electrolytes, setElectrolytes] = useState<ElectrolyteSystem[]>([]);
   const [jobs, setJobs] = useState<MDJob[]>([]);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [form] = Form.useForm();
 
   useEffect(() => {
     loadData();
@@ -74,7 +81,29 @@ export default function ProjectDetail() {
   };
 
   const handleEdit = () => {
-    navigate('/workspace/projects', { state: { editProject: project } });
+    if (project) {
+      form.setFieldsValue({
+        name: project.name,
+        description: project.description,
+      });
+      setEditModalVisible(true);
+    }
+  };
+
+  const handleEditSubmit = async () => {
+    if (!project) return;
+
+    try {
+      const values = await form.validateFields();
+      await updateProject(project.id, values);
+      message.success('项目更新成功');
+      setEditModalVisible(false);
+      loadData(); // 重新加载数据
+    } catch (error: any) {
+      if (error.response) {
+        message.error(error.response?.data?.detail || '更新失败');
+      }
+    }
   };
 
   const handleDeleteElectrolyte = async (electrolyteId: number) => {
@@ -294,6 +323,42 @@ export default function ProjectDetail() {
           },
         ]}
       />
+
+      {/* 编辑项目对话框 */}
+      <Modal
+        title="编辑项目"
+        open={editModalVisible}
+        onOk={handleEditSubmit}
+        onCancel={() => setEditModalVisible(false)}
+        okText="保存"
+        cancelText="取消"
+        width={600}
+      >
+        <Form form={form} layout="vertical" style={{ marginTop: 24 }}>
+          <Form.Item
+            name="name"
+            label="项目名称"
+            rules={[
+              { required: true, message: '请输入项目名称' },
+              { max: 100, message: '项目名称不能超过100个字符' },
+            ]}
+          >
+            <Input placeholder="例如: 锂电池电解液优化项目" size="large" />
+          </Form.Item>
+          <Form.Item
+            name="description"
+            label="项目描述"
+            rules={[{ max: 500, message: '描述不能超过500个字符' }]}
+          >
+            <TextArea
+              rows={4}
+              placeholder="简要描述项目的研究目标和内容..."
+              showCount
+              maxLength={500}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
