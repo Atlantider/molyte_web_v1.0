@@ -7,33 +7,34 @@ from sqlalchemy import func
 from app.models.user import User, UserRole
 from app.models.job import MDJob, JobStatus
 from app.models.user_stats import UserUsageStats
+from app.utils.timezone import ensure_timezone_aware
 
 
 def calculate_job_cpu_hours(job: MDJob) -> float:
     """
     Calculate CPU hours used by a job
-    
+
     Args:
         job: MD job instance
-        
+
     Returns:
         float: CPU hours used
     """
     if not job.started_at:
         return 0.0
-    
-    # Calculate elapsed time
-    end_time = job.finished_at if job.finished_at else datetime.now()
-    start_time = job.started_at
+
+    # Calculate elapsed time - 确保时区一致
+    end_time = ensure_timezone_aware(job.finished_at) if job.finished_at else ensure_timezone_aware(datetime.now())
+    start_time = ensure_timezone_aware(job.started_at)
     elapsed_hours = (end_time - start_time).total_seconds() / 3600.0
-    
+
     # Get number of cores
     cores = 1
     if job.config:
         ntasks = job.config.get('slurm_ntasks', 1)
         cpus_per_task = job.config.get('slurm_cpus_per_task', 1)
         cores = ntasks * cpus_per_task
-    
+
     return elapsed_hours * cores
 
 

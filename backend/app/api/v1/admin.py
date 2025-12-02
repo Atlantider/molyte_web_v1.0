@@ -6,6 +6,7 @@ from datetime import datetime, date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
+import logging
 
 from app.database import get_db
 from app.dependencies import get_current_admin_user
@@ -29,6 +30,7 @@ from app.utils.audit import (
 from app.core.security import get_password_hash
 from app.services.slurm import list_partitions
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
