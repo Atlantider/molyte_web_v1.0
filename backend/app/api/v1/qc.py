@@ -220,6 +220,18 @@ def create_qc_job(
                 QCJob.solvent_model.is_(None)
             )
         )
+    elif solvent_model == 'custom':
+        # 自定义溶剂：需要匹配所有自定义参数
+        duplicate_query = duplicate_query.filter(
+            QCJob.solvent_model == 'custom'
+        )
+        # 匹配自定义溶剂的关键参数（eps 是最重要的）
+        if job_data.solvent_config:
+            eps_val = job_data.solvent_config.eps
+            if eps_val is not None:
+                duplicate_query = duplicate_query.filter(
+                    QCJob.config['solvent_config']['eps'].astext == str(eps_val)
+                )
     else:
         duplicate_query = duplicate_query.filter(
             QCJob.solvent_model == solvent_model
@@ -230,6 +242,21 @@ def create_qc_job(
             )
 
     existing_job = duplicate_query.order_by(desc(QCJob.created_at)).first()
+
+    # 对于自定义溶剂，额外验证所有参数是否完全匹配
+    if existing_job and solvent_model == 'custom' and job_data.solvent_config:
+        existing_config = existing_job.config.get('solvent_config', {}) if existing_job.config else {}
+        # 检查所有关键参数是否匹配
+        key_params = ['eps', 'eps_inf', 'hbond_acidity', 'hbond_basicity', 'surface_tension']
+        params_match = True
+        for key in key_params:
+            new_val = getattr(job_data.solvent_config, key, None)
+            existing_val = existing_config.get(key)
+            if new_val != existing_val:
+                params_match = False
+                break
+        if not params_match:
+            existing_job = None  # 参数不完全匹配，不视为重复
 
     if existing_job:
         # 找到完全相同参数的任务，拒绝创建
@@ -360,6 +387,18 @@ def create_qc_jobs_batch(
                     QCJob.solvent_model.is_(None)
                 )
             )
+        elif solvent_model == 'custom':
+            # 自定义溶剂：需要匹配所有自定义参数
+            duplicate_query = duplicate_query.filter(
+                QCJob.solvent_model == 'custom'
+            )
+            # 匹配自定义溶剂的关键参数（eps 是最重要的）
+            custom_solvent_config = config.get('solvent_config', {})
+            eps_val = custom_solvent_config.get('eps')
+            if eps_val is not None:
+                duplicate_query = duplicate_query.filter(
+                    QCJob.config['solvent_config']['eps'].astext == str(eps_val)
+                )
         else:
             duplicate_query = duplicate_query.filter(
                 QCJob.solvent_model == solvent_model
@@ -370,6 +409,20 @@ def create_qc_jobs_batch(
                 )
 
         existing_job = duplicate_query.first()
+
+        # 对于自定义溶剂，额外验证所有参数是否完全匹配
+        if existing_job and solvent_model == 'custom':
+            existing_config = existing_job.config.get('solvent_config', {}) if existing_job.config else {}
+            custom_solvent_config = config.get('solvent_config', {})
+            # 检查所有关键参数是否匹配
+            key_params = ['eps', 'eps_inf', 'hbond_acidity', 'hbond_basicity', 'surface_tension']
+            params_match = True
+            for key in key_params:
+                if custom_solvent_config.get(key) != existing_config.get(key):
+                    params_match = False
+                    break
+            if not params_match:
+                existing_job = None  # 参数不完全匹配，不视为重复
 
         if existing_job:
             if existing_job.status == QCJobStatusModel.COMPLETED:

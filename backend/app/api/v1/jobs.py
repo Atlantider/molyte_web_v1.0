@@ -802,6 +802,18 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
                                 QCJob.solvent_model.is_(None)
                             )
                         )
+                    elif solvent_model == 'custom':
+                        # 自定义溶剂：需要匹配所有自定义参数
+                        duplicate_query = duplicate_query.filter(
+                            QCJob.solvent_model == 'custom'
+                        )
+                        # 匹配自定义溶剂的关键参数（eps 是最重要的）
+                        if custom_params:
+                            eps_val = custom_params.get('eps')
+                            if eps_val is not None:
+                                duplicate_query = duplicate_query.filter(
+                                    QCJob.config['solvent_config']['eps'].astext == str(eps_val)
+                                )
                     else:
                         duplicate_query = duplicate_query.filter(
                             QCJob.solvent_model == solvent_model
@@ -812,6 +824,19 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
                             )
 
                     existing_job = duplicate_query.first()
+
+                    # 对于自定义溶剂，额外验证所有参数是否完全匹配
+                    if existing_job and solvent_model == 'custom' and custom_params:
+                        existing_config = existing_job.config.get('solvent_config', {}) if existing_job.config else {}
+                        # 检查所有关键参数是否匹配
+                        key_params = ['eps', 'eps_inf', 'hbond_acidity', 'hbond_basicity', 'surface_tension']
+                        params_match = True
+                        for key in key_params:
+                            if custom_params.get(key) != existing_config.get(key):
+                                params_match = False
+                                break
+                        if not params_match:
+                            existing_job = None  # 参数不完全匹配，不复用
 
                     if existing_job:
                         # 如果找到已完成的任务，复用结果
