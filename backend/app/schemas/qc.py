@@ -256,43 +256,25 @@ class QCJobInDB(QCJobBase):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
 
-    @model_validator(mode='before')
+    @model_validator(mode='wrap')
     @classmethod
-    def build_solvent_config(cls, data: Any) -> Any:
+    def build_solvent_config(cls, data: Any, handler) -> Any:
         """从数据库的solvent_model和solvent_name字段构建solvent_config对象"""
-        if isinstance(data, dict):
-            # 如果已经有solvent_config，直接返回
-            if data.get('solvent_config'):
-                return data
+        # 先让 Pydantic 处理数据（包括 ORM 对象转换）
+        instance = handler(data)
 
-            # 从solvent_model和solvent_name构建solvent_config
-            solvent_model = data.get('solvent_model')
-            solvent_name = data.get('solvent_name')
+        # 如果已经有 solvent_config，直接返回
+        if instance.solvent_config:
+            return instance
 
-            if solvent_model:
-                data['solvent_config'] = {
-                    'model': solvent_model,
-                    'solvent_name': solvent_name
-                }
-        else:
-            # 处理ORM对象
-            if hasattr(data, 'solvent_model') and data.solvent_model:
-                if not hasattr(data, 'solvent_config') or data.solvent_config is None:
-                    # 创建一个临时字典来存储solvent_config
-                    # 注意：这里我们需要将ORM对象转换为字典
-                    from sqlalchemy.inspection import inspect
-                    mapper = inspect(data.__class__)
-                    result = {}
-                    for column in mapper.columns:
-                        result[column.name] = getattr(data, column.name)
+        # 从 solvent_model 和 solvent_name 构建 solvent_config
+        if instance.solvent_model:
+            instance.solvent_config = SolventConfig(
+                model=instance.solvent_model,
+                solvent_name=instance.solvent_name
+            )
 
-                    result['solvent_config'] = {
-                        'model': data.solvent_model,
-                        'solvent_name': data.solvent_name if hasattr(data, 'solvent_name') else None
-                    }
-                    return result
-
-        return data
+        return instance
 
     class Config:
         from_attributes = True

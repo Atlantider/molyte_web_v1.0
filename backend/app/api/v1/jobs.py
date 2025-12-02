@@ -805,6 +805,8 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
                                 functional=params["functional"],
                                 charge=charge,
                                 spin_multiplicity=spin_multiplicity,
+                                solvent_model=params["solvent_model"],  # ✅ 添加溶剂模型字段
+                                solvent_name=params["solvent_name"] if params["solvent_model"] != "gas" else None,  # ✅ 添加溶剂名称字段
                                 status=QCJobStatus.COMPLETED,
                                 is_reused=True,
                                 reused_from_job_id=existing_job.id,
@@ -840,6 +842,8 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
                         functional=params["functional"],
                         charge=charge,
                         spin_multiplicity=spin_multiplicity,
+                        solvent_model=params["solvent_model"],  # ✅ 添加溶剂模型字段
+                        solvent_name=params["solvent_name"] if params["solvent_model"] != "gas" else None,  # ✅ 添加溶剂名称字段
                         status=QCJobStatus.CREATED,
                         config={
                             "accuracy_level": getattr(qc_options, 'accuracy_level', 'standard'),

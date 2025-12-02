@@ -528,7 +528,8 @@ export default function QCJobDetail() {
               </Descriptions.Item>
               <Descriptions.Item label="溶剂模型">
                 {(() => {
-                  const solventConfig = job.config?.solvent_config;
+                  // 优先从顶层的 solvent_config 读取，如果没有则从 config.solvent_config 读取
+                  const solventConfig = (job as any).solvent_config || job.config?.solvent_config;
                   if (!solventConfig) {
                     return <Tag color="default">气相</Tag>;
                   }
