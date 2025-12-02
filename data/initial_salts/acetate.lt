@@ -1,0 +1,92 @@
+acetate {
+
+
+  write_once("In Init") {
+    atom_style full
+    units        real
+    pair_style   hybrid lj/cut/coul/long 10.0
+    bond_style   hybrid harmonic
+    angle_style  hybrid harmonic
+    dihedral_style harmonic
+    improper_style hybrid harmonic
+    kspace_style pppm 0.0001
+    pair_modify  mix arithmetic
+  }
+
+write_once("Data Masses") {
+    @atom:H 1.0079
+    @atom:C1 12.011
+    @atom:C2 12.011
+    @atom:O 15.999
+}
+
+write_once("In Settings") {
+pair_coeff @atom:H @atom:H 0.0149993 2.42
+pair_coeff @atom:C1 @atom:C1 0.1049992 3.75
+pair_coeff @atom:C2 @atom:C2 0.06599861 3.5
+pair_coeff @atom:O @atom:O 0.20999648 2.96
+bond_coeff @bond:C1C2  247.5  1.542
+bond_coeff @bond:C1O   619.0  1.256
+bond_coeff @bond:C2H   373.0  1.089
+angle_coeff @angle:OC1O 131.0 128.831
+angle_coeff @angle:OC1C2 106.5 115.585
+angle_coeff @angle:C1C2H  45.5  110.017
+angle_coeff @angle:HC2H  45.0 108.897
+dihedral_coeff @dihedral:type1 harmonic 0.0089 1 6
+}
+
+write_once("In Charges"){
+    set type @atom:H  charge  0.0
+    set type @atom:C1  charge  0.972
+    set type @atom:C2  charge  -0.25
+    set type @atom:O  charge  -0.861
+  } #(end of atom charges)
+
+write_once("In List_salt") {
+    group        acetate           type   @atom:H @atom:C1 @atom:C2 @atom:O
+    variable     acetate_list      index  "H C1 C2 O"
+  }
+
+write("Data Atoms") {
+    	$atom:H1 $mol:id1 @atom:H 0.0   -2.366 0.99715 2.25029
+	$atom:H2 $mol:id1 @atom:H 0.0   -2.342 0.10698 0.71189
+	$atom:H3 $mol:id1 @atom:H 0.0   -2.341 1.90386 0.72366
+	$atom:C4 $mol:id1 @atom:C1 0.972   -0.486 1.00000 1.25824
+    	$atom:C5 $mol:id1 @atom:C2 -0.25   0.194 1.00000 2.27273
+    	$atom:O6 $mol:id1 @atom:O -0.861   0.018 1.00000 0.00000
+    	$atom:O7 $mol:id1 @atom:O -0.861   0.194 1.00000 2.27273
+  }
+write("Data Bonds") {
+    $bond:id1 @bond:C1C2 $atom:C4 $atom:C5
+    $bond:id2 @bond:C1O $atom:C4 $atom:O6
+    $bond:id3 @bond:C1O $atom:C4 $atom:O7
+    $bond:id4 @bond:C2H $atom:C5 $atom:H1
+    $bond:id5 @bond:C2H $atom:C5 $atom:H2
+    $bond:id6 @bond:C2H $atom:C5 $atom:H3
+  }
+write("Data Angles") {
+    $angle:id1 @angle:OC1O $atom:O6 $atom:C4 $atom:O7
+
+    $angle:id2 @angle:OC1C2 $atom:O6 $atom:C4 $atom:C5
+    $angle:id3 @angle:OC1C2 $atom:O7 $atom:C4 $atom:C5
+
+    $angle:id4 @angle:C1C2H $atom:C4 $atom:C5 $atom:H1
+    $angle:id5 @angle:C1C2H $atom:C4 $atom:C5 $atom:H2
+    $angle:id6 @angle:C1C2H $atom:C4 $atom:C5 $atom:H3
+
+    $angle:id7 @angle:HC2H $atom:H1 $atom:C5 $atom:H2
+    $angle:id8 @angle:HC2H $atom:H1 $atom:C5 $atom:H3
+    $angle:id9 @angle:HC2H $atom:H2 $atom:C5 $atom:H3
+
+  }
+write("Data Dihedrals") {
+    $dihedral:id1 @dihedral:type1 $atom:H1 $atom:C5 $atom:C4 $atom:O6
+	$dihedral:id1 @dihedral:type1 $atom:H2 $atom:C5 $atom:C4 $atom:O6
+	$dihedral:id1 @dihedral:type1 $atom:H3 $atom:C5 $atom:C4 $atom:O6
+	$dihedral:id1 @dihedral:type1 $atom:H1 $atom:C5 $atom:C4 $atom:O7
+    $dihedral:id2 @dihedral:type1 $atom:H2 $atom:C5 $atom:C4 $atom:O7
+	$dihedral:id2 @dihedral:type1 $atom:H3 $atom:C5 $atom:C4 $atom:O7
+	}
+
+} # end of "acetate" type definition
+

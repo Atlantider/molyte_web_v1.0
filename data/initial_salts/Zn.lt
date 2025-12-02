@@ -1,0 +1,35 @@
+Zn {
+
+  write_once("In Init") {
+    atom_style full
+    units        real
+    pair_style   hybrid lj/cut/coul/long 10.0
+    bond_style   hybrid harmonic
+    angle_style  hybrid harmonic
+    improper_style hybrid harmonic
+    kspace_style pppm 0.0001
+        pair_modify  mix arithmetic
+  }
+ 
+   write_once("Data Masses") {
+    @atom:Zn  65.38
+  }
+ 
+   write_once("In Settings") {
+    pair_coeff @atom:Zn  @atom:Zn  0.233748    1.95             #Acta Phys. -Chim. Sin. 2013, 29 (1), 23-29
+  }
+  
+  write("Data Atoms") {
+    $atom:id1 $mol:id1 @atom:Zn  2  0.000 0.00000 0.00000   # Zn Ion
+  }
+  
+   write_once("In Charges"){
+    set type @atom:Zn  charge 2
+  } #(end of atom charges)
+
+ write_once("In List_salt") {
+    group        Zn           type   @atom:Zn
+    variable     Zn_list      index  "Zn"
+  }
+  
+} # end of "Zn-ion" type definition

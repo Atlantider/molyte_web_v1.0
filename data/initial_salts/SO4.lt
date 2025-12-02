@@ -1,0 +1,59 @@
+SO4 {
+
+
+  write_once("In Init") {
+    atom_style full
+    units        real
+    pair_style   hybrid lj/cut/coul/long 10.0
+    bond_style   hybrid harmonic
+    angle_style  hybrid harmonic
+    improper_style hybrid harmonic
+    kspace_style pppm 0.0001
+    pair_modify  mix arithmetic
+  }
+
+write_once("Data Masses") {
+    @atom:S 32.060
+    @atom:O 15.999
+  }
+  write_once("In Settings") {
+    pair_coeff @atom:S @atom:S 0.2000478 3.55 #dx.doi.org/10.1021/ct500198c | J. Chem. Theory Comput. 2014, 10, 3345−3353
+    pair_coeff @atom:O @atom:O 0.15535 3.25
+    bond_coeff @bond:SO    525.5019 1.4870
+    angle_coeff @angle:OSO 140.01 109.47     
+  }
+write_once("In Charges"){
+    set type @atom:S  charge  2.300
+    set type @atom:O  charge  -1.075
+  } #(end of atom charges)
+
+write_once("In List_salt") {
+    group        SO4           type   @atom:S @atom:O
+    variable     SO4_list      index  "S O"
+  }
+  
+  write("Data Atoms") {
+    $atom:S1 $mol:id1 @atom:S 2.300  0.500313699   0.500313699   0.453882337
+    $atom:O2 $mol:id1 @atom:O -1.075  0.899999976   0.511607826   0.772313714
+    $atom:O3 $mol:id1 @atom:O -1.075  0.099999994   0.489960790   0.771686196
+    $atom:O4 $mol:id1 @atom:O -1.075  0.489647061   0.894980371   0.227686286
+    $atom:O5 $mol:id1 @atom:O -1.075  0.511294127   0.105019629   0.228941202
+  }
+
+  write("Data Bonds") {
+    $bond:id1 @bond:SO $atom:S1 $atom:O2
+    $bond:id2 @bond:SO $atom:S1 $atom:O3
+    $bond:id3 @bond:SO $atom:S1 $atom:O4
+    $bond:id4 @bond:SO $atom:S1 $atom:O5
+  }
+
+  write("Data Angles") {
+    $angle:id1 @angle:OSO $atom:O2 $atom:S1 $atom:O3
+    $angle:id2 @angle:OSO $atom:O2 $atom:S1 $atom:O4
+	$angle:id3 @angle:OSO $atom:O2 $atom:S1 $atom:O5
+	$angle:id4 @angle:OSO $atom:O3 $atom:S1 $atom:O4
+	$angle:id5 @angle:OSO $atom:O3 $atom:S1 $atom:O5
+	$angle:id6 @angle:OSO $atom:O4 $atom:S1 $atom:O5
+  } 
+
+} # end of "SO4" type definition

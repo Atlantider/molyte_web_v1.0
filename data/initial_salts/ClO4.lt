@@ -1,0 +1,49 @@
+ClO4  {
+
+write_once("Data Masses") {
+   @atom:Cl	35.45
+   @atom:O      15.999
+}
+
+write_once("In Settings") {
+pair_coeff   @atom:Cl @atom:Cl    0.1481     3.770    #J. Phys. Chem. B 2006, 110, 18026-18039
+pair_coeff   @atom:O @atom:O      0.1457     2.771
+bond_coeff   @bond:ClO            365.000    1.5006 
+angle_coeff  @angle:OClO          125.00     109.47    	
+  }
+
+ write_once("In Charges"){
+    set type @atom:Cl  charge  1.342064
+    set type @atom:O   charge   -0.58552
+  } #(end of atom charges)
+
+write_once("In List_salt") {
+    group        ClO4           type   @atom:Cl @atom:O  
+    variable     ClO4_list      index  "Cl O"
+  }
+write("Data Atoms") {
+  $atom:Cl1 $mol:id1 @atom:Cl  1.342064   1.0370         1.0375         1.0375
+	$atom:O2  $mol:id1 @atom:O  -0.58552    0.2150         1.8655         1.8675
+	$atom:O3  $mol:id1 @atom:O  -0.58552    1.8600         0.2095         1.8675
+	$atom:O4  $mol:id1 @atom:O  -0.58552    1.8600         1.8655         0.2075
+	$atom:O5  $mol:id1 @atom:O  -0.58552    0.2150         0.2095         0.2075
+  }
+
+    write("Data Bonds") {
+    	$bond:id1   @bond:ClO $atom:Cl1 $atom:O2
+    	$bond:id2   @bond:ClO $atom:Cl1 $atom:O3
+    	$bond:id3   @bond:ClO $atom:Cl1 $atom:O4
+    	$bond:id4   @bond:ClO $atom:Cl1 $atom:O5
+  }
+ 
+   write("Data Angles") {
+    $angle:id1  @angle:OClO $atom:O2 $atom:Cl1 $atom:O3
+    $angle:id2  @angle:OClO $atom:O2 $atom:Cl1 $atom:O4
+    $angle:id3  @angle:OClO $atom:O2 $atom:Cl1 $atom:O5
+    $angle:id4  @angle:OClO $atom:O3 $atom:Cl1 $atom:O4	
+    $angle:id5  @angle:OClO $atom:O3 $atom:Cl1 $atom:O5
+    $angle:id6  @angle:OClO $atom:O4 $atom:Cl1 $atom:O5	
+  }
+ 
+  
+} # end of "ClO4-ion" type definition

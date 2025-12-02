@@ -1,0 +1,101 @@
+Otf {
+
+
+  write_once("In Init") {
+    atom_style full
+    units        real
+    pair_style   hybrid lj/cut/coul/long 10.0
+    bond_style   hybrid harmonic
+    angle_style  hybrid harmonic
+    improper_style hybrid harmonic
+    kspace_style pppm 0.0001
+    pair_modify  mix arithmetic
+  }
+
+write_once("Data Masses") {
+     @atom:S 32.060 
+     @atom:O 15.999  
+     @atom:C 12.010
+     @atom:F 18.998
+
+  }
+  write_once("In Settings") {
+    pair_coeff @atom:S @atom:S 0.25 3.55
+    pair_coeff @atom:O @atom:O 0.21 2.96
+    pair_coeff @atom:C @atom:C 0.066 3.50   
+    pair_coeff @atom:F @atom:F 0.053 2.95
+    bond_coeff @bond:FC    441.92 1.323
+    bond_coeff @bond:CS    233.03 1.818
+    bond_coeff @bond:SO    637.07 1.437
+    angle_coeff @angle:FCF 93.33 107.1
+    angle_coeff @angle:FCS 82.93 111.7 
+    angle_coeff @angle:OSO 115.80 118.5 
+    angle_coeff @angle:CSO 103.97 102.6
+    dihedral_coeff @dihedral:OSCF 0.000 0.000 1.451 0.000    
+  }
+write_once("In Charges"){
+    set type @atom:S  charge  1.1887
+    set type @atom:O  charge  -0.6556
+    set type @atom:C  charge  0.2692
+    set type @atom:F  charge  -0.1637
+  } #(end of atom charges)
+
+write_once("In List_salt") {
+    group        Otf           type   @atom:S @atom:O @atom:C @atom:F
+    variable     Otf_list      index  "S O C F"
+  }
+  
+
+
+  write("Data Atoms") {
+    $atom:S1 $mol:id1 @atom:S 1.1887  0.775317192   0.502899587   0.569155514
+    $atom:O2 $mol:id1 @atom:O -0.6556 0.858825684   0.510438561   0.104059428
+    $atom:O3 $mol:id1 @atom:O -0.6556 0.899999976   0.867379487   0.736172557
+    $atom:O4 $mol:id1 @atom:O -0.6556 0.899130106   0.132620513   0.723994195
+    $atom:C5 $mol:id1 @atom:C 0.2692  0.264697313   0.503479540   0.541319311
+    $atom:F6 $mol:id1 @atom:F -0.1637 0.129575938   0.168575525   0.386770546
+    $atom:F7 $mol:id1 @atom:F -0.1637 0.099999994   0.542914093   0.895940542
+    $atom:F8 $mol:id1 @atom:F -0.1637 0.131605655   0.797209144   0.317180127
+  }
+
+  write("Data Bonds") {
+    $bond:id1 @bond:FC $atom:C5 $atom:F6
+    $bond:id2 @bond:FC $atom:C5 $atom:F7
+    $bond:id3 @bond:FC $atom:C5 $atom:F8
+    $bond:id4 @bond:CS $atom:C5 $atom:S1
+    $bond:id5 @bond:SO $atom:S1 $atom:O2
+    $bond:id6 @bond:SO $atom:S1 $atom:O3
+    $bond:id7 @bond:SO $atom:S1 $atom:O4
+  }
+
+  write("Data Angles") {
+    $angle:id1 @angle:FCF $atom:F6 $atom:C5 $atom:F7
+    $angle:id2 @angle:FCF $atom:F6 $atom:C5 $atom:F8
+    $angle:id3 @angle:FCF $atom:F7 $atom:C5 $atom:F8
+	
+    $angle:id4 @angle:FCS $atom:F6 $atom:C5 $atom:S1
+    $angle:id5 @angle:FCS $atom:F7 $atom:C5 $atom:S1				
+    $angle:id6 @angle:FCS $atom:F8 $atom:C5 $atom:S1
+	
+    $angle:id7 @angle:OSO $atom:O2 $atom:S1 $atom:O3
+    $angle:id8 @angle:OSO $atom:O2 $atom:S1 $atom:O4
+    $angle:id9 @angle:OSO $atom:O3 $atom:S1 $atom:O4
+
+    $angle:id10 @angle:CSO $atom:C5 $atom:S1 $atom:O2
+    $angle:id11 @angle:CSO $atom:C5 $atom:S1 $atom:O3
+    $angle:id12 @angle:CSO $atom:C5 $atom:S1 $atom:O4
+  }
+write("Data Dihedrals") {
+        $dihedral:id1 @dihedral:OSCF $atom:O2 $atom:S1 $atom:C5 $atom:F6
+	$dihedral:id2 @dihedral:OSCF $atom:O2 $atom:S1 $atom:C5 $atom:F7
+	$dihedral:id3 @dihedral:OSCF $atom:O2 $atom:S1 $atom:C5 $atom:F8
+	$dihedral:id4 @dihedral:OSCF $atom:O3 $atom:S1 $atom:C5 $atom:F6
+        $dihedral:id5 @dihedral:OSCF $atom:O3 $atom:S1 $atom:C5 $atom:F7
+	$dihedral:id6 @dihedral:OSCF $atom:O3 $atom:S1 $atom:C5 $atom:F8
+	$dihedral:id7 @dihedral:OSCF $atom:O4 $atom:S1 $atom:C5 $atom:F6
+	$dihedral:id8 @dihedral:OSCF $atom:O4 $atom:S1 $atom:C5 $atom:F7
+	$dihedral:id9 @dihedral:OSCF $atom:O4 $atom:S1 $atom:C5 $atom:F8
+	}
+  
+
+} # end of "Otf" type definition

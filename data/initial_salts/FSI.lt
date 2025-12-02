@@ -1,0 +1,104 @@
+FSI {
+
+
+  write_once("In Init") {
+    atom_style full
+    units        real
+    pair_style   hybrid lj/cut/coul/long 10.0
+    bond_style   hybrid harmonic
+    angle_style  hybrid harmonic
+    improper_style hybrid harmonic
+    kspace_style pppm 0.0001
+    pair_modify  mix arithmetic
+  }
+
+write_once("Data Masses") {
+    @atom:N 14.007
+    @atom:S 32.060
+    @atom:O 15.999
+    @atom:F 18.998
+  }
+  write_once("In Settings") {
+    pair_coeff @atom:N @atom:N 0.169933 3.25    # J. Phys. Chem. B 2008, 112, 9449–9455
+    pair_coeff @atom:S @atom:S 0.25 3.55
+    pair_coeff @atom:O @atom:O 0.210086 2.96
+    pair_coeff @atom:F @atom:F 0.0530593 2.95
+        bond_coeff @bond:NS    374.8805 1.57
+    bond_coeff @bond:SO    637.07 1.437
+    bond_coeff @bond:FS     224.5459 1.575
+    angle_coeff @angle:SNS1 80.1865 125.6
+    angle_coeff @angle:NSO2 94.288 113.6 
+    angle_coeff @angle:OSO3 115.7983 118.5 
+    angle_coeff @angle:FSN4 107.7915 103.0
+    angle_coeff @angle:FSO5 128.7046 104.1
+	dihedral_coeff @dihedral:type1 0.000 0.000 -0.003585086 0.000
+    dihedral_coeff @dihedral:type2 2.7354207 -3.6295411 -0.7676864 0.000
+    
+  }
+write_once("In Charges"){
+    set type @atom:N  charge  -0.66
+    set type @atom:S  charge  1.02
+    set type @atom:O  charge  -0.53
+    set type @atom:F  charge  -0.13
+  } #(end of atom charges)
+
+write_once("In List_salt") {
+    group        FSI           type   @atom:N @atom:S @atom:O @atom:F
+    variable     FSI_list      index  "N S O F"
+  }
+  
+
+
+  write("Data Atoms") {
+    $atom:N1 $mol:id1 @atom:N -0.66 -0.028 1.00000 0.00000
+    $atom:S2 $mol:id1 @atom:S 1.02 -0.751 1.00000 1.55576
+    $atom:S3 $mol:id1 @atom:S 1.02 -0.752 1.83529 -1.31143
+    $atom:O4 $mol:id1 @atom:O -0.53 -2.097 0.47048 1.46941
+    $atom:O5 $mol:id1 @atom:O -0.53 0.203 0.48540 2.51679
+    $atom:O6 $mol:id1 @atom:O -0.53 0.191 1.92264 -2.40857
+    $atom:O7 $mol:id1 @atom:O -0.53 -2.100 1.34199 -1.50694
+    $atom:F8 $mol:id1 @atom:F -0.13 -0.930 2.53257 1.92995
+    $atom:F9 $mol:id1 @atom:F -0.13 -0.926 3.32785 -0.79902
+  }
+
+  write("Data Bonds") {
+    $bond:id1 @bond:NS $atom:N1 $atom:S2
+    $bond:id2 @bond:NS $atom:N1 $atom:S3
+    $bond:id3 @bond:SO $atom:S2 $atom:O4
+    $bond:id4 @bond:SO $atom:S2 $atom:O5
+    $bond:id5 @bond:SO $atom:S3 $atom:O6
+    $bond:id6 @bond:SO $atom:S3 $atom:O7
+    $bond:id7 @bond:FS $atom:F8 $atom:S2
+    $bond:id8 @bond:FS $atom:F9 $atom:S3
+  }
+
+  write("Data Angles") {
+    $angle:id1 @angle:SNS1 $atom:S2 $atom:N1 $atom:S3
+
+    $angle:id2 @angle:NSO2 $atom:N1 $atom:S2 $atom:O4
+    $angle:id3 @angle:NSO2 $atom:N1 $atom:S2 $atom:O5
+    $angle:id4 @angle:NSO2 $atom:N1 $atom:S3 $atom:O6
+    $angle:id5 @angle:NSO2 $atom:N1 $atom:S3 $atom:O7
+
+    $angle:id6 @angle:OSO3 $atom:O4 $atom:S2 $atom:O5
+    $angle:id7 @angle:OSO3 $atom:O6 $atom:S3 $atom:O7
+
+    $angle:id8 @angle:FSN4 $atom:F8 $atom:S2 $atom:N1
+    $angle:id9 @angle:FSN4 $atom:F9 $atom:S3 $atom:N1
+
+    $angle:id10 @angle:FSO5 $atom:F8 $atom:S2 $atom:O4
+    $angle:id11 @angle:FSO5 $atom:F8 $atom:S2 $atom:O5
+    $angle:id12 @angle:FSO5 $atom:F9 $atom:S3 $atom:O6
+    $angle:id13 @angle:FSO5 $atom:F9 $atom:S3 $atom:O7
+  }
+write("Data Dihedrals") {
+    $dihedral:id1 @dihedral:type1 $atom:O4 $atom:S2 $atom:N1 $atom:S3
+	$dihedral:id1 @dihedral:type1 $atom:O5 $atom:S2 $atom:N1 $atom:S3
+	$dihedral:id1 @dihedral:type1 $atom:O6 $atom:S3 $atom:N1 $atom:S2
+	$dihedral:id1 @dihedral:type1 $atom:O7 $atom:S3 $atom:N1 $atom:S2
+    $dihedral:id2 @dihedral:type2 $atom:F8 $atom:S2 $atom:N1 $atom:S3
+	$dihedral:id2 @dihedral:type2 $atom:F9 $atom:S3 $atom:N1 $atom:S2
+	}
+  
+
+} # end of "FSI" type definition

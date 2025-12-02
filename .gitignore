@@ -103,6 +103,7 @@ data/charges/
 *.xyz
 *.pdb
 *.lt
+!data/initial_salts/*.lt
 *.txt
 *.vmd
 *.sh

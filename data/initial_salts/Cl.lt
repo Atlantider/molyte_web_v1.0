@@ -1,0 +1,36 @@
+Cl {
+
+  write_once("In Init") {
+    atom_style full
+    units        real
+    pair_style   lj/cut/coul/long 10.0
+    bond_style   harmonic
+    angle_style  harmonic
+    dihedral_style opls
+    improper_style cvff
+    kspace_style pppm 0.0001
+    pair_modify  mix arithmetic
+  }
+ 
+   write_once("Data Masses") {
+    @atom:Cl  35.453
+  }
+ 
+   write_once("In Settings") {
+    pair_coeff @atom:Cl  @atom:Cl   0.1      4.4        
+ }
+  
+  write("Data Atoms") {
+    $atom:id1 $mol:id1 @atom:Cl -1 0.000 0.00000 0.00000   # Na Ion
+  }
+  write_once("In List_salt") {
+    group        Cl           type   @atom:Cl
+    variable     Cl_list      index  "Cl"
+  }
+
+   write_once("In Charges"){
+    set type @atom:Cl  charge -1
+  } #(end of atom charges)
+ 
+  
+} # end of "Cl-ion" type definition

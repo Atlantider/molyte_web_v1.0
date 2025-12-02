@@ -1,0 +1,35 @@
+Rb {
+
+  write_once("In Init") {
+    atom_style full
+    units        real
+    pair_style   hybrid lj/cut/coul/long 10.0
+    bond_style   hybrid harmonic
+    angle_style  hybrid harmonic
+    improper_style hybrid harmonic
+    kspace_style pppm 0.0001
+        pair_modify  mix arithmetic
+  }
+ 
+   write_once("Data Masses") {
+    @atom:Rb  85.4678
+  }
+ 
+   write_once("In Settings") {
+    pair_coeff @atom:Rb  @atom:Rb  0.045    4.517             #Engineering Analysis with Boundary Elements 156 (2023) 1–7
+  }
+  
+  write("Data Atoms") {
+    $atom:id1 $mol:id1 @atom:Rb 1 0.000 0.00000 0.00000   # Rb Ion
+  }
+  
+   write_once("In Charges"){
+    set type @atom:Rb  charge 1
+  } #(end of atom charges)
+ 
+ write_once("In List_salt") {
+    group        Rb           type   @atom:Rb
+    variable     Rb_list      index  "Rb"
+  }
+  
+} # end of "Rb-ion" type definition
