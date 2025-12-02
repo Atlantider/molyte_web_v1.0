@@ -609,6 +609,23 @@ export default function QCJobDetail() {
                     <Paragraph type="warning" style={{ marginTop: 16, fontSize: 16 }}>
                       计算已完成，但暂无结果数据
                     </Paragraph>
+                    <Paragraph type="secondary" style={{ fontSize: 14, marginTop: 8 }}>
+                      可能原因：
+                    </Paragraph>
+                    <ul style={{ textAlign: 'left', display: 'inline-block', color: '#8c8c8c' }}>
+                      <li>Gaussian 计算未正常结束（检查日志文件）</li>
+                      <li>Worker 解析结果失败（联系管理员查看 Worker 日志）</li>
+                      <li>结果上传到云端失败（网络或认证问题）</li>
+                    </ul>
+                    {job.error_message && (
+                      <Alert
+                        type="error"
+                        message="详细错误信息"
+                        description={job.error_message}
+                        style={{ marginTop: 16, textAlign: 'left' }}
+                        showIcon
+                      />
+                    )}
                   </>
                 ) : job.status === 'FAILED' ? (
                   <>

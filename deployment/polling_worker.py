@@ -882,9 +882,18 @@ echo "QC calculation completed"
                             self.logger.warning(f"QC 可视化生成失败: {e}")
 
                     # 上传 QC 结果到数据库
-                    self._upload_qc_result(job_id, qc_result)
+                    try:
+                        self._upload_qc_result(job_id, qc_result)
+                    except Exception as e:
+                        # 上传失败时，不继续标记为COMPLETED
+                        self.logger.error(f"❌ QC结果上传失败，任务 {job_id} 已标记为FAILED")
+                        return  # 提前返回，不执行后续的COMPLETED状态更新
                 else:
-                    self.logger.warning(f"QC 任务 {job_id} 未能解析 Gaussian 输出")
+                    error_msg = f"未能解析 Gaussian 输出文件，可能计算未正常完成"
+                    self.logger.warning(f"⚠️ QC 任务 {job_id} {error_msg}")
+                    # 标记为失败
+                    self._update_job_status(job_id, 'FAILED', 'qc', error_message=error_msg)
+                    return  # 提前返回
 
             elif job_type == 'md':
                 # MD 任务：解析 RDF、MSD 等结果并上传
@@ -1124,12 +1133,35 @@ echo "QC calculation completed"
 
             if response.status_code == 200:
                 data = response.json()
-                self.logger.info(f"QC 结果上传成功: job_id={job_id}, result_id={data.get('result_id')}")
+                self.logger.info(f"✅ QC 结果上传成功: job_id={job_id}, result_id={data.get('result_id')}")
             else:
-                self.logger.error(f"QC 结果上传失败: {response.status_code} - {response.text}")
+                error_msg = f"QC 结果上传失败: HTTP {response.status_code} - {response.text}"
+                self.logger.error(f"❌ {error_msg}")
+                # 更新任务状态为失败，并记录详细错误信息
+                self._update_job_status(
+                    job_id, 'FAILED', 'qc',
+                    error_message=f"结果上传失败: {error_msg}"
+                )
+                raise Exception(error_msg)
 
+        except requests.exceptions.RequestException as e:
+            error_msg = f"网络错误，无法上传QC结果: {str(e)}"
+            self.logger.error(f"❌ {error_msg}", exc_info=True)
+            # 更新任务状态为失败
+            self._update_job_status(
+                job_id, 'FAILED', 'qc',
+                error_message=error_msg
+            )
+            raise
         except Exception as e:
-            self.logger.error(f"上传 QC 结果失败: {e}", exc_info=True)
+            error_msg = f"上传 QC 结果时发生异常: {str(e)}"
+            self.logger.error(f"❌ {error_msg}", exc_info=True)
+            # 更新任务状态为失败
+            self._update_job_status(
+                job_id, 'FAILED', 'qc',
+                error_message=error_msg
+            )
+            raise
 
     def _parse_md_results(self, work_dir: Path) -> Optional[Dict[str, Any]]:
         """
