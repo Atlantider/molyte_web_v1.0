@@ -16,12 +16,21 @@ import {
   message,
   Popconfirm,
   Switch,
+  Row,
+  Col,
+  Statistic,
 } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
   UserOutlined,
+  SearchOutlined,
+  FilterOutlined,
+  ReloadOutlined,
+  TeamOutlined,
+  CrownOutlined,
+  UserSwitchOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import AdminNav from '../../components/AdminNav';
@@ -42,15 +51,28 @@ const UserManagement: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UserListItem[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<UserListItem[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<UserListItem | null>(null);
   const [partitions, setPartitions] = useState<PartitionInfo[]>([]);
   const [form] = Form.useForm();
 
+  // 筛选和搜索状态
+  const [searchText, setSearchText] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string | undefined>(undefined);
+  const [userTypeFilter, setUserTypeFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<boolean | undefined>(undefined);
+  const [organizationFilter, setOrganizationFilter] = useState('');
+
   useEffect(() => {
     loadUsers();
     loadPartitions();
   }, []);
+
+  // 应用筛选
+  useEffect(() => {
+    applyFilters();
+  }, [users, searchText, roleFilter, userTypeFilter, statusFilter, organizationFilter]);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -62,6 +84,54 @@ const UserManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const applyFilters = () => {
+    let filtered = [...users];
+
+    // 搜索过滤
+    if (searchText) {
+      const search = searchText.toLowerCase();
+      filtered = filtered.filter(
+        (user) =>
+          user.username.toLowerCase().includes(search) ||
+          user.email.toLowerCase().includes(search) ||
+          (user.organization && user.organization.toLowerCase().includes(search))
+      );
+    }
+
+    // 角色过滤
+    if (roleFilter) {
+      filtered = filtered.filter((user) => user.role === roleFilter);
+    }
+
+    // 用户类型过滤
+    if (userTypeFilter) {
+      filtered = filtered.filter((user) => user.user_type === userTypeFilter);
+    }
+
+    // 状态过滤
+    if (statusFilter !== undefined) {
+      filtered = filtered.filter((user) => user.is_active === statusFilter);
+    }
+
+    // 组织过滤
+    if (organizationFilter) {
+      const org = organizationFilter.toLowerCase();
+      filtered = filtered.filter(
+        (user) => user.organization && user.organization.toLowerCase().includes(org)
+      );
+    }
+
+    setFilteredUsers(filtered);
+  };
+
+  const handleResetFilters = () => {
+    setSearchText('');
+    setRoleFilter(undefined);
+    setUserTypeFilter(undefined);
+    setStatusFilter(undefined);
+    setOrganizationFilter('');
   };
 
   const loadPartitions = async () => {
@@ -134,11 +204,13 @@ const UserManagement: React.FC = () => {
       dataIndex: 'id',
       key: 'id',
       width: 80,
+      sorter: (a: UserListItem, b: UserListItem) => a.id - b.id,
     },
     {
       title: '用户名',
       dataIndex: 'username',
       key: 'username',
+      sorter: (a: UserListItem, b: UserListItem) => a.username.localeCompare(b.username),
       render: (text: string, record: UserListItem) => (
         <a onClick={() => navigate(`/workspace/admin/users/${record.id}`)}>
           <UserOutlined /> {text}
@@ -149,11 +221,19 @@ const UserManagement: React.FC = () => {
       title: '邮箱',
       dataIndex: 'email',
       key: 'email',
+      sorter: (a: UserListItem, b: UserListItem) => a.email.localeCompare(b.email),
     },
     {
       title: '角色',
       dataIndex: 'role',
       key: 'role',
+      filters: [
+        { text: '管理员', value: 'ADMIN' },
+        { text: '高级用户', value: 'PREMIUM' },
+        { text: '普通用户', value: 'USER' },
+        { text: '访客', value: 'GUEST' },
+      ],
+      onFilter: (value: any, record: UserListItem) => record.role === value,
       render: (role: string) => {
         const colorMap: any = {
           ADMIN: 'red',
@@ -168,6 +248,11 @@ const UserManagement: React.FC = () => {
       title: '状态',
       dataIndex: 'is_active',
       key: 'is_active',
+      filters: [
+        { text: '激活', value: true },
+        { text: '禁用', value: false },
+      ],
+      onFilter: (value: any, record: UserListItem) => record.is_active === value,
       render: (isActive: boolean, record: UserListItem) => (
         <Switch
           checked={isActive}
@@ -179,17 +264,46 @@ const UserManagement: React.FC = () => {
       title: 'CPU 核时配额',
       dataIndex: 'total_cpu_hours',
       key: 'total_cpu_hours',
+      sorter: (a: UserListItem, b: UserListItem) => a.total_cpu_hours - b.total_cpu_hours,
       render: (hours: number) => `${hours.toFixed(1)} h`,
     },
     {
       title: '每日任务限制',
       dataIndex: 'daily_job_limit',
       key: 'daily_job_limit',
+      sorter: (a: UserListItem, b: UserListItem) => a.daily_job_limit - b.daily_job_limit,
     },
     {
       title: '并发任务限制',
       dataIndex: 'concurrent_job_limit',
       key: 'concurrent_job_limit',
+      sorter: (a: UserListItem, b: UserListItem) => a.concurrent_job_limit - b.concurrent_job_limit,
+    },
+    {
+      title: '用户类型',
+      dataIndex: 'user_type',
+      key: 'user_type',
+      filters: [
+        { text: '学生', value: 'STUDENT' },
+        { text: '研究者', value: 'RESEARCHER' },
+        { text: '企业', value: 'COMPANY' },
+      ],
+      onFilter: (value: any, record: UserListItem) => record.user_type === value,
+      render: (type: string) => {
+        const typeMap: any = {
+          STUDENT: { text: '学生', color: 'cyan' },
+          RESEARCHER: { text: '研究者', color: 'purple' },
+          COMPANY: { text: '企业', color: 'orange' },
+        };
+        const config = typeMap[type] || { text: type, color: 'default' };
+        return <Tag color={config.color}>{config.text}</Tag>;
+      },
+    },
+    {
+      title: '组织',
+      dataIndex: 'organization',
+      key: 'organization',
+      ellipsis: true,
     },
     {
       title: '可用队列',
@@ -214,6 +328,9 @@ const UserManagement: React.FC = () => {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
+      sorter: (a: UserListItem, b: UserListItem) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      defaultSortOrder: 'descend' as const,
       render: (time: string) => new Date(time).toLocaleString('zh-CN'),
     },
     {
@@ -243,9 +360,59 @@ const UserManagement: React.FC = () => {
     },
   ];
 
+  // 统计数据
+  const totalUsers = users.length;
+  const activeUsers = users.filter((u) => u.is_active).length;
+  const adminUsers = users.filter((u) => u.role === 'ADMIN').length;
+  const premiumUsers = users.filter((u) => u.role === 'PREMIUM').length;
+
   return (
     <div style={{ padding: '24px', background: '#f5f7fb', minHeight: '100vh' }}>
       <AdminNav />
+
+      {/* 统计卡片 */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={12} md={6}>
+          <Card bordered={false} style={{ borderRadius: 12 }}>
+            <Statistic
+              title="总用户数"
+              value={totalUsers}
+              prefix={<TeamOutlined />}
+              valueStyle={{ color: '#1677ff' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card bordered={false} style={{ borderRadius: 12 }}>
+            <Statistic
+              title="活跃用户"
+              value={activeUsers}
+              prefix={<UserSwitchOutlined />}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card bordered={false} style={{ borderRadius: 12 }}>
+            <Statistic
+              title="管理员"
+              value={adminUsers}
+              prefix={<CrownOutlined />}
+              valueStyle={{ color: '#ff4d4f' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card bordered={false} style={{ borderRadius: 12 }}>
+            <Statistic
+              title="高级用户"
+              value={premiumUsers}
+              prefix={<CrownOutlined />}
+              valueStyle={{ color: '#faad14' }}
+            />
+          </Card>
+        </Col>
+      </Row>
 
       <Card
         title="用户管理"
@@ -260,8 +427,72 @@ const UserManagement: React.FC = () => {
           boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
         }}
       >
+        {/* 筛选栏 */}
+        <div style={{ marginBottom: 16, padding: '16px', background: '#fafafa', borderRadius: 8 }}>
+          <Row gutter={[16, 16]}>
+            <Col xs={24} sm={12} md={6}>
+              <Input
+                placeholder="搜索用户名、邮箱、组织"
+                prefix={<SearchOutlined />}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                allowClear
+              />
+            </Col>
+            <Col xs={24} sm={12} md={4}>
+              <Select
+                placeholder="角色"
+                value={roleFilter}
+                onChange={setRoleFilter}
+                allowClear
+                style={{ width: '100%' }}
+              >
+                <Select.Option value="ADMIN">管理员</Select.Option>
+                <Select.Option value="PREMIUM">高级用户</Select.Option>
+                <Select.Option value="USER">普通用户</Select.Option>
+                <Select.Option value="GUEST">访客</Select.Option>
+              </Select>
+            </Col>
+            <Col xs={24} sm={12} md={4}>
+              <Select
+                placeholder="用户类型"
+                value={userTypeFilter}
+                onChange={setUserTypeFilter}
+                allowClear
+                style={{ width: '100%' }}
+              >
+                <Select.Option value="STUDENT">学生</Select.Option>
+                <Select.Option value="RESEARCHER">研究者</Select.Option>
+                <Select.Option value="COMPANY">企业</Select.Option>
+              </Select>
+            </Col>
+            <Col xs={24} sm={12} md={4}>
+              <Select
+                placeholder="状态"
+                value={statusFilter}
+                onChange={setStatusFilter}
+                allowClear
+                style={{ width: '100%' }}
+              >
+                <Select.Option value={true}>激活</Select.Option>
+                <Select.Option value={false}>禁用</Select.Option>
+              </Select>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Space>
+                <Button icon={<FilterOutlined />} onClick={handleResetFilters}>
+                  重置筛选
+                </Button>
+                <Button icon={<ReloadOutlined />} onClick={loadUsers}>
+                  刷新
+                </Button>
+              </Space>
+            </Col>
+          </Row>
+        </div>
+
         <Table
-          dataSource={users}
+          dataSource={filteredUsers}
           columns={columns}
           rowKey="id"
           loading={loading}
@@ -269,6 +500,7 @@ const UserManagement: React.FC = () => {
             pageSize: 20,
             showSizeChanger: true,
             showTotal: (total) => `共 ${total} 个用户`,
+            pageSizeOptions: ['10', '20', '50', '100'],
           }}
         />
       </Card>

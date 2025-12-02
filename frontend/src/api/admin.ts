@@ -12,8 +12,12 @@ export interface UserListItem {
   username: string;
   email: string;
   role: 'ADMIN' | 'PREMIUM' | 'USER' | 'GUEST';
+  user_type: 'STUDENT' | 'RESEARCHER' | 'COMPANY';
+  organization: string | null;
+  department: string | null;
   is_active: boolean;
   total_cpu_hours: number;
+  balance_cpu_hours: number;
   daily_job_limit: number;
   concurrent_job_limit: number;
   storage_quota_gb: number;
