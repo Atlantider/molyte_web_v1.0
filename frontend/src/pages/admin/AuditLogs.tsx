@@ -2,14 +2,15 @@
  * Audit Logs Page
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Tag, Input, Select, DatePicker, Space, Button, message } from 'antd';
-import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Card, Table, Tag, Input, Select, DatePicker, Space, Button, message, Typography, Row, Col } from 'antd';
+import { SearchOutlined, ReloadOutlined, FileTextOutlined } from '@ant-design/icons';
 import AdminNav from '../../components/AdminNav';
 import { getAuditLogs, AuditLogItem } from '../../api/admin';
 import type { RangePickerProps } from 'antd/es/date-picker';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
+const { Title, Text } = Typography;
 
 const AuditLogs: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -140,62 +141,101 @@ const AuditLogs: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: '100vh' }}>
+    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+      {/* 页面标题 */}
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
+          <FileTextOutlined style={{ marginRight: 12, color: '#1677ff' }} />
+          审计日志
+        </Title>
+        <Text type="secondary">
+          查看系统操作记录和审计信息
+        </Text>
+      </div>
+
       <AdminNav />
 
+      {/* 筛选栏 */}
       <Card
-        title="审计日志"
+        style={{
+          marginBottom: 24,
+          borderRadius: 12,
+          border: 'none',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          background: '#fafafa',
+        }}
+        styles={{ body: { padding: '16px' } }}
+      >
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} md={6}>
+            <Select
+              placeholder="操作类型"
+              style={{ width: '100%' }}
+              allowClear
+              value={filters.action}
+              onChange={(value) => setFilters({ ...filters, action: value })}
+            >
+              <Select.Option value="create_user">创建用户</Select.Option>
+              <Select.Option value="update_user">更新用户</Select.Option>
+              <Select.Option value="delete_user">删除用户</Select.Option>
+              <Select.Option value="update_user_quota">更新配额</Select.Option>
+              <Select.Option value="enable_user">启用用户</Select.Option>
+              <Select.Option value="disable_user">禁用用户</Select.Option>
+              <Select.Option value="cancel_job">取消任务</Select.Option>
+            </Select>
+          </Col>
+
+          <Col xs={24} sm={12} md={6}>
+            <Select
+              placeholder="资源类型"
+              style={{ width: '100%' }}
+              allowClear
+              value={filters.resource_type}
+              onChange={(value) => setFilters({ ...filters, resource_type: value })}
+            >
+              <Select.Option value="user">用户</Select.Option>
+              <Select.Option value="job">任务</Select.Option>
+              <Select.Option value="project">项目</Select.Option>
+            </Select>
+          </Col>
+
+          <Col xs={24} sm={12} md={8}>
+            <RangePicker
+              onChange={handleDateChange}
+              showTime
+              format="YYYY-MM-DD HH:mm:ss"
+              style={{ width: '100%' }}
+            />
+          </Col>
+
+          <Col xs={24} sm={12} md={4}>
+            <Space style={{ width: '100%' }}>
+              <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+                搜索
+              </Button>
+              <Button icon={<ReloadOutlined />} onClick={handleReset}>
+                重置
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
+
+      {/* 表格 */}
+      <Card
+        title={
+          <Space>
+            <FileTextOutlined style={{ color: '#1677ff' }} />
+            <span>操作记录</span>
+          </Space>
+        }
         bordered={false}
         style={{
-          borderRadius: '12px',
-          boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+          borderRadius: 12,
+          border: 'none',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
         }}
       >
-        {/* Filters */}
-        <Space style={{ marginBottom: '16px' }} wrap>
-          <Select
-            placeholder="操作类型"
-            style={{ width: 200 }}
-            allowClear
-            value={filters.action}
-            onChange={(value) => setFilters({ ...filters, action: value })}
-          >
-            <Select.Option value="create_user">创建用户</Select.Option>
-            <Select.Option value="update_user">更新用户</Select.Option>
-            <Select.Option value="delete_user">删除用户</Select.Option>
-            <Select.Option value="update_user_quota">更新配额</Select.Option>
-            <Select.Option value="enable_user">启用用户</Select.Option>
-            <Select.Option value="disable_user">禁用用户</Select.Option>
-            <Select.Option value="cancel_job">取消任务</Select.Option>
-          </Select>
-
-          <Select
-            placeholder="资源类型"
-            style={{ width: 150 }}
-            allowClear
-            value={filters.resource_type}
-            onChange={(value) => setFilters({ ...filters, resource_type: value })}
-          >
-            <Select.Option value="user">用户</Select.Option>
-            <Select.Option value="job">任务</Select.Option>
-            <Select.Option value="project">项目</Select.Option>
-          </Select>
-
-          <RangePicker
-            onChange={handleDateChange}
-            showTime
-            format="YYYY-MM-DD HH:mm:ss"
-          />
-
-          <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-            搜索
-          </Button>
-
-          <Button icon={<ReloadOutlined />} onClick={handleReset}>
-            重置
-          </Button>
-        </Space>
-
         <Table
           dataSource={logs}
           columns={columns}
@@ -204,6 +244,7 @@ const AuditLogs: React.FC = () => {
           pagination={{
             pageSize: 20,
             showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '50', '100'],
             showTotal: (total) => `共 ${total} 条记录`,
           }}
           scroll={{ x: 1200 }}

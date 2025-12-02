@@ -2,7 +2,7 @@
  * Admin Dashboard Page
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Table, Tag, Progress, Spin, message } from 'antd';
+import { Card, Row, Col, Statistic, Table, Tag, Progress, Spin, message, Typography, Space } from 'antd';
 import {
   UserOutlined,
   RocketOutlined,
@@ -10,6 +10,8 @@ import {
   CloseCircleOutlined,
   ThunderboltOutlined,
   TeamOutlined,
+  ControlOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
 import { Column, Pie } from '@ant-design/plots';
 import { useNavigate } from 'react-router-dom';
@@ -23,6 +25,8 @@ import {
   UserUsageStatsItem,
   UserRanking,
 } from '../../api/admin';
+
+const { Title, Text } = Typography;
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -89,32 +93,39 @@ const AdminDashboard: React.FC = () => {
   }));
 
   return (
-    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: '100vh' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: 700, margin: 0 }}>管理员仪表盘</h1>
-        <p style={{ color: '#8c8c8c', marginTop: '8px' }}>系统资源监控与用户管理</p>
+    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+      {/* 页面标题 */}
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
+          <ControlOutlined style={{ marginRight: 12, color: '#1677ff' }} />
+          管理面板
+        </Title>
+        <Text type="secondary">
+          系统资源监控与用户管理
+        </Text>
       </div>
 
       {/* Admin Navigation Menu */}
       <AdminNav />
 
       {/* KPI Cards */}
-      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card
             bordered={false}
             style={{
-              borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
             }}
           >
             <Statistic
-              title="总用户数"
+              title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>总用户数</span>}
               value={stats.total_users}
-              prefix={<TeamOutlined style={{ color: '#1677ff' }} />}
+              valueStyle={{ color: '#fff', fontSize: 28 }}
+              prefix={<TeamOutlined />}
               suffix={
-                <span style={{ fontSize: '14px', color: '#8c8c8c' }}>
+                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }}>
                   / 活跃 {stats.active_users}
                 </span>
               }
@@ -126,16 +137,18 @@ const AdminDashboard: React.FC = () => {
           <Card
             bordered={false}
             style={{
-              borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              boxShadow: '0 4px 12px rgba(240, 147, 251, 0.3)',
             }}
           >
             <Statistic
-              title="总任务数"
+              title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>总任务数</span>}
               value={stats.total_jobs}
-              prefix={<RocketOutlined style={{ color: '#9254de' }} />}
+              valueStyle={{ color: '#fff', fontSize: 28 }}
+              prefix={<RocketOutlined />}
               suffix={
-                <span style={{ fontSize: '14px', color: '#8c8c8c' }}>
+                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }}>
                   / 运行中 {stats.running_jobs}
                 </span>
               }
@@ -147,16 +160,18 @@ const AdminDashboard: React.FC = () => {
           <Card
             bordered={false}
             style={{
-              borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+              boxShadow: '0 4px 12px rgba(17, 153, 142, 0.3)',
             }}
           >
             <Statistic
-              title="已完成任务"
+              title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>已完成任务</span>}
               value={stats.completed_jobs}
-              prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+              valueStyle={{ color: '#fff', fontSize: 28 }}
+              prefix={<CheckCircleOutlined />}
               suffix={
-                <span style={{ fontSize: '14px', color: '#8c8c8c' }}>
+                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }}>
                   / 失败 {stats.failed_jobs}
                 </span>
               }
@@ -168,26 +183,25 @@ const AdminDashboard: React.FC = () => {
           <Card
             bordered={false}
             style={{
-              borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+              boxShadow: '0 4px 12px rgba(250, 112, 154, 0.3)',
             }}
           >
             <div>
-              <div style={{ marginBottom: '8px', color: '#8c8c8c', fontSize: '14px' }}>
+              <div style={{ marginBottom: 8, color: 'rgba(255,255,255,0.85)', fontSize: 14 }}>
                 CPU 核时使用率
               </div>
-              <div style={{ fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>
+              <div style={{ fontSize: 28, fontWeight: 700, marginBottom: 12, color: '#fff' }}>
                 {cpuUsagePercentage.toFixed(1)}%
               </div>
               <Progress
                 percent={cpuUsagePercentage}
-                strokeColor={{
-                  '0%': '#fa8c16',
-                  '100%': '#f5222d',
-                }}
+                strokeColor="#fff"
+                trailColor="rgba(255,255,255,0.3)"
                 showInfo={false}
               />
-              <div style={{ marginTop: '8px', fontSize: '12px', color: '#8c8c8c' }}>
+              <div style={{ marginTop: 8, fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
                 {stats.total_cpu_hours_used.toFixed(1)} / {stats.total_cpu_hours_allocated.toFixed(1)} 小时
               </div>
             </div>
@@ -196,15 +210,21 @@ const AdminDashboard: React.FC = () => {
       </Row>
 
       {/* Charts Row */}
-      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {/* CPU Usage Ranking */}
         <Col xs={24} lg={12}>
           <Card
-            title="CPU 核时使用排行 Top 5"
+            title={
+              <Space>
+                <ThunderboltOutlined style={{ color: '#1677ff' }} />
+                <span>CPU 核时使用排行 Top 5</span>
+              </Space>
+            }
             bordered={false}
             style={{
-              borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              borderRadius: 12,
+              border: 'none',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
             }}
           >
             {cpuRankingData.length > 0 ? (
@@ -250,11 +270,17 @@ const AdminDashboard: React.FC = () => {
         {/* Job Status Distribution */}
         <Col xs={24} lg={12}>
           <Card
-            title="任务状态分布"
+            title={
+              <Space>
+                <DatabaseOutlined style={{ color: '#1677ff' }} />
+                <span>任务状态分布</span>
+              </Space>
+            }
             bordered={false}
             style={{
-              borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              borderRadius: 12,
+              border: 'none',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
             }}
           >
             {jobStatusData.length > 0 ? (
