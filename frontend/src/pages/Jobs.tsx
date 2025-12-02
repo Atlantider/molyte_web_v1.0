@@ -34,6 +34,7 @@ import { getProjects } from '../api/projects';
 import type { MDJob, MDJobCreate, ElectrolyteSystem, Project } from '../types';
 import { JobStatus } from '../types';
 import ElectrolyteFormOptimized from '../components/ElectrolyteFormOptimized';
+import AccuracyLevelSelector from '../components/AccuracyLevelSelector';
 
 const { Title, Text } = Typography;
 
@@ -58,6 +59,10 @@ export default function Jobs() {
   const [electrolyteForm] = Form.useForm();
   const [selectedCations, setSelectedCations] = useState<any[]>([]);
   const [selectedAnions, setSelectedAnions] = useState<any[]>([]);
+
+  // 精度等级相关状态
+  const [selectedAccuracyLevel, setSelectedAccuracyLevel] = useState<string>('standard');
+  const [accuracyDefaults, setAccuracyDefaults] = useState<any>(null);
 
   // 加载任务列表
   const loadJobs = useCallback(async () => {
@@ -127,6 +132,23 @@ export default function Jobs() {
     loadData();
   }, []);
 
+  // 加载精度等级配置
+  useEffect(() => {
+    const loadAccuracyLevels = async () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        const response = await fetch('/api/v1/jobs/accuracy-levels', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await response.json();
+        setAccuracyDefaults(data);
+      } catch (error) {
+        console.error('加载精度等级配置失败:', error);
+      }
+    };
+    loadAccuracyLevels();
+  }, []);
+
   // 智能轮询：只有在有活跃任务时才轮询
   useEffect(() => {
     // 清除之前的轮询
@@ -183,15 +205,30 @@ export default function Jobs() {
   // 打开创建对话框
   const handleOpenModal = () => {
     form.resetFields();
+    setSelectedAccuracyLevel('standard');
     form.setFieldsValue({
-      nsteps_npt: 100000,
-      nsteps_nvt: 500000,
-      timestep: 1.0,
+      job_name: '',
+      accuracy_level: 'standard',
+      // 模拟参数留空，使用精度等级默认值
+      nsteps_npt: undefined,
+      nsteps_nvt: undefined,
+      timestep: undefined,
+      temperature: undefined,
+      pressure: undefined,
+      freq_trj_npt: undefined,
+      freq_trj_nvt: undefined,
+      thermo_freq: undefined,
       slurm_partition: getDefaultPartition(),
       slurm_nodes: 1,
       slurm_ntasks: 8,
       slurm_cpus_per_task: 8,
       slurm_time: 7200,
+      // QC计算选项 - 多选模式
+      qc_enabled: false,
+      qc_functionals: ['B3LYP'],
+      qc_basis_sets: ['6-31++g(d,p)'],
+      qc_solvent_models: ['pcm'],
+      qc_solvents: ['Water'],
     });
     setModalVisible(true);
   };
@@ -310,27 +347,39 @@ export default function Jobs() {
       const values = await form.validateFields();
       const data: MDJobCreate = {
         system_id: values.electrolyte_id,
-        nsteps_npt: values.nsteps_npt,
-        nsteps_nvt: values.nsteps_nvt,
+        job_name: values.job_name || undefined,
+        accuracy_level: values.accuracy_level || 'standard',
+        nsteps_npt: values.nsteps_npt || undefined,
+        nsteps_nvt: values.nsteps_nvt || undefined,
         timestep: values.timestep,
+        temperature: values.temperature,
+        pressure: values.pressure,
+        freq_trj_npt: values.freq_trj_npt || undefined,
+        freq_trj_nvt: values.freq_trj_nvt || undefined,
+        thermo_freq: values.thermo_freq || undefined,
         // Slurm 资源配置
-        slurm_partition: values.slurm_partition,
-        slurm_nodes: values.slurm_nodes,
-        slurm_ntasks: values.slurm_ntasks,
-        slurm_cpus_per_task: values.slurm_cpus_per_task,
-        slurm_time: values.slurm_time,
+        slurm_partition: values.slurm_partition || 'cpu',
+        slurm_nodes: values.slurm_nodes || 1,
+        slurm_ntasks: values.slurm_ntasks || 8,
+        slurm_cpus_per_task: values.slurm_cpus_per_task || 8,
+        slurm_time: values.slurm_time || 7200,
       };
-      // QC计算选项
+      // QC计算选项 - 支持多选
       if (values.qc_enabled) {
         data.qc_options = {
           enabled: true,
-          accuracy_level: values.qc_accuracy_level || 'standard',
-          basis_set: values.qc_basis_set || '6-31++g(d,p)',
-          functional: values.qc_functional || 'B3LYP',
-          solvent_model: values.qc_solvent_model || 'pcm',
-          solvent_name: values.qc_solvent_name || 'water',
-          use_recommended_params: values.qc_use_recommended_params !== false,
-        };
+          // 使用复数形式的数组字段（后端已支持）
+          functionals: values.qc_functionals || ['B3LYP'],
+          basis_sets: values.qc_basis_sets || ['6-31++g(d,p)'],
+          solvent_models: values.qc_solvent_models || ['pcm'],
+          solvents: values.qc_solvents || ['Water'],
+          molecules: [], // 将由后端从电解质配方中提取
+          // 兼容旧版字段（取第一个值）
+          functional: values.qc_functionals?.[0] || 'B3LYP',
+          basis_set: values.qc_basis_sets?.[0] || '6-31++g(d,p)',
+          solvent_model: values.qc_solvent_models?.[0] || 'pcm',
+          solvent_name: values.qc_solvents?.[0] || 'Water',
+        } as any;
       }
       await createMDJob(data);
       message.success('任务创建成功');
@@ -736,34 +785,161 @@ export default function Jobs() {
             </Select>
           </Form.Item>
 
-          <Divider orientation="left">模拟参数</Divider>
-
           <Form.Item
-            name="nsteps_npt"
-            label="NPT 步数"
-            rules={[{ required: true, message: '请输入 NPT 步数' }]}
-            tooltip="等压等温系综的模拟步数"
+            label="自定义名称（可选）"
+            name="job_name"
+            tooltip="可选的自定义名称后缀，将添加到自动生成的任务名称后面"
           >
-            <InputNumber min={1000} max={10000000} step={1000} style={{ width: '100%' }} />
+            <Input placeholder="留空或输入自定义名称后缀（如：高温测试）" allowClear />
           </Form.Item>
 
-          <Form.Item
-            name="nsteps_nvt"
-            label="NVT 步数"
-            rules={[{ required: true, message: '请输入 NVT 步数' }]}
-            tooltip="等容等温系综的模拟步数"
-          >
-            <InputNumber min={1000} max={10000000} step={1000} style={{ width: '100%' }} />
+          <Divider orientation="left">精度等级</Divider>
+
+          <Form.Item name="accuracy_level">
+            <AccuracyLevelSelector
+              value={selectedAccuracyLevel}
+              onChange={(value) => {
+                setSelectedAccuracyLevel(value);
+                form.setFieldsValue({ accuracy_level: value });
+
+                // 如果切换到自定义模式，自动填充参考值（标准模式的参数）
+                if (value === 'custom' && accuracyDefaults?.custom) {
+                  const customDefaults = accuracyDefaults.custom;
+                  form.setFieldsValue({
+                    nsteps_npt: customDefaults.nsteps_npt,
+                    nsteps_nvt: customDefaults.nsteps_nvt,
+                    timestep: customDefaults.timestep,
+                    temperature: customDefaults.temperature,
+                    pressure: customDefaults.pressure,
+                    freq_trj_npt: customDefaults.freq_trj_npt,
+                    freq_trj_nvt: customDefaults.freq_trj_nvt,
+                    thermo_freq: customDefaults.thermo_freq,
+                  });
+                } else {
+                  // 切换到其他模式时，清空这些字段，让后端使用默认值
+                  form.setFieldsValue({
+                    nsteps_npt: undefined,
+                    nsteps_nvt: undefined,
+                    timestep: undefined,
+                    temperature: undefined,
+                    pressure: undefined,
+                    freq_trj_npt: undefined,
+                    freq_trj_nvt: undefined,
+                    thermo_freq: undefined,
+                  });
+                }
+              }}
+            />
           </Form.Item>
 
-          <Form.Item
-            name="timestep"
-            label="时间步长 (fs)"
-            rules={[{ required: true, message: '请输入时间步长' }]}
-            tooltip="分子动力学模拟的时间步长，单位为飞秒"
-          >
-            <InputNumber min={0.1} max={10} step={0.1} style={{ width: '100%' }} />
-          </Form.Item>
+          {selectedAccuracyLevel !== 'custom' && accuracyDefaults && (
+            <Alert
+              message="提示"
+              description="选择精度等级后，系统会自动设置模拟参数。如果需要自定义参数，请选择「自定义」模式。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          )}
+
+          {selectedAccuracyLevel === 'custom' && (
+            <>
+              <Alert
+                message="自定义模式"
+                description="您选择了自定义模式。下方已自动填充标准模式的参数作为参考，您可以根据需要修改。"
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+
+              <Divider orientation="left">模拟参数设置（必填）</Divider>
+
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="nsteps_npt"
+                    label="NPT 步数"
+                    rules={[{ required: true, message: '请输入 NPT 步数' }]}
+                    tooltip="等压等温系综的模拟步数"
+                  >
+                    <InputNumber min={1000} max={100000000} step={100000} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="nsteps_nvt"
+                    label="NVT 步数"
+                    rules={[{ required: true, message: '请输入 NVT 步数' }]}
+                    tooltip="等容等温系综的模拟步数"
+                  >
+                    <InputNumber min={1000} max={100000000} step={100000} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item
+                    name="timestep"
+                    label="时间步长 (fs)"
+                    rules={[{ required: true, message: '请输入时间步长' }]}
+                  >
+                    <InputNumber min={0.1} max={10} step={0.1} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="temperature"
+                    label="温度 (K)"
+                    rules={[{ required: true, message: '请输入温度' }]}
+                  >
+                    <InputNumber min={200} max={500} step={1} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="pressure"
+                    label="压力 (atm)"
+                    rules={[{ required: true, message: '请输入压力' }]}
+                  >
+                    <InputNumber min={0.1} max={100} step={0.1} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Divider orientation="left">输出频率设置</Divider>
+
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item
+                    name="freq_trj_npt"
+                    label="NPT 轨迹输出频率"
+                    rules={[{ required: true, message: '请输入频率' }]}
+                  >
+                    <InputNumber min={100} max={10000000} step={100} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="freq_trj_nvt"
+                    label="NVT 轨迹输出频率"
+                    rules={[{ required: true, message: '请输入频率' }]}
+                  >
+                    <InputNumber min={100} max={10000000} step={100} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="thermo_freq"
+                    label="热力学输出频率"
+                    rules={[{ required: true, message: '请输入频率' }]}
+                  >
+                    <InputNumber min={100} max={10000000} step={100} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </>
+          )}
 
           {/* QC量子化学计算选项 - 放在资源配置前面 */}
           <Divider orientation="left">
@@ -801,336 +977,233 @@ export default function Jobs() {
 
           <Form.Item noStyle shouldUpdate={(prevValues, currentValues) =>
             prevValues.qc_enabled !== currentValues.qc_enabled ||
-            prevValues.qc_accuracy_level !== currentValues.qc_accuracy_level ||
-            prevValues.qc_solvent_model !== currentValues.qc_solvent_model ||
-            prevValues.qc_solvent_name !== currentValues.qc_solvent_name ||
-            prevValues.qc_use_recommended_params !== currentValues.qc_use_recommended_params ||
-            prevValues.electrolyte_id !== currentValues.electrolyte_id
+            prevValues.electrolyte_id !== currentValues.electrolyte_id ||
+            prevValues.qc_functionals !== currentValues.qc_functionals ||
+            prevValues.qc_basis_sets !== currentValues.qc_basis_sets ||
+            prevValues.qc_solvent_models !== currentValues.qc_solvent_models ||
+            prevValues.qc_solvents !== currentValues.qc_solvents
           }>
             {({ getFieldValue }) => {
               const qcEnabled = getFieldValue('qc_enabled');
               if (!qcEnabled) return null;
 
-              const accuracyLevel = getFieldValue('qc_accuracy_level') || 'standard';
-              const solventModel = getFieldValue('qc_solvent_model') || 'pcm';
-              const useRecommendedParams = getFieldValue('qc_use_recommended_params') !== false;
               const electrolyteId = getFieldValue('electrolyte_id');
               const selectedElectrolyte = electrolytes.find(e => e.id === electrolyteId);
 
-              // 根据精度等级获取默认参数
-              const getDefaultParams = (level: string) => {
-                switch (level) {
-                  case 'fast': return { basis_set: 'STO-3G', functional: 'HF' };
-                  case 'standard': return { basis_set: '6-31G(d)', functional: 'B3LYP' };
-                  case 'accurate': return { basis_set: '6-311++G(d,p)', functional: 'B3LYP' };
-                  default: return { basis_set: getFieldValue('qc_basis_set') || '6-31++G(d,p)', functional: getFieldValue('qc_functional') || 'B3LYP' };
-                }
-              };
-
-              // 根据分子类型获取推荐参数
-              const getRecommendedParamsForMolecule = (molType: string, baseParams: { basis_set: string; functional: string }) => {
-                if (!useRecommendedParams) {
-                  return { ...baseParams, solvent_model: solventModel, reason: '' };
-                }
-
-                let params = { ...baseParams, solvent_model: solventModel, reason: '' };
-
-                if (molType === 'anion') {
-                  // 阴离子需要弥散函数
-                  if (!params.basis_set.includes('+')) {
-                    params.basis_set = accuracyLevel === 'accurate' ? '6-311++G(d,p)' : '6-31++G(d,p)';
-                  }
-                  params.reason = '阴离子：使用弥散函数(++)描述扩展电子密度';
-                  if (params.solvent_model === 'gas') {
-                    params.solvent_model = 'pcm';
-                    params.reason += '，使用PCM溶剂模型稳定电子结构';
-                  }
-                } else if (molType === 'cation') {
-                  params.reason = '阳离子：使用极化函数描述紧凑电子结构';
-                  if (params.solvent_model === 'gas') {
-                    params.solvent_model = 'pcm';
-                    params.reason += '，使用PCM溶剂模型';
-                  }
-                } else {
-                  params.reason = '中性分子：使用标准参数';
-                }
-
-                return params;
-              };
-
-              const baseParams = getDefaultParams(accuracyLevel);
-
-              // 提取所有分子
-              const allMolecules: { name: string; smiles: string; type: string; params: any }[] = [];
+              // 收集将要计算的分子列表
+              const moleculesToCalc: Array<{name: string, smiles: string, type: string, charge: number}> = [];
               if (selectedElectrolyte) {
-                selectedElectrolyte.solvents?.forEach((s: any) => {
-                  const params = getRecommendedParamsForMolecule('solvent', baseParams);
-                  allMolecules.push({ name: s.name, smiles: s.smiles, type: 'solvent', params });
+                // 溶剂分子
+                selectedElectrolyte.solvents?.forEach((sol: any) => {
+                  if (sol.smiles && !moleculesToCalc.find(m => m.smiles === sol.smiles)) {
+                    moleculesToCalc.push({ name: sol.name, smiles: sol.smiles, type: 'solvent', charge: 0 });
+                  }
                 });
-                selectedElectrolyte.cations?.forEach((c: any) => {
-                  const params = getRecommendedParamsForMolecule('cation', baseParams);
-                  allMolecules.push({ name: c.name, smiles: c.smiles, type: 'cation', params });
+                // 阳离子
+                selectedElectrolyte.cations?.forEach((cat: any) => {
+                  if (cat.smiles && !moleculesToCalc.find(m => m.smiles === cat.smiles)) {
+                    moleculesToCalc.push({ name: cat.name, smiles: cat.smiles, type: 'cation', charge: 1 });
+                  }
                 });
-                selectedElectrolyte.anions?.forEach((a: any) => {
-                  const params = getRecommendedParamsForMolecule('anion', baseParams);
-                  allMolecules.push({ name: a.name, smiles: a.smiles, type: 'anion', params });
+                // 阴离子
+                selectedElectrolyte.anions?.forEach((an: any) => {
+                  if (an.smiles && !moleculesToCalc.find(m => m.smiles === an.smiles)) {
+                    moleculesToCalc.push({ name: an.name, smiles: an.smiles, type: 'anion', charge: -1 });
+                  }
                 });
               }
 
               return (
                 <Card size="small" style={{ marginBottom: 16 }}>
-                  {/* 精度等级选择 */}
-                  <Form.Item
-                    name="qc_accuracy_level"
-                    label="精度等级"
-                    initialValue="standard"
-                    style={{ marginBottom: 12 }}
-                  >
-                    <Select>
-                      <Select.Option value="fast">
-                        <Space>
-                          <Tag color="green">快速</Tag>
-                          <Text type="secondary">HF/STO-3G (~5分钟)</Text>
-                        </Space>
-                      </Select.Option>
-                      <Select.Option value="standard">
-                        <Space>
-                          <Tag color="blue">标准</Tag>
-                          <Text type="secondary">B3LYP/6-31G(d) (~30分钟)</Text>
-                        </Space>
-                      </Select.Option>
-                      <Select.Option value="accurate">
-                        <Space>
-                          <Tag color="orange">精确</Tag>
-                          <Text type="secondary">B3LYP/6-311++G(d,p) (~2小时)</Text>
-                        </Space>
-                      </Select.Option>
-                      <Select.Option value="custom">
-                        <Space>
-                          <Tag color="purple">自定义</Tag>
-                          <Text type="secondary">自定义泛函和基组</Text>
-                        </Space>
-                      </Select.Option>
-                    </Select>
-                  </Form.Item>
-
-                  {/* 自定义泛函和基组 - 仅在自定义模式下显示 */}
-                  {accuracyLevel === 'custom' && (
-                    <Row gutter={16} style={{ marginBottom: 12 }}>
-                      <Col span={12}>
-                        <Form.Item
-                          name="qc_basis_set"
-                          label="基组"
-                          initialValue="6-31++g(d,p)"
-                          style={{ marginBottom: 0 }}
-                          tooltip="阴离子建议使用带弥散函数(++)的基组"
-                        >
-                          <Select>
-                            <Select.OptGroup label="标准基组">
-                              <Select.Option value="6-31g(d)">6-31G(d) - 几何优化推荐</Select.Option>
-                              <Select.Option value="6-31g(d,p)">6-31G(d,p) - 含氢体系</Select.Option>
-                            </Select.OptGroup>
-                            <Select.OptGroup label="带弥散函数 (阴离子推荐)">
-                              <Select.Option value="6-31++g(d,p)">6-31++G(d,p) - 阴离子/弱相互作用</Select.Option>
-                              <Select.Option value="6-311++g(d,p)">6-311++G(d,p) - 高精度</Select.Option>
-                            </Select.OptGroup>
-                            <Select.OptGroup label="Def2系列">
-                              <Select.Option value="Def2SVP">Def2-SVP - 平衡精度效率</Select.Option>
-                              <Select.Option value="Def2TZVP">Def2-TZVP - 高精度</Select.Option>
-                            </Select.OptGroup>
-                          </Select>
-                        </Form.Item>
-                      </Col>
-                      <Col span={12}>
-                        <Form.Item
-                          name="qc_functional"
-                          label="泛函"
-                          initialValue="B3LYP"
-                          style={{ marginBottom: 0 }}
-                        >
-                          <Select>
-                            <Select.OptGroup label="杂化泛函 (推荐)">
-                              <Select.Option value="B3LYP">B3LYP - 常用</Select.Option>
-                              <Select.Option value="PBE0">PBE0 - 无经验参数</Select.Option>
-                            </Select.OptGroup>
-                            <Select.OptGroup label="Minnesota泛函">
-                              <Select.Option value="M062X">M06-2X - 主族化学</Select.Option>
-                            </Select.OptGroup>
-                            <Select.OptGroup label="色散校正">
-                              <Select.Option value="wB97XD">ωB97X-D - 弱相互作用</Select.Option>
-                            </Select.OptGroup>
-                          </Select>
-                        </Form.Item>
-                      </Col>
-                    </Row>
-                  )}
-
-                  {/* 溶剂环境设置 */}
-                  <Row gutter={16} style={{ marginBottom: 12 }}>
+                  <Row gutter={16}>
                     <Col span={12}>
                       <Form.Item
-                        name="qc_solvent_model"
+                        name="qc_functionals"
+                        label="泛函"
+                        initialValue={['B3LYP']}
+                        style={{ marginBottom: 8 }}
+                        tooltip="可选择多个泛函进行对比计算"
+                      >
+                        <Select mode="multiple" placeholder="选择泛函（可多选）">
+                          <Select.Option value="B3LYP">B3LYP (混合泛函)</Select.Option>
+                          <Select.Option value="M062X">M06-2X (Minnesota泛函)</Select.Option>
+                          <Select.Option value="wB97XD">ωB97X-D (长程校正)</Select.Option>
+                          <Select.Option value="PBE0">PBE0 (混合GGA)</Select.Option>
+                          <Select.Option value="CAM-B3LYP">CAM-B3LYP (长程校正)</Select.Option>
+                        </Select>
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item
+                        name="qc_basis_sets"
+                        label="基组"
+                        initialValue={['6-31++g(d,p)']}
+                        style={{ marginBottom: 8 }}
+                        tooltip="可选择多个基组进行对比计算"
+                      >
+                        <Select mode="multiple" placeholder="选择基组（可多选）">
+                          <Select.Option value="6-31g(d,p)">6-31G(d,p) (标准)</Select.Option>
+                          <Select.Option value="6-31++g(d,p)">6-31++G(d,p) (含弥散)</Select.Option>
+                          <Select.Option value="6-311g(d,p)">6-311G(d,p) (三重劈裂)</Select.Option>
+                          <Select.Option value="6-311++g(d,p)">6-311++G(d,p) (三重劈裂+弥散)</Select.Option>
+                          <Select.Option value="Def2TZVP">Def2-TZVP (高精度)</Select.Option>
+                        </Select>
+                      </Form.Item>
+                    </Col>
+                  </Row>
+
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item
+                        name="qc_solvent_models"
                         label="溶剂环境"
-                        initialValue="pcm"
-                        style={{ marginBottom: 0 }}
+                        initialValue={['pcm']}
+                        style={{ marginBottom: 8 }}
                         tooltip={
                           <div>
                             <p><strong>气相 (Gas)</strong>: 真空环境，无溶剂效应</p>
                             <p><strong>PCM</strong>: 极化连续介质模型，使用介电常数描述溶剂</p>
                             <p><strong>SMD</strong>: 溶剂密度模型，更精确但计算量更大</p>
-                            <p>离子在气相中可能不稳定，建议使用PCM/SMD</p>
+                            <p>可多选进行对比计算</p>
                           </div>
                         }
                       >
-                        <Select>
+                        <Select mode="multiple" placeholder="选择溶剂环境（可多选）">
                           <Select.Option value="gas">气相 (Gas Phase) - 无溶剂效应</Select.Option>
-                          <Select.Option value="pcm">PCM - 极化连续介质模型 (推荐)</Select.Option>
-                          <Select.Option value="smd">SMD - 溶剂密度模型 (更精确)</Select.Option>
+                          <Select.Option value="pcm">PCM - 极化连续介质模型</Select.Option>
+                          <Select.Option value="smd">SMD - 溶剂密度模型（更精确）</Select.Option>
                         </Select>
                       </Form.Item>
                     </Col>
                     <Col span={12}>
-                      {(solventModel === 'pcm' || solventModel === 'smd') && (
-                        <Form.Item
-                          name="qc_solvent_name"
-                          label="隐式溶剂"
-                          initialValue="Water"
-                          style={{ marginBottom: 0 }}
-                          tooltip={
-                            <div>
-                              <p><strong>选择原则</strong>：选择介电常数(ε)接近您电解液的溶剂</p>
-                              <p>• 水系电解液 → Water (ε=78.4)</p>
-                              <p>• 高浓电解液 → Acetone (ε=20.5)</p>
-                              <p>• DMC/EMC体系 → Chloroform (ε≈4.7)</p>
-                            </div>
-                          }
-                        >
-                          <Select showSearch optionFilterProp="children">
-                            <Select.OptGroup label="📌 水系电解液 (ε>50)">
-                              <Select.Option value="Water">水 (Water) ε=78.4</Select.Option>
-                            </Select.OptGroup>
-                            <Select.OptGroup label="📌 高介电常数 (ε=40-90)">
-                              <Select.Option value="DiMethylSulfoxide">DMSO ε=46.8 (离子液体参考)</Select.Option>
-                              <Select.Option value="1,2-EthaneDiol">乙二醇 ε=40.2</Select.Option>
-                            </Select.OptGroup>
-                            <Select.OptGroup label="📌 中等介电常数 (ε=15-40)">
-                              <Select.Option value="Acetonitrile">乙腈 ε=35.7</Select.Option>
-                              <Select.Option value="Methanol">甲醇 ε=32.6</Select.Option>
-                              <Select.Option value="Ethanol">乙醇 ε=24.9</Select.Option>
-                              <Select.Option value="Acetone">丙酮 ε=20.5 (高浓电解液)</Select.Option>
-                            </Select.OptGroup>
-                            <Select.OptGroup label="📌 低介电常数 (ε<15) - DMC/EMC/DEC体系">
-                              <Select.Option value="DiChloroEthane">二氯乙烷 ε=10.1</Select.Option>
-                              <Select.Option value="Dichloromethane">二氯甲烷 ε=8.9</Select.Option>
-                              <Select.Option value="TetraHydroFuran">四氢呋喃 (THF) ε=7.4</Select.Option>
-                              <Select.Option value="Chloroform">氯仿 ε=4.7 (线性碳酸酯参考)</Select.Option>
-                              <Select.Option value="DiethylEther">乙醚 ε=4.2</Select.Option>
-                            </Select.OptGroup>
-                            <Select.OptGroup label="自定义">
-                              <Select.Option value="custom">自定义溶剂参数...</Select.Option>
-                            </Select.OptGroup>
-                          </Select>
-                        </Form.Item>
-                      )}
+                      <Form.Item
+                        name="qc_solvents"
+                        label="隐式溶剂"
+                        initialValue={['Water']}
+                        style={{ marginBottom: 8 }}
+                        tooltip={
+                          <div>
+                            <p><strong>选择原则</strong>：选择介电常数(ε)接近您电解液的溶剂</p>
+                            <hr style={{ margin: '4px 0', borderColor: 'rgba(255,255,255,0.3)' }} />
+                            <p>• <strong>水系电解液</strong>: 选择 Water (ε=78.4)</p>
+                            <p>• <strong>高浓电解液</strong>: 选择 Acetone (ε=20.5)</p>
+                            <p>• <strong>EC基电解液</strong>: 选择 Water 或 PC (ε≈65-90)</p>
+                            <p>• <strong>DMC/EMC/DEC电解液</strong>: 选择 Chloroform (ε≈3-5)</p>
+                            <p>• <strong>离子液体</strong>: 选择 DMSO (ε=46.8)</p>
+                          </div>
+                        }
+                      >
+                        <Select mode="multiple" placeholder="选择隐式溶剂（可多选）" showSearch>
+                          <Select.OptGroup label="📌 水系电解液 (ε>50)">
+                            <Select.Option value="Water">水 (Water) ε=78.4</Select.Option>
+                          </Select.OptGroup>
+                          <Select.OptGroup label="📌 高介电常数碳酸酯 (ε=40-90)">
+                            <Select.Option value="DiMethylSulfoxide">DMSO ε=46.8 (离子液体参考)</Select.Option>
+                            <Select.Option value="1,2-EthaneDiol">乙二醇 ε=40.2</Select.Option>
+                          </Select.OptGroup>
+                          <Select.OptGroup label="📌 中等介电常数 (ε=15-40)">
+                            <Select.Option value="Acetonitrile">乙腈 ε=35.7</Select.Option>
+                            <Select.Option value="Methanol">甲醇 ε=32.6</Select.Option>
+                            <Select.Option value="Ethanol">乙醇 ε=24.9</Select.Option>
+                            <Select.Option value="Acetone">丙酮 ε=20.5 (高浓电解液)</Select.Option>
+                            <Select.Option value="1-Propanol">正丙醇 ε=20.5</Select.Option>
+                          </Select.OptGroup>
+                          <Select.OptGroup label="📌 低介电常数 (ε<15) - DMC/EMC/DEC体系">
+                            <Select.Option value="DiChloroEthane">二氯乙烷 ε=10.1</Select.Option>
+                            <Select.Option value="Dichloromethane">二氯甲烷 ε=8.9</Select.Option>
+                            <Select.Option value="TetraHydroFuran">四氢呋喃 (THF) ε=7.4</Select.Option>
+                            <Select.Option value="Chloroform">氯仿 ε=4.7 (线性碳酸酯参考)</Select.Option>
+                            <Select.Option value="DiethylEther">乙醚 ε=4.2</Select.Option>
+                            <Select.Option value="CarbonTetraChloride">四氯化碳 ε=2.2</Select.Option>
+                            <Select.Option value="Toluene">甲苯 ε=2.4</Select.Option>
+                            <Select.Option value="Benzene">苯 ε=2.3</Select.Option>
+                          </Select.OptGroup>
+                        </Select>
+                      </Form.Item>
                     </Col>
                   </Row>
 
-                  {/* 自定义溶剂参数输入 */}
-                  {(solventModel === 'pcm' || solventModel === 'smd') && getFieldValue('qc_solvent_name') === 'custom' && (
-                    <Row gutter={16} style={{ marginBottom: 12 }}>
-                      <Col span={8}>
-                        <Form.Item
-                          name="qc_custom_solvent_eps"
-                          label="介电常数 ε"
-                          rules={[{ required: true, message: '请输入介电常数' }]}
-                          style={{ marginBottom: 0 }}
-                          tooltip="溶剂的静态介电常数，如水为78.4"
-                        >
-                          <InputNumber min={1} max={200} step={0.1} style={{ width: '100%' }} placeholder="例如: 78.4" />
-                        </Form.Item>
-                      </Col>
-                      <Col span={8}>
-                        <Form.Item
-                          name="qc_custom_solvent_epsinf"
-                          label="光学介电常数 ε∞"
-                          style={{ marginBottom: 0 }}
-                          tooltip="溶剂的光学介电常数（可选），默认为1.0"
-                        >
-                          <InputNumber min={1} max={10} step={0.01} style={{ width: '100%' }} placeholder="例如: 1.78" />
-                        </Form.Item>
-                      </Col>
-                      <Col span={8}>
-                        <Form.Item
-                          name="qc_custom_solvent_name"
-                          label="溶剂名称"
-                          style={{ marginBottom: 0 }}
-                          tooltip="自定义溶剂的名称（用于记录）"
-                        >
-                          <Input placeholder="例如: 高浓LiTFSI" />
-                        </Form.Item>
-                      </Col>
-                    </Row>
-                  )}
-
-                  {/* 智能参数推荐 */}
-                  <Form.Item
-                    name="qc_use_recommended_params"
-                    valuePropName="checked"
-                    initialValue={true}
+                  {/* 溶剂选择提示 */}
+                  <Alert
+                    type="info"
+                    showIcon
                     style={{ marginBottom: 12 }}
-                  >
-                    <Checkbox>
-                      <Space>
-                        <Text>智能参数推荐</Text>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          (自动为阴离子添加弥散函数，为离子选择合适的溶剂模型)
-                        </Text>
-                      </Space>
-                    </Checkbox>
-                  </Form.Item>
+                    message={
+                      <Text style={{ fontSize: 12 }}>
+                        <strong>隐式溶剂选择提示：</strong>选择介电常数(ε)接近您电解液的溶剂。
+                        例如：EC体系选Water(ε≈78)，DMC/EMC体系选Chloroform(ε≈4.7)，高浓电解液选Acetone(ε≈20)。
+                      </Text>
+                    }
+                  />
 
-                  {/* 分子参数详情 */}
-                  {allMolecules.length > 0 && (
-                    <Alert
-                      type="info"
-                      showIcon
-                      message={`将对 ${allMolecules.length} 个分子进行QC计算`}
-                      description={
-                        <div style={{ marginTop: 8 }}>
-                          {allMolecules.map((mol, idx) => (
-                            <div key={idx} style={{
-                              padding: '8px 12px',
-                              marginBottom: 8,
-                              background: '#fafafa',
-                              borderRadius: 6,
-                              border: '1px solid #f0f0f0'
-                            }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                <Space>
-                                  <Text strong>{mol.name}</Text>
-                                  <Tag color={mol.type === 'solvent' ? 'blue' : mol.type === 'cation' ? 'green' : 'orange'}>
-                                    {mol.type === 'solvent' ? '溶剂' : mol.type === 'cation' ? '阳离子' : '阴离子'}
-                                  </Tag>
-                                </Space>
-                              </div>
-                              <div style={{ fontSize: 12, color: '#666' }}>
-                                <Space split={<span style={{ color: '#d9d9d9' }}>|</span>}>
-                                  <span>泛函: <Text code>{mol.params.functional}</Text></span>
-                                  <span>基组: <Text code>{mol.params.basis_set}</Text></span>
-                                  <span>溶剂: <Text code>{mol.params.solvent_model === 'gas' ? '气相' : mol.params.solvent_model.toUpperCase()}</Text></span>
-                                </Space>
-                              </div>
-                              {mol.params.reason && (
-                                <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-                                  💡 {mol.params.reason}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
+                  {/* 显示将要计算的分子列表和任务数量 */}
+                  <Form.Item noStyle shouldUpdate={(prevValues, currentValues) =>
+                    prevValues.qc_functionals !== currentValues.qc_functionals ||
+                    prevValues.qc_basis_sets !== currentValues.qc_basis_sets ||
+                    prevValues.qc_solvent_models !== currentValues.qc_solvent_models ||
+                    prevValues.qc_solvents !== currentValues.qc_solvents
+                  }>
+                    {({ getFieldValue: getFieldValueInner }) => {
+                      const functionals = getFieldValueInner('qc_functionals') || ['B3LYP'];
+                      const basisSets = getFieldValueInner('qc_basis_sets') || ['6-31++g(d,p)'];
+                      const solventModels = getFieldValueInner('qc_solvent_models') || ['pcm'];
+                      const solvents = getFieldValueInner('qc_solvents') || ['Water'];
+
+                      // 计算溶剂组合数
+                      let solventCombinations = 0;
+                      if (solventModels.includes('gas')) {
+                        solventCombinations += 1;
                       }
-                    />
-                  )}
+                      const nonGasModels = solventModels.filter((m: string) => m !== 'gas');
+                      solventCombinations += nonGasModels.length * solvents.length;
+
+                      const totalJobs = moleculesToCalc.length * functionals.length * basisSets.length * solventCombinations;
+
+                      return moleculesToCalc.length > 0 ? (
+                        <Alert
+                          type="info"
+                          showIcon
+                          style={{ marginTop: 8 }}
+                          message={
+                            <div>
+                              <strong>将创建 {totalJobs} 个 QC 任务</strong>
+                              <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+                                ({moleculesToCalc.length} 分子 × {functionals.length} 泛函 × {basisSets.length} 基组 × {solventCombinations} 溶剂组合)
+                              </Text>
+                            </div>
+                          }
+                          description={
+                            <div style={{ marginTop: 8 }}>
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong style={{ fontSize: 12 }}>分子列表：</Text>
+                              </div>
+                              {moleculesToCalc.map((mol, index) => (
+                                <div key={index} style={{
+                                  display: 'inline-block',
+                                  marginRight: 8,
+                                  marginBottom: 4,
+                                  padding: '2px 8px',
+                                  background: mol.type === 'solvent' ? '#f6ffed' :
+                                             mol.type === 'cation' ? '#fff2f0' : '#f0f5ff',
+                                  borderRadius: 4,
+                                  border: `1px solid ${mol.type === 'solvent' ? '#b7eb8f' :
+                                                      mol.type === 'cation' ? '#ffccc7' : '#adc6ff'}`
+                                }}>
+                                  <Text style={{ fontSize: 12 }}>
+                                    {mol.name}
+                                    <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                                      ({mol.type === 'solvent' ? '溶剂' :
+                                        mol.type === 'cation' ? '阳离子' : '阴离子'})
+                                    </Text>
+                                  </Text>
+                                </div>
+                              ))}
+                            </div>
+                          }
+                        />
+                      ) : null;
+                    }}
+                  </Form.Item>
                 </Card>
               );
             }}
