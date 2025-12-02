@@ -1881,87 +1881,123 @@ echo "QC calculation completed"
         return None, None
 
     def _parse_lammps_log(self, log_file: Path) -> Dict[str, Any]:
-        """从 LAMMPS 日志文件解析能量、温度、密度、盒子尺寸等"""
-        import re
+        """从 LAMMPS 日志文件解析能量、温度、密度、盒子尺寸等
 
+        使用与后端API相同的解析逻辑，确保准确提取初始和最终状态
+        """
         result = {}
 
         try:
-            content = log_file.read_text()
+            with open(log_file, 'r') as f:
+                lines = f.readlines()
 
-            # 查找所有 thermo 输出块
-            # 通常格式: Step Temp Press E_total KinEng PotEng Density Lx Ly Lz ...
-            thermo_pattern = r'Step\s+Temp\s+.*?\n([\s\S]*?)Loop time'
-            matches = re.findall(thermo_pattern, content)
-
-            if matches:
-                # 尝试解析第一个 thermo 块的第一行（初始状态）
-                first_thermo = matches[0].strip().split('\n')
-                if first_thermo:
-                    first_line = first_thermo[0].split()
-                    if len(first_line) >= 7:
-                        try:
-                            density_val = float(first_line[6])
-                            if 0.5 < density_val < 3.0:  # 合理的密度范围
-                                result['initial_density'] = density_val
-                            # 尝试提取盒子尺寸 (Lx, Ly, Lz 通常在第 7, 8, 9 列)
-                            if len(first_line) >= 10:
-                                result['initial_box_x'] = float(first_line[7])
-                                result['initial_box_y'] = float(first_line[8])
-                                result['initial_box_z'] = float(first_line[9])
-                        except (ValueError, IndexError):
-                            pass
-
-                # 解析最后一个 thermo 块的最后一行（最终状态）
-                last_thermo = matches[-1].strip().split('\n')
-                if last_thermo:
-                    last_line = last_thermo[-1].split()
-                    if len(last_line) >= 6:
-                        try:
-                            result['final_temperature'] = float(last_line[1])
-                            result['final_pressure'] = float(last_line[2])
-                            result['total_energy'] = float(last_line[3])
-                            result['kinetic_energy'] = float(last_line[4])
-                            result['potential_energy'] = float(last_line[5])
-                            if len(last_line) >= 7:
-                                density_val = float(last_line[6])
-                                if 0.5 < density_val < 3.0:
-                                    result['final_density'] = density_val
-                            # 提取最终盒子尺寸
-                            if len(last_line) >= 10:
-                                result['box_x'] = float(last_line[7])
-                                result['box_y'] = float(last_line[8])
-                                result['box_z'] = float(last_line[9])
-                        except (ValueError, IndexError):
-                            pass
-
-            # 如果没有从 thermo 找到盒子尺寸，尝试从其他地方解析
-            if 'box_x' not in result:
-                # 尝试匹配 "orthogonal box = ..." 或类似模式
-                box_pattern = r'orthogonal box = \(([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\) to \(([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\)'
-                box_matches = re.findall(box_pattern, content)
-                if box_matches:
-                    # 使用最后一个匹配（最终状态）
-                    last_box = box_matches[-1]
+            # 辅助函数：从一行数据中提取密度和盒子尺寸
+            def parse_thermo_line(parts):
+                density_val = None
+                box_vals = []
+                for val in parts:
                     try:
-                        result['box_x'] = float(last_box[3]) - float(last_box[0])
-                        result['box_y'] = float(last_box[4]) - float(last_box[1])
-                        result['box_z'] = float(last_box[5]) - float(last_box[2])
+                        fval = float(val)
+                        # 密度通常在 0.5 - 3.0 g/cm³ 之间
+                        if 0.5 < fval < 3.0 and density_val is None:
+                            density_val = fval
+                        # 盒子尺寸通常在 15-100 Å 之间
+                        elif 15 < fval < 100:
+                            if len(box_vals) < 3:
+                                box_vals.append(fval)
+                    except ValueError:
+                        continue
+                return density_val, box_vals
+
+            # 判断是否为有效数据行
+            skip_prefixes = ('Loop', 'Performance', 'MPI', 'Section',
+                             'Total', 'Pair', 'Bond', 'Kspace', 'Neigh',
+                             'Comm', 'Output', 'Modify', 'Other', 'Nlocal',
+                             'Nghost', 'Neighs', 'Ave', 'Neighbor', 'Dangerous',
+                             'System', 'PPPM', 'WARNING', 'G vector', 'grid',
+                             'stencil', 'estimated', 'using', '3d grid', '-',
+                             'Step', 'Per', 'run', 'thermo', 'fix', 'dump',
+                             'Memory', 'units', 'atom', 'pair', 'kspace',
+                             'Lattice', 'Created', 'Reading', 'Replicate')
+
+            def is_data_line(line_str):
+                line_str = line_str.strip()
+                if not line_str:
+                    return False
+                if line_str.startswith(skip_prefixes):
+                    return False
+                parts = line_str.split()
+                if len(parts) < 8:
+                    return False
+                try:
+                    int(parts[0])  # 第一列应该是时间步（整数）
+                    return True
+                except ValueError:
+                    return False
+
+            # 找到第一个 "Step" 表头行的位置（能量最小化阶段的开始，即真正的初始状态）
+            first_step_header_idx = -1
+            for i, line in enumerate(lines):
+                if line.strip().startswith('Step'):
+                    first_step_header_idx = i
+                    break  # 只找第一个
+
+            # 找到第一个 "Step" 表头之后的第一行数据（真正的初始状态）
+            first_data_line = None
+            if first_step_header_idx >= 0:
+                for line in lines[first_step_header_idx + 1:]:
+                    if is_data_line(line):
+                        first_data_line = line.strip().split()
+                        break
+
+            # 找到最后一行数据（最终状态）
+            last_data_line = None
+            for line in reversed(lines[-300:]):
+                if is_data_line(line):
+                    last_data_line = line.strip().split()
+                    break
+
+            # 解析初始状态
+            if first_data_line:
+                init_density, init_box = parse_thermo_line(first_data_line)
+                if init_density:
+                    result['initial_density'] = round(init_density, 4)
+                if len(init_box) >= 3:
+                    result['initial_box_x'] = round(init_box[0], 2)
+                    result['initial_box_y'] = round(init_box[1], 2)
+                    result['initial_box_z'] = round(init_box[2], 2)
+
+            # 解析最终状态
+            if last_data_line:
+                final_density, final_box = parse_thermo_line(last_data_line)
+                if final_density:
+                    result['final_density'] = round(final_density, 4)
+                if len(final_box) >= 3:
+                    result['box_x'] = round(final_box[0], 2)
+                    result['box_y'] = round(final_box[1], 2)
+                    result['box_z'] = round(final_box[2], 2)
+
+                # 提取能量和温度、压力（从最后一行）
+                if len(last_data_line) >= 6:
+                    try:
+                        result['final_temperature'] = float(last_data_line[1])
+                        result['final_pressure'] = float(last_data_line[2])
+                        result['total_energy'] = float(last_data_line[3])
+                        result['kinetic_energy'] = float(last_data_line[4])
+                        result['potential_energy'] = float(last_data_line[5])
                     except (ValueError, IndexError):
                         pass
 
-                    # 初始盒子
-                    if len(box_matches) > 1:
-                        first_box = box_matches[0]
-                        try:
-                            result['initial_box_x'] = float(first_box[3]) - float(first_box[0])
-                            result['initial_box_y'] = float(first_box[4]) - float(first_box[1])
-                            result['initial_box_z'] = float(first_box[5]) - float(first_box[2])
-                        except (ValueError, IndexError):
-                            pass
+            self.logger.info(
+                f"解析LAMMPS日志: "
+                f"初始密度={result.get('initial_density')}, "
+                f"最终密度={result.get('final_density')}, "
+                f"初始盒子={result.get('initial_box_x')}×{result.get('initial_box_y')}×{result.get('initial_box_z')}, "
+                f"最终盒子={result.get('box_x')}×{result.get('box_y')}×{result.get('box_z')}"
+            )
 
         except Exception as e:
-            self.logger.error(f"解析 LAMMPS 日志失败: {e}")
+            self.logger.error(f"解析 LAMMPS 日志失败: {e}", exc_info=True)
 
         return result
 
