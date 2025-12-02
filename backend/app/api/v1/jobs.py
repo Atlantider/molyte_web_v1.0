@@ -698,22 +698,34 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
     solvent_models = getattr(qc_options, 'solvent_models', None) or [getattr(qc_options, 'solvent_model', 'pcm')]
     solvents = getattr(qc_options, 'solvents', None) or [getattr(qc_options, 'solvent_name', 'Water')]
 
+    # 获取自定义溶剂参数（如果有）
+    custom_solvent_params = getattr(qc_options, 'custom_solvent', None)
+    if custom_solvent_params and hasattr(custom_solvent_params, 'model_dump'):
+        custom_solvent_params = custom_solvent_params.model_dump()
+    elif custom_solvent_params and hasattr(custom_solvent_params, 'dict'):
+        custom_solvent_params = custom_solvent_params.dict()
+
     # 构建溶剂组合
     # 如果溶剂模型包含 gas，则只使用 gas（不需要溶剂）
+    # 如果溶剂模型包含 custom，使用自定义溶剂参数
     # 否则，为每个溶剂模型和溶剂的组合创建任务
     solvent_combinations = []
     if 'gas' in solvent_models:
-        solvent_combinations.append(('gas', None))
+        solvent_combinations.append(('gas', None, None))
 
-    # 为非气相模型创建溶剂组合
-    non_gas_models = [m for m in solvent_models if m != 'gas']
-    for model in non_gas_models:
+    # 如果包含 custom，添加自定义溶剂组合
+    if 'custom' in solvent_models and custom_solvent_params:
+        solvent_combinations.append(('custom', 'Custom', custom_solvent_params))
+
+    # 为 PCM/SMD 模型创建溶剂组合
+    standard_models = [m for m in solvent_models if m not in ['gas', 'custom']]
+    for model in standard_models:
         for solvent in solvents:
-            solvent_combinations.append((model, solvent))
+            solvent_combinations.append((model, solvent, None))
 
     # 如果没有任何组合，使用默认值
     if not solvent_combinations:
-        solvent_combinations = [('pcm', 'Water')]
+        solvent_combinations = [('pcm', 'Water', None)]
 
     # 计算总任务数：分子 × 泛函 × 基组 × 溶剂组合
     total_jobs = len(molecules_to_calc) * len(functionals) * len(basis_sets) * len(solvent_combinations)
@@ -727,7 +739,7 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
         # 遍历所有参数组合（笛卡尔积）
         for functional in functionals:
             for basis_set in basis_sets:
-                for solvent_model, solvent_name in solvent_combinations:
+                for solvent_model, solvent_name, custom_params in solvent_combinations:
                     # 根据分子类型获取推荐参数
                     params = _get_recommended_qc_params(mol_type, qc_options)
 
@@ -739,7 +751,15 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
 
                     # 构建溶剂配置
                     solvent_config = None
-                    if params["solvent_model"] != "gas":
+                    if params["solvent_model"] == "custom" and custom_params:
+                        # 自定义溶剂配置
+                        solvent_config = {
+                            "model": "custom",
+                            "solvent_name": "Custom",
+                            **custom_params  # 包含 eps, eps_inf 等参数
+                        }
+                    elif params["solvent_model"] != "gas":
+                        # 标准 PCM/SMD 溶剂配置
                         solvent_config = {
                             "model": params["solvent_model"],
                             "solvent_name": params["solvent_name"]
@@ -753,6 +773,9 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
                     name_parts = [clean_mol_name, functional, clean_basis]
                     if solvent_model == 'gas':
                         name_parts.append('gas')
+                    elif solvent_model == 'custom':
+                        eps_val = custom_params.get('eps', 0) if custom_params else 0
+                        name_parts.extend(['custom', f'eps{eps_val}'])
                     else:
                         clean_solvent = solvent_name.replace(' ', '-').replace('/', '-')
                         name_parts.extend([solvent_model, clean_solvent])

@@ -371,6 +371,12 @@ class PollingWorker:
             slurm_cpus = config.get('slurm_cpus', 16)
             slurm_time = config.get('slurm_time', 7200)
 
+            # 获取溶剂配置（支持自定义溶剂参数）
+            solvent_config = config.get('solvent_config', {})
+            if solvent_config:
+                solvent_model = solvent_config.get('model', solvent_model)
+                solvent_name = solvent_config.get('solvent_name', solvent_name)
+
             # 3. 创建工作目录 - 使用独立的QC工作目录
             qc_work_base = Path(self.config['local']['qc_work_base_path'])
             work_dir = qc_work_base / f"QC-{job_id}-{molecule_name}"
@@ -385,7 +391,8 @@ class PollingWorker:
                 gjf_path, molecule_name, smiles,
                 charge, spin_multiplicity,
                 functional, basis_set,
-                solvent_model, solvent_name
+                solvent_model, solvent_name,
+                solvent_config
             )
             self.logger.info(f"生成 Gaussian 输入文件: {gjf_path}")
 
@@ -439,7 +446,8 @@ class PollingWorker:
     def _generate_gaussian_input(self, gjf_path: Path, molecule_name: str, smiles: str,
                                    charge: int, spin_multiplicity: int,
                                    functional: str, basis_set: str,
-                                   solvent_model: str, solvent_name: str):
+                                   solvent_model: str, solvent_name: str,
+                                   solvent_config: Dict = None):
         """生成 Gaussian 输入文件"""
         # 构建计算关键字
         keywords = f"opt freq {functional}/{basis_set}"
@@ -448,12 +456,36 @@ class PollingWorker:
         if functional.upper() not in ["HF"]:
             keywords += " em=gd3bj"
 
+        # 自定义溶剂参数块（用于custom模型）
+        custom_solvent_params = ""
+
         # 添加溶剂效应
         if solvent_model and solvent_model.lower() != 'gas':
             if solvent_model.lower() == 'pcm':
                 keywords += f" scrf=(pcm,solvent={solvent_name or 'water'})"
             elif solvent_model.lower() == 'smd':
                 keywords += f" scrf=(smd,solvent={solvent_name or 'water'})"
+            elif solvent_model.lower() == 'custom':
+                # 自定义溶剂参数 - 使用 SMD 模型的 Generic 溶剂
+                keywords += " scrf=(smd,solvent=generic,read)"
+                if solvent_config:
+                    eps = solvent_config.get('eps', 78.3553)
+                    eps_inf = solvent_config.get('eps_inf', 1.778)
+                    hbond_acidity = solvent_config.get('hbond_acidity', 0.82)
+                    hbond_basicity = solvent_config.get('hbond_basicity', 0.35)
+                    surface_tension = solvent_config.get('surface_tension', 71.99)
+                    carbon_aromaticity = solvent_config.get('carbon_aromaticity', 0.0)
+                    halogenicity = solvent_config.get('halogenicity', 0.0)
+
+                    custom_solvent_params = (
+                        f"eps={eps}\n"
+                        f"epsinf={eps_inf}\n"
+                        f"HBondAcidity={hbond_acidity}\n"
+                        f"HBondBasicity={hbond_basicity}\n"
+                        f"SurfaceTension={surface_tension}\n"
+                        f"AromaticCarbon={carbon_aromaticity}\n"
+                        f"Halogen={halogenicity}\n"
+                    )
 
         safe_name = self._sanitize_filename(molecule_name)
 
@@ -498,6 +530,11 @@ class PollingWorker:
             gjf_content += "! 请手动添加分子坐标或提供 PDB 文件\n"
 
         gjf_content += "\n"  # 空行结尾
+
+        # 添加自定义溶剂参数块（如果有的话）
+        if custom_solvent_params:
+            gjf_content += custom_solvent_params
+            gjf_content += "\n"  # 参数块后的空行
 
         with open(gjf_path, 'w') as f:
             f.write(gjf_content)

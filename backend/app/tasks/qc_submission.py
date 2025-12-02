@@ -199,34 +199,35 @@ def get_accuracy_params(job: QCJob) -> tuple:
         return "B3LYP", "6-31G(d)"
 
 
-def build_scrf_keyword(job: QCJob) -> str:
+def build_scrf_keyword(job: QCJob) -> tuple:
     """
     构建SCRF（溶剂效应）关键字
 
     Returns:
-        SCRF关键字字符串，如果是气相则返回空字符串
+        tuple: (SCRF关键字字符串, 自定义溶剂参数块字符串)
+               如果是气相则返回 ("", "")
     """
     config = job.config or {}
     solvent_config = config.get("solvent_config", {})
 
     if not solvent_config:
-        return ""
+        return "", ""
 
     solvent_model = solvent_config.get("model", "gas")
 
     if solvent_model == SolventModel.GAS.value or solvent_model == "gas":
-        return ""
+        return "", ""
 
     if solvent_model == SolventModel.PCM.value or solvent_model == "pcm":
         solvent_name = solvent_config.get("solvent_name", "Water")
-        return f"SCRF=(PCM,Solvent={solvent_name})"
+        return f"SCRF=(PCM,Solvent={solvent_name})", ""
 
     if solvent_model == SolventModel.SMD.value or solvent_model == "smd":
         solvent_name = solvent_config.get("solvent_name", "Water")
-        return f"SCRF=(SMD,Solvent={solvent_name})"
+        return f"SCRF=(SMD,Solvent={solvent_name})", ""
 
     if solvent_model == SolventModel.CUSTOM.value or solvent_model == "custom":
-        # 自定义溶剂参数
+        # 自定义溶剂参数 - 使用 SMD 模型的 Generic 溶剂
         eps = solvent_config.get("eps", 78.3553)
         eps_inf = solvent_config.get("eps_inf", 1.778)
         hbond_acidity = solvent_config.get("hbond_acidity", 0.82)
@@ -235,17 +236,24 @@ def build_scrf_keyword(job: QCJob) -> str:
         carbon_aromaticity = solvent_config.get("carbon_aromaticity", 0.0)
         halogenicity = solvent_config.get("halogenicity", 0.0)
 
-        # 构建自定义溶剂的SCRF关键字
-        return (
-            f"SCRF=(SMD,Solvent=Generic,Read) "
-            f"Eps={eps} EpsInf={eps_inf} "
-            f"HBondAcidity={hbond_acidity} HBondBasicity={hbond_basicity} "
-            f"SurfaceTensionAtInterface={surface_tension} "
-            f"CarbonAromaticity={carbon_aromaticity} "
-            f"ElectronegativeHalogenicity={halogenicity}"
+        # SCRF关键字指定使用SMD模型的Generic溶剂并读取参数
+        scrf_keyword = "SCRF=(SMD,Solvent=Generic,Read)"
+
+        # 自定义溶剂参数块（放在分子坐标后面）
+        # Gaussian格式：eps=xxx epsinf=xxx HBondAcidity=xxx HBondBasicity=xxx SurfaceTension=xxx AromaticCarbon=xxx Halogen=xxx
+        custom_params = (
+            f"eps={eps}\n"
+            f"epsinf={eps_inf}\n"
+            f"HBondAcidity={hbond_acidity}\n"
+            f"HBondBasicity={hbond_basicity}\n"
+            f"SurfaceTension={surface_tension}\n"
+            f"AromaticCarbon={carbon_aromaticity}\n"
+            f"Halogen={halogenicity}\n"
         )
 
-    return ""
+        return scrf_keyword, custom_params
+
+    return "", ""
 
 
 def sanitize_filename(name: str) -> str:
@@ -310,8 +318,8 @@ def generate_gaussian_input(job: QCJob, work_dir: Path, pdb_content: str = None)
     # 根据精度等级获取泛函和基组
     functional, basis_set = get_accuracy_params(job)
 
-    # 构建SCRF关键字
-    scrf_keyword = build_scrf_keyword(job)
+    # 构建SCRF关键字 (返回 tuple: (关键字, 自定义参数块))
+    scrf_keyword, custom_solvent_params = build_scrf_keyword(job)
 
     # 构建计算关键字行
     keywords = f"opt freq {functional}/{basis_set}"
@@ -398,12 +406,19 @@ def generate_gaussian_input(job: QCJob, work_dir: Path, pdb_content: str = None)
                                f"建议：1) 检查SMILES是否正确；2) 为特殊分子上传PDB文件；3) 联系管理员添加预定义坐标。\n"
                                f"错误详情: {str(e)}")
 
-    gjf_content += "\n\n"
+    gjf_content += "\n"
+
+    # 如果有自定义溶剂参数，添加参数块
+    if custom_solvent_params:
+        gjf_content += custom_solvent_params
+        gjf_content += "\n"
+
+    gjf_content += "\n"
 
     with open(gjf_path, 'w') as f:
         f.write(gjf_content)
 
-    logger.info(f"Generated Gaussian input with: functional={functional}, basis_set={basis_set}, scrf={scrf_keyword or 'none'}")
+    logger.info(f"Generated Gaussian input with: functional={functional}, basis_set={basis_set}, scrf={scrf_keyword or 'none'}, custom_solvent={bool(custom_solvent_params)}")
 
     # 返回文件路径和安全文件名
     return str(gjf_path), safe_name

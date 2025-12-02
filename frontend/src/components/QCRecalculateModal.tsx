@@ -62,6 +62,7 @@ export default function QCRecalculateModal({
     { value: 'gas', label: '气相 (Gas Phase)', description: '无溶剂效应' },
     { value: 'pcm', label: 'PCM', description: '极化连续介质模型' },
     { value: 'smd', label: 'SMD', description: '溶剂密度模型（更精确）' },
+    { value: 'custom', label: '自定义', description: '手动设置介电常数等参数' },
   ];
 
   // 常用溶剂 - 按介电常数分组
@@ -113,7 +114,20 @@ export default function QCRecalculateModal({
 
       // 构建溶剂配置
       let solventConfig = undefined;
-      if (values.solvent_model !== 'gas') {
+      if (values.solvent_model === 'custom') {
+        // 自定义溶剂参数
+        solventConfig = {
+          model: 'custom',
+          solvent_name: 'Custom',
+          eps: values.custom_eps,
+          eps_inf: values.custom_eps_inf,
+          hbond_acidity: values.custom_hbond_acidity,
+          hbond_basicity: values.custom_hbond_basicity,
+          surface_tension: values.custom_surface_tension,
+          carbon_aromaticity: values.custom_carbon_aromaticity,
+          halogenicity: values.custom_halogenicity,
+        };
+      } else if (values.solvent_model !== 'gas') {
         solventConfig = {
           model: values.solvent_model,
           solvent_name: values.solvent_name,
@@ -258,6 +272,7 @@ export default function QCRecalculateModal({
                       <p><strong>气相 (Gas)</strong>: 真空环境，无溶剂效应</p>
                       <p><strong>PCM</strong>: 极化连续介质模型</p>
                       <p><strong>SMD</strong>: 溶剂密度模型（更精确）</p>
+                      <p><strong>自定义</strong>: 手动设置介电常数等参数</p>
                     </div>
                   }
                 >
@@ -274,42 +289,85 @@ export default function QCRecalculateModal({
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item
-                  name="solvent_name"
-                  label="隐式溶剂"
-                  tooltip={
-                    <div>
-                      <p><strong>选择原则</strong>：选择介电常数(ε)接近您电解液的溶剂</p>
-                      <p>• 水系电解液 → Water (ε=78.4)</p>
-                      <p>• 高浓电解液 → Acetone (ε=20.5)</p>
-                      <p>• DMC/EMC体系 → Chloroform (ε≈4.7)</p>
-                    </div>
-                  }
-                  rules={[
-                    {
-                      required: selectedSolventModel !== 'gas',
-                      message: '请选择溶剂',
-                    },
-                  ]}
-                >
-                  <Select
-                    placeholder="选择隐式溶剂"
-                    disabled={selectedSolventModel === 'gas'}
-                    showSearch
+                {(selectedSolventModel === 'pcm' || selectedSolventModel === 'smd') && (
+                  <Form.Item
+                    name="solvent_name"
+                    label="隐式溶剂"
+                    tooltip={
+                      <div>
+                        <p><strong>选择原则</strong>：选择介电常数(ε)接近您电解液的溶剂</p>
+                        <p>• 水系电解液 → Water (ε=78.4)</p>
+                        <p>• 高浓电解液 → Acetone (ε=20.5)</p>
+                        <p>• DMC/EMC体系 → Chloroform (ε≈4.7)</p>
+                      </div>
+                    }
+                    rules={[{ required: true, message: '请选择溶剂' }]}
                   >
-                    {solventGroups.map(group => (
-                      <Select.OptGroup key={group.label} label={group.label}>
-                        {group.options.map(s => (
-                          <Select.Option key={s.value} value={s.value}>
-                            {s.label}
-                          </Select.Option>
-                        ))}
-                      </Select.OptGroup>
-                    ))}
-                  </Select>
-                </Form.Item>
+                    <Select placeholder="选择隐式溶剂" showSearch>
+                      {solventGroups.map(group => (
+                        <Select.OptGroup key={group.label} label={group.label}>
+                          {group.options.map(s => (
+                            <Select.Option key={s.value} value={s.value}>
+                              {s.label}
+                            </Select.Option>
+                          ))}
+                        </Select.OptGroup>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                )}
               </Col>
             </Row>
+
+            {/* 自定义溶剂参数 */}
+            {selectedSolventModel === 'custom' && (
+              <Card size="small" style={{ marginBottom: 16, background: '#fffbe6', borderColor: '#ffe58f' }}>
+                <div style={{ marginBottom: 8, fontWeight: 500 }}>🔧 自定义溶剂参数（SMD模型）</div>
+                <Row gutter={[8, 8]}>
+                  <Col span={8}>
+                    <Form.Item name="custom_eps" label="介电常数 ε" style={{ marginBottom: 4 }} rules={[{ required: true, message: '请输入介电常数' }]}>
+                      <InputNumber style={{ width: '100%' }} placeholder="如: 89.6 (EC)" step={0.1} min={1} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name="custom_eps_inf" label="光学介电常数 n²" style={{ marginBottom: 4 }}>
+                      <InputNumber style={{ width: '100%' }} placeholder="如: 2.2" step={0.01} min={1} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name="custom_hbond_acidity" label="氢键酸度 α" style={{ marginBottom: 4 }}>
+                      <InputNumber style={{ width: '100%' }} placeholder="0.00-1.00" min={0} max={1} step={0.01} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name="custom_hbond_basicity" label="氢键碱度 β" style={{ marginBottom: 4 }}>
+                      <InputNumber style={{ width: '100%' }} placeholder="0.00-1.00" min={0} max={1} step={0.01} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name="custom_surface_tension" label="表面张力 γ" style={{ marginBottom: 4 }}>
+                      <InputNumber style={{ width: '100%' }} placeholder="cal/mol·Å²" step={0.1} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name="custom_carbon_aromaticity" label="芳香碳比例 φ" style={{ marginBottom: 4 }}>
+                      <InputNumber style={{ width: '100%' }} placeholder="0.00-1.00" min={0} max={1} step={0.01} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name="custom_halogenicity" label="卤素比例 ψ" style={{ marginBottom: 4 }}>
+                      <InputNumber style={{ width: '100%' }} placeholder="0.00-1.00" min={0} max={1} step={0.01} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginTop: 8 }}
+                  message={<span style={{ fontSize: 11 }}>常用电解液介电常数：EC(ε≈89.6), PC(ε≈64.9), DMC(ε≈3.1), EMC(ε≈2.9), DEC(ε≈2.8)</span>}
+                />
+              </Card>
+            )}
 
             <Card
               size="small"

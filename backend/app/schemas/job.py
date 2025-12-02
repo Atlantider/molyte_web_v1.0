@@ -82,6 +82,17 @@ class QCJobsStatusSummary(BaseModel):
         return (self.queued + self.running + self.postprocessing) > 0
 
 
+class CustomSolventParams(BaseModel):
+    """自定义溶剂参数（SMD模型需要）"""
+    eps: Optional[float] = Field(default=None, description="介电常数 ε")
+    eps_inf: Optional[float] = Field(default=None, description="光学介电常数 n²")
+    hbond_acidity: Optional[float] = Field(default=None, description="Abraham氢键酸度 α")
+    hbond_basicity: Optional[float] = Field(default=None, description="Abraham氢键碱度 β")
+    surface_tension: Optional[float] = Field(default=None, description="表面张力 γ (cal/mol·Å²)")
+    carbon_aromaticity: Optional[float] = Field(default=None, description="芳香碳原子比例 φ")
+    halogenicity: Optional[float] = Field(default=None, description="卤素原子比例 ψ")
+
+
 class MDJobQCOptions(BaseModel):
     """QC计算选项（用于MD任务附带QC计算）"""
     enabled: bool = False
@@ -91,7 +102,7 @@ class MDJobQCOptions(BaseModel):
     # 计算参数（支持多选）
     basis_sets: Optional[List[str]] = ["6-31++g(d,p)"]  # 基组列表
     functionals: Optional[List[str]] = ["B3LYP"]  # 泛函列表
-    solvent_models: Optional[List[str]] = ["pcm"]  # 溶剂模型列表: gas, pcm, smd
+    solvent_models: Optional[List[str]] = ["pcm"]  # 溶剂模型列表: gas, pcm, smd, custom
     solvents: Optional[List[str]] = ["Water"]  # 溶剂列表
 
     # 兼容旧版单选字段
@@ -99,6 +110,9 @@ class MDJobQCOptions(BaseModel):
     functional: Optional[str] = None  # 单个泛函（兼容旧版）
     solvent_model: Optional[str] = None  # 单个溶剂模型（兼容旧版）
     solvent_name: Optional[str] = None  # 单个溶剂名称（兼容旧版）
+
+    # 自定义溶剂参数（当 solvent_models 包含 'custom' 时使用）
+    custom_solvent: Optional[CustomSolventParams] = None
 
     # 高级选项
     use_recommended_params: bool = True  # 是否对不同分子类型使用推荐参数

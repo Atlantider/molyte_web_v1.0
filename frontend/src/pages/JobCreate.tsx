@@ -248,6 +248,8 @@ export default function JobCreate() {
         basis_set: values.qc_basis_sets?.[0] || '6-31++g(d,p)',
         solvent_model: values.qc_solvent_models?.[0] || 'pcm',
         solvent_name: values.qc_solvents?.[0] || 'Water',
+        // 自定义溶剂参数（如果选择了custom溶剂模型）
+        custom_solvent: values.custom_solvent || undefined,
       } as any;
     }
 
@@ -766,6 +768,7 @@ export default function JobCreate() {
                             <p><strong>气相 (Gas)</strong>: 真空环境，无溶剂效应</p>
                             <p><strong>PCM</strong>: 极化连续介质模型，使用介电常数描述溶剂</p>
                             <p><strong>SMD</strong>: 溶剂密度模型，更精确但计算量更大</p>
+                            <p><strong>自定义</strong>: 手动设置介电常数等参数</p>
                             <p>可多选进行对比计算</p>
                           </div>
                         }
@@ -774,56 +777,132 @@ export default function JobCreate() {
                           <Select.Option value="gas">气相 (Gas Phase) - 无溶剂效应</Select.Option>
                           <Select.Option value="pcm">PCM - 极化连续介质模型</Select.Option>
                           <Select.Option value="smd">SMD - 溶剂密度模型（更精确）</Select.Option>
+                          <Select.Option value="custom">自定义溶剂参数</Select.Option>
                         </Select>
                       </Form.Item>
                     </Col>
                     <Col span={12}>
-                      <Form.Item
-                        name="qc_solvents"
-                        label="隐式溶剂"
-                        initialValue={['Water']}
-                        style={{ marginBottom: 8 }}
-                        tooltip={
-                          <div>
-                            <p><strong>选择原则</strong>：选择介电常数(ε)接近您电解液的溶剂</p>
-                            <hr style={{ margin: '4px 0', borderColor: 'rgba(255,255,255,0.3)' }} />
-                            <p>• <strong>水系电解液</strong>: 选择 Water (ε=78.4)</p>
-                            <p>• <strong>高浓电解液</strong>: 选择 Acetone (ε=20.5)</p>
-                            <p>• <strong>EC基电解液</strong>: 选择 Water 或 PC (ε≈65-90)</p>
-                            <p>• <strong>DMC/EMC/DEC电解液</strong>: 选择 Chloroform (ε≈3-5)</p>
-                            <p>• <strong>离子液体</strong>: 选择 DMSO (ε=46.8)</p>
-                          </div>
-                        }
-                      >
-                        <Select mode="multiple" placeholder="选择隐式溶剂（可多选）" showSearch>
-                          <Select.OptGroup label="📌 水系电解液 (ε>50)">
-                            <Select.Option value="Water">水 (Water) ε=78.4</Select.Option>
-                          </Select.OptGroup>
-                          <Select.OptGroup label="📌 高介电常数碳酸酯 (ε=40-90)">
-                            <Select.Option value="DiMethylSulfoxide">DMSO ε=46.8 (离子液体参考)</Select.Option>
-                            <Select.Option value="1,2-EthaneDiol">乙二醇 ε=40.2</Select.Option>
-                          </Select.OptGroup>
-                          <Select.OptGroup label="📌 中等介电常数 (ε=15-40)">
-                            <Select.Option value="Acetonitrile">乙腈 ε=35.7</Select.Option>
-                            <Select.Option value="Methanol">甲醇 ε=32.6</Select.Option>
-                            <Select.Option value="Ethanol">乙醇 ε=24.9</Select.Option>
-                            <Select.Option value="Acetone">丙酮 ε=20.5 (高浓电解液)</Select.Option>
-                            <Select.Option value="1-Propanol">正丙醇 ε=20.5</Select.Option>
-                          </Select.OptGroup>
-                          <Select.OptGroup label="📌 低介电常数 (ε<15) - DMC/EMC/DEC体系">
-                            <Select.Option value="DiChloroEthane">二氯乙烷 ε=10.1</Select.Option>
-                            <Select.Option value="Dichloromethane">二氯甲烷 ε=8.9</Select.Option>
-                            <Select.Option value="TetraHydroFuran">四氢呋喃 (THF) ε=7.4</Select.Option>
-                            <Select.Option value="Chloroform">氯仿 ε=4.7 (线性碳酸酯参考)</Select.Option>
-                            <Select.Option value="DiethylEther">乙醚 ε=4.2</Select.Option>
-                            <Select.Option value="CarbonTetraChloride">四氯化碳 ε=2.2</Select.Option>
-                            <Select.Option value="Toluene">甲苯 ε=2.4</Select.Option>
-                            <Select.Option value="Benzene">苯 ε=2.3</Select.Option>
-                          </Select.OptGroup>
-                        </Select>
+                      <Form.Item noStyle shouldUpdate={(prevValues, currentValues) =>
+                        prevValues.qc_solvent_models !== currentValues.qc_solvent_models
+                      }>
+                        {({ getFieldValue }) => {
+                          const solventModels = getFieldValue('qc_solvent_models') || [];
+                          const hasNonCustomModel = solventModels.some((m: string) => m !== 'gas' && m !== 'custom');
+                          if (!hasNonCustomModel) return null;
+                          return (
+                            <Form.Item
+                              name="qc_solvents"
+                              label="隐式溶剂"
+                              initialValue={['Water']}
+                              style={{ marginBottom: 8 }}
+                              tooltip={
+                                <div>
+                                  <p><strong>选择原则</strong>：选择介电常数(ε)接近您电解液的溶剂</p>
+                                  <hr style={{ margin: '4px 0', borderColor: 'rgba(255,255,255,0.3)' }} />
+                                  <p>• <strong>水系电解液</strong>: 选择 Water (ε=78.4)</p>
+                                  <p>• <strong>高浓电解液</strong>: 选择 Acetone (ε=20.5)</p>
+                                  <p>• <strong>EC基电解液</strong>: 选择 Water 或 PC (ε≈65-90)</p>
+                                  <p>• <strong>DMC/EMC/DEC电解液</strong>: 选择 Chloroform (ε≈3-5)</p>
+                                  <p>• <strong>离子液体</strong>: 选择 DMSO (ε=46.8)</p>
+                                </div>
+                              }
+                            >
+                              <Select mode="multiple" placeholder="选择隐式溶剂（可多选）" showSearch>
+                                <Select.OptGroup label="📌 水系电解液 (ε>50)">
+                                  <Select.Option value="Water">水 (Water) ε=78.4</Select.Option>
+                                </Select.OptGroup>
+                                <Select.OptGroup label="📌 高介电常数碳酸酯 (ε=40-90)">
+                                  <Select.Option value="DiMethylSulfoxide">DMSO ε=46.8 (离子液体参考)</Select.Option>
+                                  <Select.Option value="1,2-EthaneDiol">乙二醇 ε=40.2</Select.Option>
+                                </Select.OptGroup>
+                                <Select.OptGroup label="📌 中等介电常数 (ε=15-40)">
+                                  <Select.Option value="Acetonitrile">乙腈 ε=35.7</Select.Option>
+                                  <Select.Option value="Methanol">甲醇 ε=32.6</Select.Option>
+                                  <Select.Option value="Ethanol">乙醇 ε=24.9</Select.Option>
+                                  <Select.Option value="Acetone">丙酮 ε=20.5 (高浓电解液)</Select.Option>
+                                  <Select.Option value="1-Propanol">正丙醇 ε=20.5</Select.Option>
+                                </Select.OptGroup>
+                                <Select.OptGroup label="📌 低介电常数 (ε<15) - DMC/EMC/DEC体系">
+                                  <Select.Option value="DiChloroEthane">二氯乙烷 ε=10.1</Select.Option>
+                                  <Select.Option value="Dichloromethane">二氯甲烷 ε=8.9</Select.Option>
+                                  <Select.Option value="TetraHydroFuran">四氢呋喃 (THF) ε=7.4</Select.Option>
+                                  <Select.Option value="Chloroform">氯仿 ε=4.7 (线性碳酸酯参考)</Select.Option>
+                                  <Select.Option value="DiethylEther">乙醚 ε=4.2</Select.Option>
+                                  <Select.Option value="CarbonTetraChloride">四氯化碳 ε=2.2</Select.Option>
+                                  <Select.Option value="Toluene">甲苯 ε=2.4</Select.Option>
+                                  <Select.Option value="Benzene">苯 ε=2.3</Select.Option>
+                                </Select.OptGroup>
+                              </Select>
+                            </Form.Item>
+                          );
+                        }}
                       </Form.Item>
                     </Col>
                   </Row>
+
+                  {/* 自定义溶剂参数输入 */}
+                  <Form.Item noStyle shouldUpdate={(prevValues, currentValues) =>
+                    prevValues.qc_solvent_models !== currentValues.qc_solvent_models
+                  }>
+                    {({ getFieldValue }) => {
+                      const solventModels = getFieldValue('qc_solvent_models') || [];
+                      if (!solventModels.includes('custom')) return null;
+                      return (
+                        <Card size="small" style={{ marginBottom: 12, background: '#fffbe6', borderColor: '#ffe58f' }}>
+                          <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                            🔧 自定义溶剂参数（SMD模型）
+                          </Text>
+                          <Row gutter={[8, 8]}>
+                            <Col span={6}>
+                              <Form.Item name={['custom_solvent', 'eps']} label="介电常数 ε" style={{ marginBottom: 4 }} rules={[{ required: true, message: '请输入介电常数' }]}>
+                                <InputNumber style={{ width: '100%' }} placeholder="如: 89.6 (EC)" step={0.1} min={1} />
+                              </Form.Item>
+                            </Col>
+                            <Col span={6}>
+                              <Form.Item name={['custom_solvent', 'eps_inf']} label="光学介电常数 n²" style={{ marginBottom: 4 }}>
+                                <InputNumber style={{ width: '100%' }} placeholder="如: 2.2" step={0.01} min={1} />
+                              </Form.Item>
+                            </Col>
+                            <Col span={6}>
+                              <Form.Item name={['custom_solvent', 'hbond_acidity']} label="氢键酸度 α" style={{ marginBottom: 4 }}>
+                                <InputNumber style={{ width: '100%' }} placeholder="0.00-1.00" min={0} max={1} step={0.01} />
+                              </Form.Item>
+                            </Col>
+                            <Col span={6}>
+                              <Form.Item name={['custom_solvent', 'hbond_basicity']} label="氢键碱度 β" style={{ marginBottom: 4 }}>
+                                <InputNumber style={{ width: '100%' }} placeholder="0.00-1.00" min={0} max={1} step={0.01} />
+                              </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                              <Form.Item name={['custom_solvent', 'surface_tension']} label="表面张力 γ" style={{ marginBottom: 4 }}>
+                                <InputNumber style={{ width: '100%' }} placeholder="cal/mol·Å²" step={0.1} />
+                              </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                              <Form.Item name={['custom_solvent', 'carbon_aromaticity']} label="芳香碳比例 φ" style={{ marginBottom: 4 }}>
+                                <InputNumber style={{ width: '100%' }} placeholder="0.00-1.00" min={0} max={1} step={0.01} />
+                              </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                              <Form.Item name={['custom_solvent', 'halogenicity']} label="卤素比例 ψ" style={{ marginBottom: 4 }}>
+                                <InputNumber style={{ width: '100%' }} placeholder="0.00-1.00" min={0} max={1} step={0.01} />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                          <Alert
+                            type="info"
+                            showIcon
+                            style={{ marginTop: 8 }}
+                            message={
+                              <Text style={{ fontSize: 11 }}>
+                                常用电解液介电常数参考：EC(ε≈89.6), PC(ε≈64.9), DMC(ε≈3.1), EMC(ε≈2.9), DEC(ε≈2.8)
+                              </Text>
+                            }
+                          />
+                        </Card>
+                      );
+                    }}
+                  </Form.Item>
 
                   {/* 溶剂选择提示 */}
                   <Alert
@@ -832,8 +911,8 @@ export default function JobCreate() {
                     style={{ marginBottom: 12 }}
                     message={
                       <Text style={{ fontSize: 12 }}>
-                        <strong>隐式溶剂选择提示：</strong>选择介电常数(ε)接近您电解液的溶剂。
-                        例如：EC体系选Water(ε≈78)，DMC/EMC体系选Chloroform(ε≈4.7)，高浓电解液选Acetone(ε≈20)。
+                        <strong>隐式溶剂选择提示：</strong>选择介电常数(ε)接近您电解液的溶剂，或使用"自定义溶剂参数"输入精确值。
+                        例如：EC体系选Water(ε≈78)或自定义(ε=89.6)，DMC/EMC体系选Chloroform(ε≈4.7)或自定义。
                       </Text>
                     }
                   />
@@ -856,8 +935,11 @@ export default function JobCreate() {
                       if (solventModels.includes('gas')) {
                         solventCombinations += 1;
                       }
-                      const nonGasModels = solventModels.filter((m: string) => m !== 'gas');
-                      solventCombinations += nonGasModels.length * solvents.length;
+                      if (solventModels.includes('custom')) {
+                        solventCombinations += 1; // 自定义溶剂只有一个组合
+                      }
+                      const standardModels = solventModels.filter((m: string) => m !== 'gas' && m !== 'custom');
+                      solventCombinations += standardModels.length * solvents.length;
 
                       const totalJobs = moleculesToCalc.length * functionals.length * basisSets.length * solventCombinations;
 
