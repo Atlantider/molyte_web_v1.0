@@ -327,3 +327,63 @@ def record_job_view(
     db.commit()
 
     return {"message": "ok", "view_count": job.view_count}
+
+
+@router.get("/available-options")
+def get_available_search_options(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    获取数据管理页面的可用搜索选项（从数据库中实际数据提取）
+
+    返回当前用户已完成任务中使用过的：
+    - 阳离子列表
+    - 阴离子列表
+    - 溶剂列表
+    """
+    # 查询当前用户的已完成任务
+    completed_jobs = db.query(ElectrolyteSystem).join(
+        MDJob, ElectrolyteSystem.id == MDJob.system_id
+    ).filter(
+        MDJob.user_id == current_user.id,
+        MDJob.status == JobStatus.COMPLETED,
+        ElectrolyteSystem.is_deleted == False
+    ).all()
+
+    # 提取所有使用过的离子和溶剂
+    cations_set = set()
+    anions_set = set()
+    solvents_set = set()
+
+    for system in completed_jobs:
+        # 提取阳离子
+        if system.cations:
+            for cation in system.cations:
+                if isinstance(cation, dict) and 'name' in cation:
+                    cations_set.add(cation['name'])
+
+        # 提取阴离子
+        if system.anions:
+            for anion in system.anions:
+                if isinstance(anion, dict) and 'name' in anion:
+                    anions_set.add(anion['name'])
+
+        # 提取溶剂
+        if system.solvents:
+            for solvent in system.solvents:
+                if isinstance(solvent, dict) and 'name' in solvent:
+                    solvents_set.add(solvent['name'])
+
+    # 转换为排序列表
+    cations = sorted(list(cations_set))
+    anions = sorted(list(anions_set))
+    solvents = sorted(list(solvents_set))
+
+    logger.info(f"Available options for user {current_user.username}: {len(cations)} cations, {len(anions)} anions, {len(solvents)} solvents")
+
+    return {
+        "cations": cations,
+        "anions": anions,
+        "solvents": solvents
+    }

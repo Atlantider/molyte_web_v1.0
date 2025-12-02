@@ -30,7 +30,7 @@ import {
   FireOutlined,
   ExperimentOutlined,
 } from '@ant-design/icons';
-import { searchMyElectrolytes, ElectrolyteSearchResult } from '../api/research';
+import { searchMyElectrolytes, ElectrolyteSearchResult, getAvailableSearchOptions } from '../api/research';
 import { getQCJobs } from '../api/qc';
 import QCDataTab from '../components/QCDataTab';
 
@@ -54,9 +54,16 @@ export default function Research() {
   const [mdStats, setMdStats] = useState({ total: 0, completed: 0, public: 0 });
   const [qcStats, setQcStats] = useState({ total: 0, completed: 0, public: 0 });
 
-  // 加载统计数据
+  // 动态选项数据
+  const [cationOptions, setCationOptions] = useState<string[]>([]);
+  const [anionOptions, setAnionOptions] = useState<string[]>([]);
+  const [solventOptions, setSolventOptions] = useState<string[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+
+  // 加载统计数据和可用选项
   useEffect(() => {
     loadStats();
+    loadAvailableOptions();
   }, []);
 
   const loadStats = async () => {
@@ -83,17 +90,21 @@ export default function Research() {
     }
   };
 
-  // 常用的阳离子、阴离子、溶剂选项
-  const cationOptions = ['Li', 'Na', 'K', 'Mg', 'Ca', 'Zn'];
-  const anionOptions = ['FSI', 'TFSI', 'PF6', 'BF4', 'ClO4', 'DCA'];
-  const solventOptions = [
-    { label: 'EC (碳酸乙烯酯)', value: 'EC' },
-    { label: 'DMC (碳酸二甲酯)', value: 'DMC' },
-    { label: 'EMC (碳酸甲乙酯)', value: 'EMC' },
-    { label: 'DEC (碳酸二乙酯)', value: 'DEC' },
-    { label: 'PC (碳酸丙烯酯)', value: 'PC' },
-    { label: 'FEC (氟代碳酸乙烯酯)', value: 'FEC' },
-  ];
+  // 加载可用的搜索选项（从数据库中实际数据提取）
+  const loadAvailableOptions = async () => {
+    setOptionsLoading(true);
+    try {
+      const options = await getAvailableSearchOptions();
+      setCationOptions(options.cations);
+      setAnionOptions(options.anions);
+      setSolventOptions(options.solvents);
+    } catch (error) {
+      console.error('Failed to load available options:', error);
+      message.error('加载搜索选项失败');
+    } finally {
+      setOptionsLoading(false);
+    }
+  };
 
   // 搜索处理
   const handleSearch = async (values: any) => {
@@ -374,13 +385,14 @@ export default function Research() {
                           <Form.Item
                             label="阳离子"
                             name="cations"
-                            tooltip="可多选"
+                            tooltip="可多选，选项来自您已完成的任务"
                           >
                             <Select
                               mode="multiple"
-                              placeholder="选择阳离子"
+                              placeholder={optionsLoading ? "加载中..." : "选择阳离子"}
                               options={cationOptions.map(c => ({ label: c, value: c }))}
                               allowClear
+                              loading={optionsLoading}
                               style={{ borderRadius: 8 }}
                             />
                           </Form.Item>
@@ -390,13 +402,14 @@ export default function Research() {
                           <Form.Item
                             label="阴离子"
                             name="anions"
-                            tooltip="可多选"
+                            tooltip="可多选，选项来自您已完成的任务"
                           >
                             <Select
                               mode="multiple"
-                              placeholder="选择阴离子"
+                              placeholder={optionsLoading ? "加载中..." : "选择阴离子"}
                               options={anionOptions.map(a => ({ label: a, value: a }))}
                               allowClear
+                              loading={optionsLoading}
                             />
                           </Form.Item>
                         </Col>
@@ -405,13 +418,14 @@ export default function Research() {
                           <Form.Item
                             label="溶剂"
                             name="solvents"
-                            tooltip="按名称选择，可多选"
+                            tooltip="按名称选择，可多选，选项来自您已完成的任务"
                           >
                             <Select
                               mode="multiple"
-                              placeholder="选择溶剂"
-                              options={solventOptions}
+                              placeholder={optionsLoading ? "加载中..." : "选择溶剂"}
+                              options={solventOptions.map(s => ({ label: s, value: s }))}
                               allowClear
+                              loading={optionsLoading}
                             />
                           </Form.Item>
                         </Col>

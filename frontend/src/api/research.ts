@@ -98,3 +98,17 @@ export const searchMyElectrolytes = async (
   const response = await client.get(`/research/search/my?${queryParams.toString()}`);
   return response.data;
 };
+
+/**
+ * 获取可用的搜索选项（从数据库中实际数据提取）
+ */
+export interface AvailableOptions {
+  cations: string[];
+  anions: string[];
+  solvents: string[];
+}
+
+export const getAvailableSearchOptions = async (): Promise<AvailableOptions> => {
+  const response = await client.get('/research/available-options');
+  return response.data;
+};

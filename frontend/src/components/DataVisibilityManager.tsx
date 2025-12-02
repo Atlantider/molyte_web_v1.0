@@ -32,6 +32,7 @@ import {
   DownloadOutlined,
   SwapOutlined,
   ThunderboltOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import * as visibilityApi from '../api/visibility';
@@ -232,71 +233,108 @@ export default function DataVisibilityManager() {
   ];
 
   return (
-    <div className="data-visibility-manager">
+    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
       {/* 统计卡片 */}
       {stats && (
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col xs={12} sm={8} md={4}>
-            <Card size="small">
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Card
+              bordered={false}
+              style={{
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)'
+              }}
+            >
               <Statistic
-                title="公开数据"
+                title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>公开数据</span>}
                 value={stats.public}
-                suffix={`/ ${stats.total}`}
-                valueStyle={{ color: '#52c41a' }}
+                suffix={<span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 16 }}>/ {stats.total}</span>}
+                valueStyle={{ color: '#fff', fontSize: 28 }}
                 prefix={<EyeOutlined />}
               />
             </Card>
           </Col>
-          <Col xs={12} sm={8} md={5}>
-            <Card size="small">
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Card
+              bordered={false}
+              style={{
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                boxShadow: '0 4px 12px rgba(240, 147, 251, 0.3)'
+              }}
+            >
               <Statistic
-                title="延期公开"
+                title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>延期公开</span>}
                 value={stats.delayed}
-                valueStyle={{ color: '#faad14' }}
+                valueStyle={{ color: '#fff', fontSize: 28 }}
                 prefix={<ClockCircleOutlined />}
               />
             </Card>
           </Col>
-          <Col xs={12} sm={8} md={5}>
-            <Card size="small">
+          <Col xs={24} sm={12} md={8} lg={5}>
+            <Card
+              bordered={false}
+              style={{
+                borderRadius: 12,
+                background: stats.private_quota_used! >= stats.private_quota_limit!
+                  ? 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
+                  : 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
+                boxShadow: '0 4px 12px rgba(48, 207, 208, 0.3)'
+              }}
+            >
               <Statistic
-                title="私有配额"
+                title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>私有配额</span>}
                 value={stats.private_quota_used}
-                suffix={`/ ${stats.private_quota_limit}`}
-                valueStyle={{ color: stats.private_quota_used! >= stats.private_quota_limit! ? '#ff4d4f' : '#1890ff' }}
+                suffix={<span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 16 }}>/ {stats.private_quota_limit}</span>}
+                valueStyle={{ color: '#fff', fontSize: 28 }}
                 prefix={<LockOutlined />}
               />
             </Card>
           </Col>
-          <Col xs={12} sm={8} md={5}>
-            <Card size="small">
+          <Col xs={24} sm={12} md={8} lg={5}>
+            <Card
+              bordered={false}
+              style={{
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+                boxShadow: '0 4px 12px rgba(168, 237, 234, 0.3)'
+              }}
+            >
               <Statistic
-                title="贡献积分"
+                title={<span style={{ color: 'rgba(0,0,0,0.65)' }}>贡献积分</span>}
                 value={stats.contribution_points}
                 precision={1}
-                valueStyle={{ color: '#722ed1' }}
+                valueStyle={{ color: '#722ed1', fontSize: 28 }}
                 prefix={<TrophyOutlined />}
               />
               {(stats.contribution_points || 0) >= 10 && (
                 <Button
-                  type="link"
+                  type="primary"
                   size="small"
                   icon={<SwapOutlined />}
                   onClick={handleOpenExchange}
-                  style={{ padding: 0, marginTop: 4 }}
+                  style={{ marginTop: 8 }}
                 >
                   兑换核时
                 </Button>
               )}
             </Card>
           </Col>
-          <Col xs={12} sm={8} md={5}>
-            <Card size="small">
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <Card
+              bordered={false}
+              style={{
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+                boxShadow: '0 4px 12px rgba(17, 153, 142, 0.3)'
+              }}
+            >
               <Statistic
-                title="核时余额"
+                title={<span style={{ color: 'rgba(255,255,255,0.85)' }}>核时余额</span>}
                 value={stats.balance_cpu_hours}
                 precision={2}
-                valueStyle={{ color: '#1890ff' }}
+                valueStyle={{ color: '#fff', fontSize: 28 }}
                 prefix={<ThunderboltOutlined />}
                 suffix="核时"
               />
@@ -309,36 +347,81 @@ export default function DataVisibilityManager() {
       <Alert
         message="数据公开奖励规则"
         description={
-          <ul style={{ margin: 0, paddingLeft: 16 }}>
-            <li>将数据设为公开可获得 <strong>10 核时</strong> 奖励</li>
-            <li>数据被查看可获得 <strong>0.1 积分/次</strong>（每日上限 5 积分）</li>
-            <li>数据被下载可获得 <strong>1 积分/次</strong></li>
-            <li>积分可兑换核时：<strong>10 积分 = 1 核时</strong></li>
-            <li style={{ color: '#ff4d4f' }}>⚠️ 取消公开将扣除已领取的 10 核时奖励</li>
-          </ul>
+          <Row gutter={[16, 8]}>
+            <Col xs={24} sm={12} md={8}>
+              <Space>
+                <GiftOutlined style={{ color: '#52c41a' }} />
+                <span>公开数据：<strong>+10 核时</strong></span>
+              </Space>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Space>
+                <EyeOutlined style={{ color: '#1677ff' }} />
+                <span>被查看：<strong>+0.1 积分/次</strong></span>
+              </Space>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Space>
+                <DownloadOutlined style={{ color: '#722ed1' }} />
+                <span>被下载：<strong>+1 积分/次</strong></span>
+              </Space>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Space>
+                <SwapOutlined style={{ color: '#faad14' }} />
+                <span>积分兑换：<strong>10 积分 = 1 核时</strong></span>
+              </Space>
+            </Col>
+            <Col xs={24} sm={12} md={16}>
+              <Space>
+                <span style={{ color: '#ff4d4f' }}>⚠️</span>
+                <span style={{ color: '#ff4d4f' }}>取消公开将扣除已领取的 10 核时奖励</span>
+              </Space>
+            </Col>
+          </Row>
         }
         type="info"
         showIcon
-        style={{ marginBottom: 16 }}
+        style={{
+          marginBottom: 24,
+          borderRadius: 12,
+          border: 'none',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+        }}
       />
 
       {/* 筛选和表格 */}
       <Card
-        title="我的数据可见性"
-        extra={
-          <Select
-            placeholder="筛选可见性"
-            allowClear
-            style={{ width: 150 }}
-            value={filterVisibility}
-            onChange={setFilterVisibility}
-            options={[
-              { value: DataVisibility.PUBLIC, label: '公开' },
-              { value: DataVisibility.DELAYED, label: '延期公开' },
-              { value: DataVisibility.PRIVATE, label: '私有' },
-            ]}
-          />
+        title={
+          <Space>
+            <EyeOutlined style={{ color: '#1677ff' }} />
+            <span>我的数据可见性</span>
+          </Space>
         }
+        extra={
+          <Space>
+            <Select
+              placeholder="筛选可见性"
+              allowClear
+              style={{ width: 150 }}
+              value={filterVisibility}
+              onChange={setFilterVisibility}
+              options={[
+                { value: DataVisibility.PUBLIC, label: '公开' },
+                { value: DataVisibility.DELAYED, label: '延期公开' },
+                { value: DataVisibility.PRIVATE, label: '私有' },
+              ]}
+            />
+            <Button icon={<ReloadOutlined />} onClick={loadData}>
+              刷新
+            </Button>
+          </Space>
+        }
+        style={{
+          borderRadius: 12,
+          border: 'none',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+        }}
       >
         <Table
           columns={columns}
@@ -351,6 +434,7 @@ export default function DataVisibilityManager() {
             total,
             showSizeChanger: true,
             showTotal: (t) => `共 ${t} 条`,
+            pageSizeOptions: ['10', '20', '50', '100'],
             onChange: (p, ps) => {
               setPage(p);
               setPageSize(ps);

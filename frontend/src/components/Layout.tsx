@@ -31,18 +31,26 @@ export default function Layout() {
   const { user, logout } = useAuthStore();
   const [collapsed, setCollapsed] = useState(false);
 
-  // 根据当前路径确定选中的菜单项和打开的子菜单
+  // 根据当前路径确定选中的菜单项
   const getSelectedKey = () => {
     const path = location.pathname;
-    // 精确匹配，优先匹配更具体的路径
-    if (path.startsWith('/workspace/admin')) return '/workspace/admin';
-    if (path.startsWith('/workspace/data-visibility')) return '/workspace/data-visibility';
-    if (path.startsWith('/workspace/research')) return '/workspace/research';
+
+    // 系统管理子菜单 - 精确匹配子页面
+    if (path === '/workspace/admin/users') return '/workspace/admin/users';
+    if (path.startsWith('/workspace/admin/users/')) return '/workspace/admin/users';
+    if (path === '/workspace/admin/visibility') return '/workspace/admin/visibility';
+    if (path === '/workspace/admin/logs') return '/workspace/admin/logs';
+    if (path === '/workspace/admin' || path === '/workspace/admin/') return '/workspace/admin';
+
+    // 其他页面 - 优先匹配更具体的路径
     if (path.startsWith('/workspace/qc-jobs')) return '/workspace/qc-jobs';
     if (path.startsWith('/workspace/jobs')) return '/workspace/jobs';
     if (path.startsWith('/workspace/electrolytes')) return '/workspace/electrolytes';
     if (path.startsWith('/workspace/projects')) return '/workspace/projects';
+    if (path.startsWith('/workspace/research')) return '/workspace/research';
+    if (path.startsWith('/workspace/data-visibility')) return '/workspace/data-visibility';
     if (path.startsWith('/workspace/dashboard')) return '/workspace/dashboard';
+
     return '/workspace/dashboard';
   };
 
