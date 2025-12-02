@@ -269,7 +269,7 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
                 <Text>{job.config?.pressure || electrolyte.pressure}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="盒子尺寸 (Å)">
-                <Text>{electrolyte.box_size || '-'}</Text>
+                <Text>{electrolyte.box_size ? Number(electrolyte.box_size).toFixed(2) : '-'}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="阳离子" span={2}>
                 <Space size={[8, 8]} wrap>
@@ -454,7 +454,7 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
                     <Text>{job.config?.pressure || electrolyte.pressure || '-'}</Text>
                   </Descriptions.Item>
                   <Descriptions.Item label="初始盒子尺寸 (Å)">
-                    <Text>{electrolyte.box_size || '-'}</Text>
+                    <Text>{electrolyte.box_size ? Number(electrolyte.box_size).toFixed(2) : '-'}</Text>
                   </Descriptions.Item>
                 </Descriptions>
               </Col>

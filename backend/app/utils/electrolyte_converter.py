@@ -198,7 +198,8 @@ def convert_new_to_old_format(data: ElectrolyteCreateNew) -> Dict:
     logger.info(f"Total molecules: {total_molecules}")
 
     # Calculate box size (cubic root of volume for compatibility)
-    box_size = volume ** (1/3)
+    # Round to 2 decimal places to avoid floating point precision issues
+    box_size = round(volume ** (1/3), 2)
 
     # Generate description part of the name
     user_description = data.name if data.name and data.name.strip() else None
