@@ -1,0 +1,89 @@
+OAc {
+
+  write_once("In Init") {
+    atom_style full
+    units        real
+    pair_style   lj/cut/coul/long 10.0
+    bond_style   harmonic
+    angle_style  harmonic
+    dihedral_style opls
+    improper_style cvff
+    kspace_style pppm 0.0001
+    pair_modify  mix arithmetic
+  }
+
+  write_once("In Settings") {
+    dihedral_coeff @dihedral:type1 0.000 0.000 0.000 0.000
+    bond_coeff @bond:type2 317.0000 1.5220
+    bond_coeff @bond:type1 656.0000 1.2500
+    bond_coeff @bond:type3 340.0000 1.0900
+    angle_coeff @angle:type3 35.000 109.500
+    angle_coeff @angle:type2 70.000 117.000
+    angle_coeff @angle:type1 80.000 126.000
+    angle_coeff @angle:type4 33.000 107.800
+    pair_coeff @atom:type4 @atom:type4 0.030 2.5000000
+    pair_coeff @atom:type2 @atom:type2 0.066 3.5000000
+    pair_coeff @atom:type1 @atom:type1 0.210 2.9600000
+    pair_coeff @atom:type3 @atom:type3 0.105 3.7500000
+  }
+
+  write_once("Data Masses") {
+    @atom:type3 12.011 #C
+    @atom:type2 12.011 #CT
+    @atom:type1 15.999 #O
+    @atom:type4 1.008	#H
+  }
+
+  write("Data Bonds") {
+    $bond:id1 @bond:type1 $atom:type1 $atom:type4
+    $bond:id2 @bond:type1 $atom:type2 $atom:type4
+    $bond:id3 @bond:type2 $atom:type3 $atom:type4
+    $bond:id4 @bond:type3 $atom:type5 $atom:type3
+    $bond:id5 @bond:type3 $atom:type6 $atom:type3
+    $bond:id6 @bond:type3 $atom:type7 $atom:type3
+  }
+
+  write("Data Atoms") {
+    $atom:type1 $mol:m1 @atom:type1 -0.896 0.71600 1.14600 0.00000
+    $atom:type2 $mol:m1 @atom:type1 -0.889 0.80600 -1.10000 0.00000
+    $atom:type3 $mol:m1 @atom:type2 -0.361 -1.35100 -0.04400 0.00000
+    $atom:type4 $mol:m1 @atom:type3 0.999 0.18800 -0.00100 0.00000
+    $atom:type5 $mol:m1 @atom:type4 0.049 -1.73300 0.47600 0.88300
+    $atom:type6 $mol:m1 @atom:type4 0.049 -1.73400 0.48800 -0.87600
+    $atom:type7 $mol:m1 @atom:type4 0.049 -1.73200 -1.06600 -0.00700
+  }
+
+  write("Data Angles") {
+    $angle:id1 @angle:type1 $atom:type2 $atom:type4 $atom:type1
+    $angle:id2 @angle:type2 $atom:type3 $atom:type4 $atom:type1
+    $angle:id3 @angle:type3 $atom:type5 $atom:type3 $atom:type4
+    $angle:id4 @angle:type3 $atom:type6 $atom:type3 $atom:type4
+    $angle:id5 @angle:type3 $atom:type7 $atom:type3 $atom:type4
+    $angle:id6 @angle:type2 $atom:type3 $atom:type4 $atom:type2
+    $angle:id7 @angle:type4 $atom:type6 $atom:type3 $atom:type5
+    $angle:id8 @angle:type4 $atom:type7 $atom:type3 $atom:type5
+    $angle:id9 @angle:type4 $atom:type7 $atom:type3 $atom:type6
+  }
+
+  write("Data Dihedrals") {
+    $dihedral:id1 @dihedral:type1 $atom:type5 $atom:type3 $atom:type4 $atom:type1
+    $dihedral:id2 @dihedral:type1 $atom:type6 $atom:type3 $atom:type4 $atom:type1
+    $dihedral:id3 @dihedral:type1 $atom:type7 $atom:type3 $atom:type4 $atom:type1
+    $dihedral:id4 @dihedral:type1 $atom:type5 $atom:type3 $atom:type4 $atom:type2
+    $dihedral:id5 @dihedral:type1 $atom:type6 $atom:type3 $atom:type4 $atom:type2
+    $dihedral:id6 @dihedral:type1 $atom:type7 $atom:type3 $atom:type4 $atom:type2
+  }
+
+  write_once("In Charges"){
+    set type @atom:type3 charge 0.999
+    set type @atom:type2 charge -0.361
+    set type @atom:type1 charge -0.8925
+    set type @atom:type4 charge 0.049
+  } #(end of atom charges)
+
+  write_once("In List_salt") {
+    group        OAc           type   @atom:type1 @atom:type2 @atom:type3 @atom:type4
+    variable     OAc_list      index  "O C CT H"
+  }
+
+}
