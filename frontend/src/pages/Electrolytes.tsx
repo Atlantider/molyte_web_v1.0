@@ -28,9 +28,31 @@ import {
   Result,
   InputNumber,
   Checkbox,
+  DatePicker,
+  Statistic,
+  Switch,
 } from 'antd';
 import type { MenuProps } from 'antd';
-import { PlusOutlined, SearchOutlined, ReloadOutlined, ExperimentOutlined, DeleteOutlined, CheckSquareOutlined, CloseSquareOutlined, FolderOutlined, MoreOutlined, UploadOutlined, DownloadOutlined, CheckCircleOutlined, CloseCircleOutlined, FileExcelOutlined, InboxOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  SearchOutlined,
+  ReloadOutlined,
+  ExperimentOutlined,
+  DeleteOutlined,
+  CheckSquareOutlined,
+  CloseSquareOutlined,
+  FolderOutlined,
+  MoreOutlined,
+  UploadOutlined,
+  DownloadOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  FileExcelOutlined,
+  InboxOutlined,
+  FilterOutlined,
+  AppstoreOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons';
 import ElectrolyteCard from '../components/ElectrolyteCard';
 import ElectrolyteFormOptimized from '../components/ElectrolyteFormOptimized';
 import {
@@ -47,9 +69,11 @@ import { getProjects, createProject } from '../api/projects';
 import { downloadTemplate, batchImportUpload, BatchImportResult } from '../api/batchImport';
 import type { ElectrolyteSystem, Project, MDJob, ProjectCreate } from '../types';
 import { JobStatus } from '../types';
+import dayjs, { Dayjs } from 'dayjs';
 
 const { Title, Text } = Typography;
 const { Step } = Steps;
+const { RangePicker } = DatePicker;
 
 export default function Electrolytes() {
   const location = useLocation();
@@ -67,6 +91,15 @@ export default function Electrolytes() {
   const [form] = Form.useForm();
   const [selectedCations, setSelectedCations] = useState<any[]>([]);
   const [selectedAnions, setSelectedAnions] = useState<any[]>([]);
+
+  // 筛选和视图状态
+  const [projectFilter, setProjectFilter] = useState<number | undefined>(undefined);
+  const [solventFilter, setSolventFilter] = useState<string | undefined>(undefined);
+  const [ionFilter, setIonFilter] = useState<string | undefined>(undefined);
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+  const [sortBy, setSortBy] = useState<'created_at' | 'name'>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // 批量选择相关状态
   const [selectMode, setSelectMode] = useState(false);
@@ -140,24 +173,128 @@ export default function Electrolytes() {
     return 'completed'; // 已完成：所有任务都已完成
   };
 
+  // 获取配方中的所有溶剂
+  const getSolvents = (electrolyte: ElectrolyteSystem): string[] => {
+    if (!electrolyte.solvents || electrolyte.solvents.length === 0) {
+      return [];
+    }
+    return electrolyte.solvents.map(s => s.name);
+  };
+
+  // 获取配方中的所有离子
+  const getIons = (electrolyte: ElectrolyteSystem): string[] => {
+    const ions: string[] = [];
+    if (electrolyte.cations) {
+      ions.push(...electrolyte.cations.map(c => c.name));
+    }
+    if (electrolyte.anions) {
+      ions.push(...electrolyte.anions.map(a => a.name));
+    }
+    return ions;
+  };
+
   // 搜索和分类过滤
   useEffect(() => {
-    let filtered = electrolytes;
+    let filtered = [...electrolytes];
 
-    // 搜索过滤
-    if (searchText) {
-      filtered = filtered.filter((e) =>
-        e.name.toLowerCase().includes(searchText.toLowerCase())
-      );
-    }
-
-    // 分类过滤
+    // 按状态标签页筛选
     if (activeTab !== 'all') {
       filtered = filtered.filter((e) => getElectrolyteCategory(e) === activeTab);
     }
 
+    // 搜索过滤（配方名称、组成成分）
+    if (searchText) {
+      const search = searchText.toLowerCase();
+      filtered = filtered.filter((e) => {
+        const nameMatch = e.name.toLowerCase().includes(search);
+        const solvents = getSolvents(e);
+        const ions = getIons(e);
+        const solventMatch = solvents.some(s => s.toLowerCase().includes(search));
+        const ionMatch = ions.some(i => i.toLowerCase().includes(search));
+        return nameMatch || solventMatch || ionMatch;
+      });
+    }
+
+    // 项目筛选
+    if (projectFilter !== undefined) {
+      filtered = filtered.filter((e) => e.project_id === projectFilter);
+    }
+
+    // 溶剂筛选
+    if (solventFilter) {
+      filtered = filtered.filter((e) => {
+        const solvents = getSolvents(e);
+        return solvents.some(s => s === solventFilter);
+      });
+    }
+
+    // 离子筛选
+    if (ionFilter) {
+      filtered = filtered.filter((e) => {
+        const ions = getIons(e);
+        return ions.some(i => i === ionFilter);
+      });
+    }
+
+    // 时间范围筛选
+    if (dateRange && dateRange[0] && dateRange[1]) {
+      const startDate = dateRange[0].startOf('day');
+      const endDate = dateRange[1].endOf('day');
+      filtered = filtered.filter((e) => {
+        const createdDate = dayjs(e.created_at);
+        return createdDate.isAfter(startDate) && createdDate.isBefore(endDate);
+      });
+    }
+
+    // 排序
+    filtered.sort((a, b) => {
+      let aValue: any, bValue: any;
+
+      if (sortBy === 'created_at') {
+        aValue = new Date(a.created_at).getTime();
+        bValue = new Date(b.created_at).getTime();
+        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+      } else {
+        // name
+        aValue = a.name.toLowerCase();
+        bValue = b.name.toLowerCase();
+        return sortOrder === 'asc'
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      }
+    });
+
     setFilteredElectrolytes(filtered);
-  }, [searchText, electrolytes, jobs, activeTab]);
+  }, [searchText, electrolytes, jobs, activeTab, projectFilter, solventFilter, ionFilter, dateRange, sortBy, sortOrder]);
+
+  // 重置筛选
+  const handleResetFilters = () => {
+    setSearchText('');
+    setProjectFilter(undefined);
+    setSolventFilter(undefined);
+    setIonFilter(undefined);
+    setDateRange(null);
+    setSortBy('created_at');
+    setSortOrder('desc');
+  };
+
+  // 获取所有唯一的溶剂
+  const getAllSolvents = (): string[] => {
+    const solventsSet = new Set<string>();
+    electrolytes.forEach(e => {
+      getSolvents(e).forEach(s => solventsSet.add(s));
+    });
+    return Array.from(solventsSet).sort();
+  };
+
+  // 获取所有唯一的离子
+  const getAllIons = (): string[] => {
+    const ionsSet = new Set<string>();
+    electrolytes.forEach(e => {
+      getIons(e).forEach(i => ionsSet.add(i));
+    });
+    return Array.from(ionsSet).sort();
+  };
 
   // 检查是否需要自动打开创建对话框
   useEffect(() => {
@@ -808,6 +945,130 @@ export default function Electrolytes() {
         />
       </Card>
 
+      {/* 筛选栏 */}
+      <Card
+        style={{
+          marginBottom: 24,
+          borderRadius: 12,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          border: 'none',
+          background: '#fafafa',
+        }}
+      >
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <Input
+              placeholder="搜索配方名称、成分"
+              prefix={<SearchOutlined />}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              allowClear
+            />
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Select
+              placeholder="项目"
+              value={projectFilter}
+              onChange={setProjectFilter}
+              allowClear
+              style={{ width: '100%' }}
+            >
+              {projects.map((p) => (
+                <Select.Option key={p.id} value={p.id}>
+                  {p.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Select
+              placeholder="溶剂"
+              value={solventFilter}
+              onChange={setSolventFilter}
+              allowClear
+              style={{ width: '100%' }}
+              showSearch
+            >
+              {getAllSolvents().map((s) => (
+                <Select.Option key={s} value={s}>
+                  {s}
+                </Select.Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Select
+              placeholder="离子"
+              value={ionFilter}
+              onChange={setIonFilter}
+              allowClear
+              style={{ width: '100%' }}
+              showSearch
+            >
+              {getAllIons().map((i) => (
+                <Select.Option key={i} value={i}>
+                  {i}
+                </Select.Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <RangePicker
+              value={dateRange}
+              onChange={setDateRange}
+              style={{ width: '100%' }}
+              placeholder={['开始日期', '结束日期']}
+            />
+          </Col>
+        </Row>
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Select
+              placeholder="排序方式"
+              value={sortBy}
+              onChange={setSortBy}
+              style={{ width: '100%' }}
+            >
+              <Select.Option value="created_at">创建时间</Select.Option>
+              <Select.Option value="name">配方名称</Select.Option>
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Select
+              placeholder="排序顺序"
+              value={sortOrder}
+              onChange={setSortOrder}
+              style={{ width: '100%' }}
+            >
+              <Select.Option value="desc">降序</Select.Option>
+              <Select.Option value="asc">升序</Select.Option>
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Space>
+              <Button onClick={handleResetFilters} icon={<ReloadOutlined />}>
+                重置筛选
+              </Button>
+              <Button
+                type={viewMode === 'card' ? 'primary' : 'default'}
+                icon={<AppstoreOutlined />}
+                onClick={() => setViewMode('card')}
+              />
+              <Button
+                type={viewMode === 'table' ? 'primary' : 'default'}
+                icon={<UnorderedListOutlined />}
+                onClick={() => setViewMode('table')}
+              />
+            </Space>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={12} style={{ textAlign: 'right' }}>
+            <Text type="secondary">
+              显示 {filteredElectrolytes.length} / {electrolytes.length} 个配方
+            </Text>
+          </Col>
+        </Row>
+      </Card>
+
       {/* 电解质列表 */}
       <Spin spinning={loading}>
         {filteredElectrolytes.length === 0 ? (
@@ -843,7 +1104,7 @@ export default function Electrolytes() {
               )}
             </Empty>
           </Card>
-        ) : (
+        ) : viewMode === 'card' ? (
           <Row gutter={[16, 16]}>
             {filteredElectrolytes.map((electrolyte) => (
               <Col xs={24} sm={24} md={12} lg={8} key={electrolyte.id}>
@@ -893,6 +1154,172 @@ export default function Electrolytes() {
               </Col>
             ))}
           </Row>
+        ) : (
+          <Card
+            style={{
+              borderRadius: 12,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              border: 'none',
+            }}
+          >
+            <Table
+              dataSource={filteredElectrolytes}
+              rowKey="id"
+              pagination={{
+                pageSize: 20,
+                showSizeChanger: true,
+                showTotal: (total) => `共 ${total} 个配方`,
+                pageSizeOptions: ['10', '20', '50', '100'],
+              }}
+              scroll={{ x: 1400 }}
+              columns={[
+                {
+                  title: 'ID',
+                  dataIndex: 'id',
+                  key: 'id',
+                  width: 80,
+                  fixed: 'left',
+                },
+                {
+                  title: '配方名称',
+                  dataIndex: 'name',
+                  key: 'name',
+                  width: 250,
+                  fixed: 'left',
+                  ellipsis: true,
+                  render: (name: string, record: ElectrolyteSystem) => (
+                    <a onClick={() => navigate(`/workspace/electrolytes/${record.id}`)}>
+                      {name}
+                    </a>
+                  ),
+                },
+                {
+                  title: '项目',
+                  dataIndex: 'project_id',
+                  key: 'project_id',
+                  width: 150,
+                  render: (projectId: number) => {
+                    const project = projects.find(p => p.id === projectId);
+                    return project?.name || '-';
+                  },
+                },
+                {
+                  title: '阳离子',
+                  key: 'cations',
+                  width: 150,
+                  render: (_: any, record: ElectrolyteSystem) => {
+                    if (!record.cations || record.cations.length === 0) return '-';
+                    return (
+                      <Space size={4} wrap>
+                        {record.cations.map((c, idx) => (
+                          <Tag key={idx} color="blue">{c.name}</Tag>
+                        ))}
+                      </Space>
+                    );
+                  },
+                },
+                {
+                  title: '阴离子',
+                  key: 'anions',
+                  width: 150,
+                  render: (_: any, record: ElectrolyteSystem) => {
+                    if (!record.anions || record.anions.length === 0) return '-';
+                    return (
+                      <Space size={4} wrap>
+                        {record.anions.map((a, idx) => (
+                          <Tag key={idx} color="orange">{a.name}</Tag>
+                        ))}
+                      </Space>
+                    );
+                  },
+                },
+                {
+                  title: '溶剂',
+                  key: 'solvents',
+                  width: 150,
+                  render: (_: any, record: ElectrolyteSystem) => {
+                    if (!record.solvents || record.solvents.length === 0) return '-';
+                    return (
+                      <Space size={4} wrap>
+                        {record.solvents.map((s, idx) => (
+                          <Tag key={idx} color="green">{s.name}</Tag>
+                        ))}
+                      </Space>
+                    );
+                  },
+                },
+                {
+                  title: '状态',
+                  key: 'status',
+                  width: 100,
+                  render: (_: any, record: ElectrolyteSystem) => {
+                    const category = getElectrolyteCategory(record);
+                    const statusConfig: Record<string, { color: string; text: string }> = {
+                      draft: { color: 'default', text: '草稿' },
+                      running: { color: 'processing', text: '进行中' },
+                      completed: { color: 'success', text: '已完成' },
+                    };
+                    const config = statusConfig[category] || statusConfig.draft;
+                    return <Tag color={config.color}>{config.text}</Tag>;
+                  },
+                },
+                {
+                  title: '任务数',
+                  key: 'job_count',
+                  width: 100,
+                  render: (_: any, record: ElectrolyteSystem) => {
+                    const relatedJobs = jobs.filter(j => j.system_id === record.id);
+                    return relatedJobs.length;
+                  },
+                },
+                {
+                  title: '创建时间',
+                  dataIndex: 'created_at',
+                  key: 'created_at',
+                  width: 180,
+                  render: (time: string) => new Date(time).toLocaleString('zh-CN'),
+                },
+                {
+                  title: '操作',
+                  key: 'actions',
+                  width: 250,
+                  fixed: 'right',
+                  render: (_: any, record: ElectrolyteSystem) => (
+                    <Space size="small">
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => navigate(`/workspace/electrolytes/${record.id}`)}
+                      >
+                        详情
+                      </Button>
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => handleOpenModal(record, false)}
+                      >
+                        编辑
+                      </Button>
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => handleOpenModal(record, true)}
+                      >
+                        复制
+                      </Button>
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => handleCreateJob(record)}
+                      >
+                        创建任务
+                      </Button>
+                    </Space>
+                  ),
+                },
+              ]}
+            />
+          </Card>
         )}
       </Spin>
 
