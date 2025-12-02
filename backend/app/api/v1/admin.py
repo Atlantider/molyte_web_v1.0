@@ -394,9 +394,18 @@ async def get_global_stats(
     total_cpu_hours_allocated = db.query(func.sum(User.total_cpu_hours)).scalar() or 0.0
     total_storage_allocated_gb = db.query(func.sum(User.storage_quota_gb)).scalar() or 0.0
 
-    # Calculate total CPU hours used (this is expensive, consider caching)
-    all_users = db.query(User).all()
-    total_cpu_hours_used = sum(calculate_user_cpu_hours(u.id, db) for u in all_users)
+    # Calculate total CPU hours used - 优化版本：使用交易记录统计
+    from app.models.billing import QuotaTransaction
+    total_consumed_from_transactions = db.query(func.sum(QuotaTransaction.amount)).filter(
+        QuotaTransaction.type == 'consume'
+    ).scalar() or 0.0
+    total_cpu_hours_used = abs(total_consumed_from_transactions)  # consume是负数
+
+    # 如果没有交易记录（旧系统），回退到慢速计算（但只计算前100个用户）
+    if total_cpu_hours_used == 0:
+        logger.warning("No billing transactions found, using slow calculation method (limited to 100 users)")
+        sample_users = db.query(User).limit(100).all()
+        total_cpu_hours_used = sum(calculate_user_cpu_hours(u.id, db) for u in sample_users)
 
     # Storage used (placeholder - would need actual implementation)
     total_storage_used_gb = 0.0

@@ -722,6 +722,7 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
     for smiles, mol_name, mol_type, charge in molecules_to_calc:
         # 计算自旋多重度（对所有参数组合都相同）
         spin_multiplicity = _calculate_spin_multiplicity(smiles, charge)
+        logger.info(f"🔍 计算自旋多重度: {mol_name} (SMILES: {smiles[:50]}..., charge: {charge}) -> spin_multiplicity = {spin_multiplicity}")
 
         # 遍历所有参数组合（笛卡尔积）
         for functional in functionals:
@@ -832,6 +833,7 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
                     # ======== 查重逻辑结束 ========
 
                     # 创建QC任务（所有参数存储在config中）
+                    logger.info(f"📝 创建QC任务: {job_mol_name}, charge={charge}, spin_multiplicity={spin_multiplicity}")
                     qc_job = QCJob(
                         user_id=user.id,
                         md_job_id=md_job.id,
@@ -858,6 +860,7 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
                     db.add(qc_job)
                     db.commit()
                     db.refresh(qc_job)
+                    logger.info(f"✅ QC任务已保存到数据库: ID={qc_job.id}, spin_multiplicity={qc_job.spin_multiplicity}")
 
                     logger.info(f"Created QC job {qc_job.id} for '{job_mol_name}' (type: {mol_type}, "
                                f"charge: {charge}, spin: {spin_multiplicity}, "
