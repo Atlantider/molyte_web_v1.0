@@ -204,12 +204,15 @@ const UserManagement: React.FC = () => {
       dataIndex: 'id',
       key: 'id',
       width: 80,
+      fixed: 'left' as const,
       sorter: (a: UserListItem, b: UserListItem) => a.id - b.id,
     },
     {
       title: '用户名',
       dataIndex: 'username',
       key: 'username',
+      width: 150,
+      fixed: 'left' as const,
       sorter: (a: UserListItem, b: UserListItem) => a.username.localeCompare(b.username),
       render: (text: string, record: UserListItem) => (
         <a onClick={() => navigate(`/workspace/admin/users/${record.id}`)}>
@@ -221,12 +224,15 @@ const UserManagement: React.FC = () => {
       title: '邮箱',
       dataIndex: 'email',
       key: 'email',
+      width: 200,
+      ellipsis: true,
       sorter: (a: UserListItem, b: UserListItem) => a.email.localeCompare(b.email),
     },
     {
       title: '角色',
       dataIndex: 'role',
       key: 'role',
+      width: 100,
       filters: [
         { text: '管理员', value: 'ADMIN' },
         { text: '高级用户', value: 'PREMIUM' },
@@ -248,6 +254,7 @@ const UserManagement: React.FC = () => {
       title: '状态',
       dataIndex: 'is_active',
       key: 'is_active',
+      width: 80,
       filters: [
         { text: '激活', value: true },
         { text: '禁用', value: false },
@@ -261,28 +268,32 @@ const UserManagement: React.FC = () => {
       ),
     },
     {
-      title: 'CPU 核时配额',
+      title: 'CPU配额',
       dataIndex: 'total_cpu_hours',
       key: 'total_cpu_hours',
+      width: 120,
       sorter: (a: UserListItem, b: UserListItem) => a.total_cpu_hours - b.total_cpu_hours,
       render: (hours: number) => `${hours.toFixed(1)} h`,
     },
     {
-      title: '每日任务限制',
+      title: '每日限制',
       dataIndex: 'daily_job_limit',
       key: 'daily_job_limit',
+      width: 100,
       sorter: (a: UserListItem, b: UserListItem) => a.daily_job_limit - b.daily_job_limit,
     },
     {
-      title: '并发任务限制',
+      title: '并发限制',
       dataIndex: 'concurrent_job_limit',
       key: 'concurrent_job_limit',
+      width: 100,
       sorter: (a: UserListItem, b: UserListItem) => a.concurrent_job_limit - b.concurrent_job_limit,
     },
     {
       title: '用户类型',
       dataIndex: 'user_type',
       key: 'user_type',
+      width: 100,
       filters: [
         { text: '学生', value: 'STUDENT' },
         { text: '研究者', value: 'RESEARCHER' },
@@ -303,24 +314,26 @@ const UserManagement: React.FC = () => {
       title: '组织',
       dataIndex: 'organization',
       key: 'organization',
+      width: 150,
       ellipsis: true,
     },
     {
       title: '可用队列',
       dataIndex: 'allowed_partitions',
       key: 'allowed_partitions',
+      width: 200,
       render: (partitions: string[] | null) => {
         if (!partitions || partitions.length === 0) {
-          return <Tag color="red">全部队列 (管理员)</Tag>;
+          return <Tag color="red">全部</Tag>;
         }
         return (
-          <>
+          <Space size={4} wrap>
             {partitions.map((p) => (
-              <Tag key={p} color="blue">
+              <Tag key={p} color="blue" style={{ margin: 0 }}>
                 {p}
               </Tag>
             ))}
-          </>
+          </Space>
         );
       },
     },
@@ -328,6 +341,7 @@ const UserManagement: React.FC = () => {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
+      width: 180,
       sorter: (a: UserListItem, b: UserListItem) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       defaultSortOrder: 'descend' as const,
@@ -336,10 +350,13 @@ const UserManagement: React.FC = () => {
     {
       title: '操作',
       key: 'actions',
+      width: 180,
+      fixed: 'right' as const,
       render: (_: any, record: UserListItem) => (
-        <Space>
+        <Space size="small">
           <Button
             type="link"
+            size="small"
             icon={<EditOutlined />}
             onClick={() => handleEdit(record)}
           >
@@ -351,7 +368,7 @@ const UserManagement: React.FC = () => {
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" danger icon={<DeleteOutlined />}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
               删除
             </Button>
           </Popconfirm>
@@ -496,6 +513,7 @@ const UserManagement: React.FC = () => {
           columns={columns}
           rowKey="id"
           loading={loading}
+          scroll={{ x: 1600 }}
           pagination={{
             pageSize: 20,
             showSizeChanger: true,

@@ -91,9 +91,19 @@ export default function Jobs() {
   const [electrolyteFilter, setElectrolyteFilter] = useState<number | undefined>(undefined);
   const [partitionFilter, setPartitionFilter] = useState<string | undefined>(undefined);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+  const [viewMode, setViewMode] = useState<'card' | 'table'>(() => {
+    // 从localStorage读取视图模式
+    const saved = localStorage.getItem('md-jobs-view-mode');
+    return (saved === 'card' || saved === 'table') ? saved : 'card';
+  });
   const [sortBy, setSortBy] = useState<'created_at' | 'updated_at' | 'id'>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // 保存视图模式到localStorage
+  const handleViewModeChange = (mode: 'card' | 'table') => {
+    setViewMode(mode);
+    localStorage.setItem('md-jobs-view-mode', mode);
+  };
 
   // 加载任务列表
   const loadJobs = useCallback(async () => {
@@ -861,12 +871,12 @@ export default function Jobs() {
               <Button
                 type={viewMode === 'card' ? 'primary' : 'default'}
                 icon={<AppstoreOutlined />}
-                onClick={() => setViewMode('card')}
+                onClick={() => handleViewModeChange('card')}
               />
               <Button
                 type={viewMode === 'table' ? 'primary' : 'default'}
                 icon={<UnorderedListOutlined />}
-                onClick={() => setViewMode('table')}
+                onClick={() => handleViewModeChange('table')}
               />
             </Space>
           </Col>
