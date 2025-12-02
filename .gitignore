@@ -106,9 +106,6 @@ data/charges/
 *.txt
 *.vmd
 *.sh
-!data/initial_salts/*.pdb
-!data/initial_salts/*.lt
-!data/initial_salts/job.sh
 !start_complete.sh
 !stop_complete.sh
 

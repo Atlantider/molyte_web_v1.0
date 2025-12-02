@@ -1,8 +1,0 @@
-REMARK   Materials Studio PDB file
-REMARK   Created:  Tue Jun 20 14:51:06 +0800 2023
-ATOM      1 Cl1  MOL     2       0.000  11.202   3.095  1.00  0.03          Cl1+  
-ATOM      2  O3  MOL     2       0.591  10.335   2.104  1.00  0.05           O1-  
-ATOM      3  O4  MOL     2      -1.016  12.017   2.504  1.00  0.05           O1-  
-ATOM      4  O3  MOL     2      -0.591  10.335   4.085  1.00  0.05           O1-  
-ATOM      5  O4  MOL     2       1.016  12.017   3.685  1.00  0.05           O1-  
-TER       6 

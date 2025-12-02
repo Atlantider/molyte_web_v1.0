@@ -302,13 +302,33 @@ export default function DataVisibilityManager() {
                 height: '100%',
               }}
             >
-              <Statistic
-                title={<span style={{ color: 'rgba(0,0,0,0.65)' }}>贡献积分</span>}
-                value={stats.contribution_points}
-                precision={1}
-                valueStyle={{ color: '#722ed1', fontSize: 28 }}
-                prefix={<TrophyOutlined />}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, color: 'rgba(0,0,0,0.65)', marginBottom: 8 }}>
+                    <TrophyOutlined style={{ marginRight: 4 }} />
+                    贡献积分
+                  </div>
+                  <div style={{ fontSize: 28, fontWeight: 600, color: '#722ed1' }}>
+                    {stats.contribution_points?.toFixed(1) || '0.0'}
+                  </div>
+                </div>
+                {(stats.contribution_points || 0) >= 10 && (
+                  <Button
+                    type="primary"
+                    size="small"
+                    icon={<SwapOutlined />}
+                    onClick={handleOpenExchange}
+                    style={{
+                      background: 'rgba(114, 46, 209, 0.2)',
+                      borderColor: 'rgba(114, 46, 209, 0.4)',
+                      color: '#722ed1',
+                      fontWeight: 500,
+                    }}
+                  >
+                    兑换核时
+                  </Button>
+                )}
+              </div>
             </Card>
           </Col>
           <Col xs={24} sm={12} md={8} lg={6}>
@@ -329,22 +349,6 @@ export default function DataVisibilityManager() {
                 prefix={<ThunderboltOutlined />}
                 suffix="核时"
               />
-              {(stats.contribution_points || 0) >= 10 && (
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<SwapOutlined />}
-                  onClick={handleOpenExchange}
-                  style={{
-                    marginTop: 12,
-                    background: 'rgba(255,255,255,0.2)',
-                    borderColor: 'rgba(255,255,255,0.4)',
-                    color: '#fff',
-                  }}
-                >
-                  兑换核时
-                </Button>
-              )}
             </Card>
           </Col>
         </Row>
