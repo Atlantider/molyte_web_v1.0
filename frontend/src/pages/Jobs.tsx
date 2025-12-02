@@ -24,8 +24,26 @@ import {
   Card,
   Checkbox,
   Tag,
+  DatePicker,
+  Statistic,
+  Table,
+  Switch,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined, ThunderboltOutlined, RocketOutlined, ExperimentOutlined, FolderAddOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  ReloadOutlined,
+  ThunderboltOutlined,
+  RocketOutlined,
+  ExperimentOutlined,
+  FolderAddOutlined,
+  SearchOutlined,
+  FilterOutlined,
+  AppstoreOutlined,
+  UnorderedListOutlined,
+  ClockCircleOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+} from '@ant-design/icons';
 import JobCard from '../components/JobCard';
 import { getMDJobs, createMDJob, cancelMDJob, deleteMDJob, resubmitMDJob, updateMDJobConfig } from '../api/jobs';
 import { getElectrolytes, createElectrolyteNew } from '../api/electrolytes';
@@ -35,11 +53,14 @@ import type { MDJob, MDJobCreate, ElectrolyteSystem, Project } from '../types';
 import { JobStatus } from '../types';
 import ElectrolyteFormOptimized from '../components/ElectrolyteFormOptimized';
 import AccuracyLevelSelector from '../components/AccuracyLevelSelector';
+import dayjs, { Dayjs } from 'dayjs';
 
 const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
 
 export default function Jobs() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState<MDJob[]>([]);
   const [electrolytes, setElectrolytes] = useState<ElectrolyteSystem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -63,6 +84,16 @@ export default function Jobs() {
   // 精度等级相关状态
   const [selectedAccuracyLevel, setSelectedAccuracyLevel] = useState<string>('standard');
   const [accuracyDefaults, setAccuracyDefaults] = useState<any>(null);
+
+  // 筛选和视图状态
+  const [searchText, setSearchText] = useState('');
+  const [projectFilter, setProjectFilter] = useState<number | undefined>(undefined);
+  const [electrolyteFilter, setElectrolyteFilter] = useState<number | undefined>(undefined);
+  const [partitionFilter, setPartitionFilter] = useState<string | undefined>(undefined);
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+  const [sortBy, setSortBy] = useState<'created_at' | 'updated_at' | 'id'>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // 加载任务列表
   const loadJobs = useCallback(async () => {
@@ -475,21 +506,94 @@ export default function Jobs() {
 
   // 过滤任务
   const getFilteredJobs = () => {
-    if (activeTab === 'all') return jobs;
-    if (activeTab === 'created') return jobs.filter((j) => j.status === JobStatus.CREATED);
-    if (activeTab === 'running')
-      return jobs.filter((j) =>
+    let filtered = [...jobs];
+
+    // 按状态标签页筛选
+    if (activeTab === 'created') {
+      filtered = filtered.filter((j) => j.status === JobStatus.CREATED);
+    } else if (activeTab === 'running') {
+      filtered = filtered.filter((j) =>
         j.status === JobStatus.QUEUED ||
         j.status === JobStatus.RUNNING ||
         j.status === JobStatus.POSTPROCESSING
       );
-    if (activeTab === 'completed') return jobs.filter((j) => j.status === JobStatus.COMPLETED);
-    if (activeTab === 'failed')
-      return jobs.filter((j) => j.status === JobStatus.FAILED || j.status === JobStatus.CANCELLED);
-    return jobs;
+    } else if (activeTab === 'completed') {
+      filtered = filtered.filter((j) => j.status === JobStatus.COMPLETED);
+    } else if (activeTab === 'failed') {
+      filtered = filtered.filter((j) => j.status === JobStatus.FAILED || j.status === JobStatus.CANCELLED);
+    }
+
+    // 搜索筛选（任务名称、Slurm Job ID）
+    if (searchText) {
+      const search = searchText.toLowerCase();
+      filtered = filtered.filter((job) =>
+        (job.config?.job_name && job.config.job_name.toLowerCase().includes(search)) ||
+        (job.slurm_job_id && job.slurm_job_id.toString().includes(search)) ||
+        (job.id && job.id.toString().includes(search))
+      );
+    }
+
+    // 项目筛选
+    if (projectFilter !== undefined) {
+      filtered = filtered.filter((job) => {
+        const electrolyte = electrolytes.find(e => e.id === job.system_id);
+        return electrolyte?.project_id === projectFilter;
+      });
+    }
+
+    // 配方筛选
+    if (electrolyteFilter !== undefined) {
+      filtered = filtered.filter((job) => job.system_id === electrolyteFilter);
+    }
+
+    // 分区筛选
+    if (partitionFilter) {
+      filtered = filtered.filter((job) => job.config?.slurm_partition === partitionFilter);
+    }
+
+    // 时间范围筛选
+    if (dateRange && dateRange[0] && dateRange[1]) {
+      const startDate = dateRange[0].startOf('day');
+      const endDate = dateRange[1].endOf('day');
+      filtered = filtered.filter((job) => {
+        const jobDate = dayjs(job.created_at);
+        return jobDate.isAfter(startDate) && jobDate.isBefore(endDate);
+      });
+    }
+
+    // 排序
+    filtered.sort((a, b) => {
+      let aValue: any, bValue: any;
+
+      if (sortBy === 'created_at') {
+        aValue = new Date(a.created_at).getTime();
+        bValue = new Date(b.created_at).getTime();
+      } else if (sortBy === 'updated_at') {
+        aValue = new Date(a.updated_at).getTime();
+        bValue = new Date(b.updated_at).getTime();
+      } else {
+        aValue = a.id;
+        bValue = b.id;
+      }
+
+      return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+    });
+
+    return filtered;
   };
 
   const filteredJobs = getFilteredJobs();
+
+  // 重置筛选
+  const handleResetFilters = () => {
+    setSearchText('');
+    setProjectFilter(undefined);
+    setElectrolyteFilter(undefined);
+    setPartitionFilter(undefined);
+    setDateRange(null);
+    setSortBy('created_at');
+    setSortOrder('desc');
+  };
 
   // 计算各状态任务数量
   const createdCount = jobs.filter((j) => j.status === JobStatus.CREATED).length;
@@ -651,6 +755,129 @@ export default function Jobs() {
         />
       </Card>
 
+      {/* 筛选栏 */}
+      <Card
+        style={{
+          marginBottom: 24,
+          borderRadius: 12,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          border: 'none',
+          background: '#fafafa',
+        }}
+      >
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <Input
+              placeholder="搜索任务名称、Job ID"
+              prefix={<SearchOutlined />}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              allowClear
+            />
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Select
+              placeholder="项目"
+              value={projectFilter}
+              onChange={setProjectFilter}
+              allowClear
+              style={{ width: '100%' }}
+            >
+              {projects.map((p) => (
+                <Select.Option key={p.id} value={p.id}>
+                  {p.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Select
+              placeholder="配方"
+              value={electrolyteFilter}
+              onChange={setElectrolyteFilter}
+              allowClear
+              style={{ width: '100%' }}
+            >
+              {electrolytes.map((e) => (
+                <Select.Option key={e.id} value={e.id}>
+                  {e.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Select
+              placeholder="分区"
+              value={partitionFilter}
+              onChange={setPartitionFilter}
+              allowClear
+              style={{ width: '100%' }}
+            >
+              {partitions.map((p) => (
+                <Select.Option key={p.name} value={p.name}>
+                  {p.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <RangePicker
+              value={dateRange}
+              onChange={setDateRange}
+              style={{ width: '100%' }}
+              placeholder={['开始日期', '结束日期']}
+            />
+          </Col>
+        </Row>
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Select
+              placeholder="排序方式"
+              value={sortBy}
+              onChange={setSortBy}
+              style={{ width: '100%' }}
+            >
+              <Select.Option value="created_at">创建时间</Select.Option>
+              <Select.Option value="updated_at">更新时间</Select.Option>
+              <Select.Option value="id">任务ID</Select.Option>
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Select
+              placeholder="排序顺序"
+              value={sortOrder}
+              onChange={setSortOrder}
+              style={{ width: '100%' }}
+            >
+              <Select.Option value="desc">降序</Select.Option>
+              <Select.Option value="asc">升序</Select.Option>
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={4}>
+            <Space>
+              <Button onClick={handleResetFilters} icon={<ReloadOutlined />}>
+                重置筛选
+              </Button>
+              <Button
+                type={viewMode === 'card' ? 'primary' : 'default'}
+                icon={<AppstoreOutlined />}
+                onClick={() => setViewMode('card')}
+              />
+              <Button
+                type={viewMode === 'table' ? 'primary' : 'default'}
+                icon={<UnorderedListOutlined />}
+                onClick={() => setViewMode('table')}
+              />
+            </Space>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={12} style={{ textAlign: 'right' }}>
+            <Text type="secondary">
+              显示 {filteredJobs.length} / {jobs.length} 个任务
+            </Text>
+          </Col>
+        </Row>
+      </Card>
+
       {/* 任务列表 */}
       <Spin spinning={loading}>
         {filteredJobs.length === 0 ? (
@@ -686,7 +913,7 @@ export default function Jobs() {
               )}
             </Empty>
           </Card>
-        ) : (
+        ) : viewMode === 'card' ? (
           <Row gutter={[16, 16]}>
             {filteredJobs.map((job) => {
               const electrolyte = electrolytes.find(e => e.id === job.system_id);
@@ -703,6 +930,138 @@ export default function Jobs() {
               );
             })}
           </Row>
+        ) : (
+          <Card
+            style={{
+              borderRadius: 12,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              border: 'none',
+            }}
+          >
+            <Table
+              dataSource={filteredJobs}
+              rowKey="id"
+              pagination={{
+                pageSize: 20,
+                showSizeChanger: true,
+                showTotal: (total) => `共 ${total} 个任务`,
+                pageSizeOptions: ['10', '20', '50', '100'],
+              }}
+              scroll={{ x: 1200 }}
+              columns={[
+                {
+                  title: 'ID',
+                  dataIndex: 'id',
+                  key: 'id',
+                  width: 80,
+                  fixed: 'left',
+                },
+                {
+                  title: '任务名称',
+                  key: 'job_name',
+                  width: 200,
+                  fixed: 'left',
+                  render: (_: any, record: MDJob) => (
+                    <a onClick={() => navigate(`/workspace/jobs/${record.id}/detail`)}>
+                      {record.config?.job_name || `任务 #${record.id}`}
+                    </a>
+                  ),
+                },
+                {
+                  title: '状态',
+                  dataIndex: 'status',
+                  key: 'status',
+                  width: 120,
+                  render: (status: JobStatus) => {
+                    const statusConfig: Record<JobStatus, { color: string; text: string; icon: any }> = {
+                      [JobStatus.CREATED]: { color: 'default', text: '待配置', icon: <ClockCircleOutlined /> },
+                      [JobStatus.QUEUED]: { color: 'processing', text: '排队中', icon: <ClockCircleOutlined /> },
+                      [JobStatus.RUNNING]: { color: 'processing', text: '运行中', icon: <RocketOutlined /> },
+                      [JobStatus.POSTPROCESSING]: { color: 'processing', text: '后处理', icon: <RocketOutlined /> },
+                      [JobStatus.COMPLETED]: { color: 'success', text: '已完成', icon: <CheckCircleOutlined /> },
+                      [JobStatus.FAILED]: { color: 'error', text: '失败', icon: <CloseCircleOutlined /> },
+                      [JobStatus.CANCELLED]: { color: 'default', text: '已取消', icon: <CloseCircleOutlined /> },
+                    };
+                    const config = statusConfig[status] || statusConfig[JobStatus.CREATED];
+                    return (
+                      <Tag color={config.color} icon={config.icon}>
+                        {config.text}
+                      </Tag>
+                    );
+                  },
+                },
+                {
+                  title: '配方',
+                  dataIndex: 'system_id',
+                  key: 'system_id',
+                  width: 200,
+                  render: (systemId: number) => {
+                    const electrolyte = electrolytes.find(e => e.id === systemId);
+                    return electrolyte?.name || '-';
+                  },
+                },
+                {
+                  title: 'Slurm Job ID',
+                  dataIndex: 'slurm_job_id',
+                  key: 'slurm_job_id',
+                  width: 120,
+                  render: (id: number | null) => id || '-',
+                },
+                {
+                  title: '分区',
+                  key: 'slurm_partition',
+                  width: 100,
+                  render: (_: any, record: MDJob) => {
+                    const partition = record.config?.slurm_partition;
+                    return partition ? <Tag color="blue">{partition}</Tag> : '-';
+                  },
+                },
+                {
+                  title: '创建时间',
+                  dataIndex: 'created_at',
+                  key: 'created_at',
+                  width: 180,
+                  render: (time: string) => new Date(time).toLocaleString('zh-CN'),
+                },
+                {
+                  title: '操作',
+                  key: 'actions',
+                  width: 200,
+                  fixed: 'right',
+                  render: (_: any, record: MDJob) => (
+                    <Space size="small">
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => navigate(`/workspace/jobs/${record.id}/detail`)}
+                      >
+                        详情
+                      </Button>
+                      {(record.status === JobStatus.QUEUED || record.status === JobStatus.RUNNING) && (
+                        <Button
+                          type="link"
+                          size="small"
+                          danger
+                          onClick={() => handleCancel(record.id)}
+                        >
+                          取消
+                        </Button>
+                      )}
+                      {(record.status === JobStatus.FAILED || record.status === JobStatus.CANCELLED) && (
+                        <Button
+                          type="link"
+                          size="small"
+                          onClick={() => handleOpenResubmitModal(record)}
+                        >
+                          重新提交
+                        </Button>
+                      )}
+                    </Space>
+                  ),
+                },
+              ]}
+            />
+          </Card>
         )}
       </Spin>
 
