@@ -259,77 +259,118 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
             }
           >
             <Row gutter={16}>
-              <Col xs={24} lg={12}>
-                <Descriptions column={1} size="small" bordered>
-                  <Descriptions.Item label="配方名称">
-                    <Text strong>{electrolyte.name}</Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="温度 (K)">
-                    {job.config?.temperature || electrolyte.temperature}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="压力 (atm)">
-                    {job.config?.pressure || electrolyte.pressure}
-                  </Descriptions.Item>
-                </Descriptions>
-              </Col>
-              <Col xs={24} lg={12}>
-                <div style={{ marginTop: 0 }}>
-                  <Text strong style={{ fontSize: 13, marginBottom: 8, display: 'block' }}>组分详情：</Text>
-                  <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                    {electrolyte.cations.map((cation, idx) => (
-                      <div key={`cation-${idx}`} style={{
-                        padding: '4px 8px',
-                        background: '#fff2f0',
-                        borderRadius: 4,
-                        borderLeft: '3px solid #ff4d4f'
-                      }}>
-                        <Space>
-                          <Tag color="red">{cation.name}</Tag>
-                          <Text style={{ fontSize: 12 }}>
-                            数量: <Text strong>{cation.number}</Text>
-                          </Text>
-                        </Space>
+              {/* 左侧：基本参数 */}
+              <Col xs={24} lg={8}>
+                <div style={{
+                  padding: '16px',
+                  background: 'linear-gradient(135deg, #f0f9ff 0%, #e6f7ff 100%)',
+                  borderRadius: 8,
+                  border: '1px solid #91d5ff',
+                  height: '100%'
+                }}>
+                  <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>配方名称</Text>
+                      <div style={{ marginTop: 4 }}>
+                        <Text strong style={{ fontSize: 15 }}>{electrolyte.name}</Text>
                       </div>
+                    </div>
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>温度</Text>
+                      <div style={{ marginTop: 4 }}>
+                        <Text strong style={{ fontSize: 15, color: '#fa8c16' }}>
+                          {job.config?.temperature || electrolyte.temperature} K
+                        </Text>
+                      </div>
+                    </div>
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>压力</Text>
+                      <div style={{ marginTop: 4 }}>
+                        <Text strong style={{ fontSize: 15, color: '#1890ff' }}>
+                          {job.config?.pressure || electrolyte.pressure} atm
+                        </Text>
+                      </div>
+                    </div>
+                  </Space>
+                </div>
+              </Col>
+
+              {/* 右侧：组分详情 */}
+              <Col xs={24} lg={16}>
+                <div style={{
+                  padding: '16px',
+                  background: '#fafafa',
+                  borderRadius: 8,
+                  border: '1px solid #e8e8e8',
+                  height: '100%'
+                }}>
+                  <Text strong style={{ fontSize: 13, marginBottom: 12, display: 'block', color: '#595959' }}>
+                    组分详情
+                  </Text>
+                  <Row gutter={[8, 8]}>
+                    {electrolyte.cations.map((cation, idx) => (
+                      <Col xs={24} sm={12} md={8} key={`cation-${idx}`}>
+                        <div style={{
+                          padding: '10px 12px',
+                          background: 'linear-gradient(135deg, #fff1f0 0%, #ffccc7 100%)',
+                          borderRadius: 6,
+                          border: '1px solid #ffa39e',
+                          boxShadow: '0 2px 4px rgba(255, 77, 79, 0.1)'
+                        }}>
+                          <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                            <Tag color="red" style={{ margin: 0 }}>{cation.name}</Tag>
+                            <Text style={{ fontSize: 12, color: '#595959' }}>
+                              数量: <Text strong style={{ fontSize: 14, color: '#cf1322' }}>{cation.number}</Text>
+                            </Text>
+                          </Space>
+                        </div>
+                      </Col>
                     ))}
                     {electrolyte.anions.map((anion, idx) => (
-                      <div key={`anion-${idx}`} style={{
-                        padding: '4px 8px',
-                        background: '#f0f9ff',
-                        borderRadius: 4,
-                        borderLeft: '3px solid #1890ff'
-                      }}>
-                        <Space>
-                          <Tag color="blue">{anion.name}</Tag>
-                          <Text style={{ fontSize: 12 }}>
-                            数量: <Text strong>{anion.number}</Text>
-                          </Text>
-                        </Space>
-                      </div>
+                      <Col xs={24} sm={12} md={8} key={`anion-${idx}`}>
+                        <div style={{
+                          padding: '10px 12px',
+                          background: 'linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%)',
+                          borderRadius: 6,
+                          border: '1px solid #91d5ff',
+                          boxShadow: '0 2px 4px rgba(24, 144, 255, 0.1)'
+                        }}>
+                          <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                            <Tag color="blue" style={{ margin: 0 }}>{anion.name}</Tag>
+                            <Text style={{ fontSize: 12, color: '#595959' }}>
+                              数量: <Text strong style={{ fontSize: 14, color: '#096dd9' }}>{anion.number}</Text>
+                            </Text>
+                          </Space>
+                        </div>
+                      </Col>
                     ))}
                     {electrolyte.solvents && electrolyte.solvents.map((solvent, idx) => (
-                      <div key={`solvent-${idx}`} style={{
-                        padding: '4px 8px',
-                        background: '#f6ffed',
-                        borderRadius: 4,
-                        borderLeft: '3px solid #52c41a'
-                      }}>
-                        <Space>
-                          <Tag color="green">{solvent.name}</Tag>
-                          <Text style={{ fontSize: 12 }}>
-                            数量: <Text strong>{solvent.number}</Text>
-                          </Text>
-                        </Space>
-                      </div>
+                      <Col xs={24} sm={12} md={8} key={`solvent-${idx}`}>
+                        <div style={{
+                          padding: '10px 12px',
+                          background: 'linear-gradient(135deg, #f6ffed 0%, #d9f7be 100%)',
+                          borderRadius: 6,
+                          border: '1px solid #b7eb8f',
+                          boxShadow: '0 2px 4px rgba(82, 196, 26, 0.1)'
+                        }}>
+                          <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                            <Tag color="green" style={{ margin: 0 }}>{solvent.name}</Tag>
+                            <Text style={{ fontSize: 12, color: '#595959' }}>
+                              数量: <Text strong style={{ fontSize: 14, color: '#389e0d' }}>{solvent.number}</Text>
+                            </Text>
+                          </Space>
+                        </div>
+                      </Col>
                     ))}
-                  </Space>
+                  </Row>
                 </div>
               </Col>
             </Row>
           </Card>
         </Col>
 
-        {/* 3. 浓度对比（50%） */}
-        <Col xs={24} lg={12}>
+        {/* 3. 浓度对比（100%宽度） */}
+        <Col xs={24}>
           <Card
             className="dashboard-card"
             style={dashboardCardStyle}
@@ -337,53 +378,118 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
               <Space size={8}>
                 <FundOutlined style={{ color: DASHBOARD_STYLES.titleColor }} />
                 <span style={{ fontSize: 14, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
-                  浓度对比
+                  浓度与盒子尺寸对比
                 </span>
               </Space>
             }
           >
             {loadingStructure ? (
-              <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                <Spin />
+              <div style={{ textAlign: 'center', padding: '60px 0' }}>
+                <Spin size="large" />
+                <div style={{ marginTop: 16, color: '#8c8c8c' }}>加载计算结果...</div>
               </div>
             ) : structureInfo?.available ? (
-              <Descriptions column={1} size="small" bordered>
-                <Descriptions.Item label="初始浓度 (mol/L)">
-                  {structureInfo.initial_concentration ? (
-                    <Text strong style={{ fontSize: 14, color: '#8c8c8c' }}>
-                      {structureInfo.initial_concentration.toFixed(4)}
-                    </Text>
-                  ) : '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="计算浓度 (mol/L)">
-                  <Space direction="vertical" size={0}>
-                    <Text strong style={{ fontSize: 16, color: '#52c41a' }}>
-                      {structureInfo.concentration?.toFixed(4) || '-'}
-                    </Text>
-                    {structureInfo.initial_concentration && structureInfo.concentration && (
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        偏差: {((structureInfo.concentration - structureInfo.initial_concentration) / structureInfo.initial_concentration * 100).toFixed(2)}%
+              <Row gutter={16}>
+                {/* 左侧：初始值 */}
+                <Col xs={24} lg={12}>
+                  <div style={{
+                    padding: '20px',
+                    background: 'linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%)',
+                    borderRadius: 8,
+                    border: '1px solid #d9d9d9',
+                    height: '100%'
+                  }}>
+                    <div style={{
+                      marginBottom: 16,
+                      paddingBottom: 12,
+                      borderBottom: '2px solid #d9d9d9'
+                    }}>
+                      <Text strong style={{ fontSize: 15, color: '#595959' }}>
+                        📋 初始设置
                       </Text>
-                    )}
-                  </Space>
-                </Descriptions.Item>
-                <Descriptions.Item label="盒子尺寸 (Å)">
-                  <Space direction="vertical" size={0}>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      初始: {structureInfo.initial_box_dimensions || '-'}
-                    </Text>
-                    <Text strong style={{ fontSize: 14 }}>
-                      最终: {structureInfo.box_dimensions || '-'}
-                    </Text>
-                  </Space>
-                </Descriptions.Item>
-              </Descriptions>
+                    </div>
+                    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>初始浓度</Text>
+                        <div style={{ marginTop: 6 }}>
+                          <Text strong style={{ fontSize: 20, color: '#8c8c8c' }}>
+                            {structureInfo.initial_concentration?.toFixed(4) || '-'}
+                          </Text>
+                          <Text type="secondary" style={{ marginLeft: 8, fontSize: 13 }}>mol/L</Text>
+                        </div>
+                      </div>
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>初始盒子尺寸</Text>
+                        <div style={{ marginTop: 6 }}>
+                          <Text code style={{ fontSize: 14, color: '#595959' }}>
+                            {structureInfo.initial_box_dimensions || '-'}
+                          </Text>
+                          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>Å</Text>
+                        </div>
+                      </div>
+                    </Space>
+                  </div>
+                </Col>
+
+                {/* 右侧：计算结果 */}
+                <Col xs={24} lg={12}>
+                  <div style={{
+                    padding: '20px',
+                    background: 'linear-gradient(135deg, #e6fffb 0%, #b5f5ec 100%)',
+                    borderRadius: 8,
+                    border: '2px solid #5cdbd3',
+                    boxShadow: '0 4px 12px rgba(19, 194, 194, 0.15)',
+                    height: '100%'
+                  }}>
+                    <div style={{
+                      marginBottom: 16,
+                      paddingBottom: 12,
+                      borderBottom: '2px solid #5cdbd3'
+                    }}>
+                      <Text strong style={{ fontSize: 15, color: '#006d75' }}>
+                        ✨ 计算结果
+                      </Text>
+                    </div>
+                    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>计算浓度</Text>
+                        <div style={{ marginTop: 6 }}>
+                          <Text strong style={{ fontSize: 24, color: '#13c2c2' }}>
+                            {structureInfo.concentration?.toFixed(4) || '-'}
+                          </Text>
+                          <Text type="secondary" style={{ marginLeft: 8, fontSize: 13 }}>mol/L</Text>
+                        </div>
+                        {structureInfo.initial_concentration && structureInfo.concentration && (
+                          <div style={{ marginTop: 6 }}>
+                            <Tag color={
+                              Math.abs((structureInfo.concentration - structureInfo.initial_concentration) / structureInfo.initial_concentration * 100) < 5
+                                ? 'success'
+                                : 'warning'
+                            }>
+                              偏差: {((structureInfo.concentration - structureInfo.initial_concentration) / structureInfo.initial_concentration * 100).toFixed(2)}%
+                            </Tag>
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>最终盒子尺寸</Text>
+                        <div style={{ marginTop: 6 }}>
+                          <Text code strong style={{ fontSize: 15, color: '#006d75' }}>
+                            {structureInfo.box_dimensions || '-'}
+                          </Text>
+                          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>Å</Text>
+                        </div>
+                      </div>
+                    </Space>
+                  </div>
+                </Col>
+              </Row>
             ) : (
               <Alert
                 message="计算结果未就绪"
                 description={
                   <div>
-                    <p>任务完成后将显示浓度计算结果</p>
+                    <p>任务完成后将显示浓度和盒子尺寸的计算结果</p>
                     <p style={{ marginTop: 8, fontSize: 12 }}>
                       当前状态: <Tag>{job.status}</Tag>
                     </p>
@@ -391,13 +497,14 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
                 }
                 type="info"
                 showIcon
+                style={{ margin: '20px 0' }}
               />
             )}
           </Card>
         </Col>
 
-        {/* 4. 密度对比（50%） */}
-        <Col xs={24} lg={12}>
+        {/* 4. 密度对比（100%宽度） */}
+        <Col xs={24}>
           <Card
             className="dashboard-card"
             style={dashboardCardStyle}
@@ -411,31 +518,90 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
             }
           >
             {loadingStructure ? (
-              <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                <Spin />
+              <div style={{ textAlign: 'center', padding: '60px 0' }}>
+                <Spin size="large" />
+                <div style={{ marginTop: 16, color: '#8c8c8c' }}>加载计算结果...</div>
               </div>
             ) : structureInfo?.available ? (
-              <Descriptions column={1} size="small" bordered>
-                <Descriptions.Item label="初始密度 (g/cm³)">
-                  {structureInfo.initial_density ? (
-                    <Text strong style={{ fontSize: 14, color: '#8c8c8c' }}>
-                      {structureInfo.initial_density.toFixed(4)}
-                    </Text>
-                  ) : '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="计算密度 (g/cm³)">
-                  <Space direction="vertical" size={0}>
-                    <Text strong style={{ fontSize: 16, color: '#1890ff' }}>
-                      {structureInfo.density?.toFixed(4) || '-'}
-                    </Text>
-                    {structureInfo.initial_density && structureInfo.density && (
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        偏差: {((structureInfo.density - structureInfo.initial_density) / structureInfo.initial_density * 100).toFixed(2)}%
+              <Row gutter={16}>
+                {/* 左侧：初始值 */}
+                <Col xs={24} lg={12}>
+                  <div style={{
+                    padding: '20px',
+                    background: 'linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%)',
+                    borderRadius: 8,
+                    border: '1px solid #d9d9d9',
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center'
+                  }}>
+                    <div style={{
+                      marginBottom: 16,
+                      paddingBottom: 12,
+                      borderBottom: '2px solid #d9d9d9'
+                    }}>
+                      <Text strong style={{ fontSize: 15, color: '#595959' }}>
+                        📋 初始设置
                       </Text>
-                    )}
-                  </Space>
-                </Descriptions.Item>
-              </Descriptions>
+                    </div>
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>初始密度</Text>
+                      <div style={{ marginTop: 6 }}>
+                        <Text strong style={{ fontSize: 24, color: '#8c8c8c' }}>
+                          {structureInfo.initial_density?.toFixed(4) || '-'}
+                        </Text>
+                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 13 }}>g/cm³</Text>
+                      </div>
+                    </div>
+                  </div>
+                </Col>
+
+                {/* 右侧：计算结果 */}
+                <Col xs={24} lg={12}>
+                  <div style={{
+                    padding: '20px',
+                    background: 'linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%)',
+                    borderRadius: 8,
+                    border: '2px solid #69c0ff',
+                    boxShadow: '0 4px 12px rgba(24, 144, 255, 0.15)',
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center'
+                  }}>
+                    <div style={{
+                      marginBottom: 16,
+                      paddingBottom: 12,
+                      borderBottom: '2px solid #69c0ff'
+                    }}>
+                      <Text strong style={{ fontSize: 15, color: '#0050b3' }}>
+                        ✨ 计算结果
+                      </Text>
+                    </div>
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>计算密度</Text>
+                      <div style={{ marginTop: 6 }}>
+                        <Text strong style={{ fontSize: 28, color: '#1890ff' }}>
+                          {structureInfo.density?.toFixed(4) || '-'}
+                        </Text>
+                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 13 }}>g/cm³</Text>
+                      </div>
+                      {structureInfo.initial_density && structureInfo.density && (
+                        <div style={{ marginTop: 8 }}>
+                          <Tag color={
+                            Math.abs((structureInfo.density - structureInfo.initial_density) / structureInfo.initial_density * 100) < 5
+                              ? 'success'
+                              : 'warning'
+                          } style={{ fontSize: 13 }}>
+                            偏差: {((structureInfo.density - structureInfo.initial_density) / structureInfo.initial_density * 100).toFixed(2)}%
+                          </Tag>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Col>
+              </Row>
             ) : (
               <Alert
                 message="计算结果未就绪"
@@ -449,6 +615,7 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
                 }
                 type="info"
                 showIcon
+                style={{ margin: '20px 0' }}
               />
             )}
           </Card>
