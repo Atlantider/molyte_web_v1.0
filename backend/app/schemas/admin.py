@@ -4,7 +4,7 @@ Admin API schemas
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from pydantic import BaseModel, EmailStr, Field
-from app.models.user import UserRole
+from app.models.user import UserRole, UserType
 
 
 # ============ User Management Schemas ============
@@ -15,8 +15,12 @@ class UserListItem(BaseModel):
     username: str
     email: EmailStr
     role: UserRole
+    user_type: UserType
+    organization: Optional[str] = None
+    department: Optional[str] = None
     is_active: bool
     total_cpu_hours: float
+    balance_cpu_hours: float = 0.0
     daily_job_limit: int
     concurrent_job_limit: int
     storage_quota_gb: float
@@ -34,8 +38,12 @@ class UserDetail(BaseModel):
     username: str
     email: EmailStr
     role: UserRole
+    user_type: UserType
+    organization: Optional[str] = None
+    department: Optional[str] = None
     is_active: bool
     total_cpu_hours: float
+    balance_cpu_hours: float = 0.0
     daily_job_limit: int
     concurrent_job_limit: int
     storage_quota_gb: float
@@ -73,12 +81,12 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
     password: str = Field(..., min_length=6)
-    role: UserRole = UserRole.USER
-    total_cpu_hours: float = Field(100.0, ge=0)
-    daily_job_limit: int = Field(10, ge=0)
-    concurrent_job_limit: int = Field(3, ge=0)
-    storage_quota_gb: float = Field(10.0, ge=0)
-    allowed_partitions: Optional[List[str]] = Field(default_factory=lambda: ["cpu"])  # Default to cpu only
+    role: UserRole = Field(default=UserRole.USER, description="用户角色，默认为普通用户")
+    total_cpu_hours: float = Field(default=100.0, ge=0, description="总CPU核时配额")
+    daily_job_limit: int = Field(default=10, ge=0, description="每日任务限制")
+    concurrent_job_limit: int = Field(default=3, ge=0, description="并发任务限制")
+    storage_quota_gb: float = Field(default=10.0, ge=0, description="存储配额(GB)")
+    allowed_partitions: Optional[List[str]] = Field(default_factory=lambda: ["cpu"], description="允许使用的队列，默认仅cpu队列")
 
 
 # ============ Statistics Schemas ============

@@ -68,7 +68,7 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
         email=user_data.email,
         username=user_data.username,
         password_hash=hashed_password,
-        role=user_data.role,
+        role=UserRole.USER,  # 强制设置为普通用户，不接受前端传入的role
         user_type=user_data.user_type,
         organization=user_data.organization,
         department=user_data.department,
@@ -79,6 +79,8 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
         balance_cpu_hours=quotas["free_cpu_hours"],
         free_cpu_hours_granted=quotas["free_cpu_hours"],
         total_cpu_hours=quotas["free_cpu_hours"],
+        # 默认只允许使用cpu队列
+        allowed_partitions=["cpu"],
     )
 
     db.add(db_user)

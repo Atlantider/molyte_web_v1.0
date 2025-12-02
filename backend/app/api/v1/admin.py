@@ -41,33 +41,139 @@ async def get_all_users(
     skip: int = 0,
     limit: int = 100,
     role: Optional[UserRole] = None,
+    user_type: Optional[str] = None,  # UserType枚举值
     is_active: Optional[bool] = None,
+    search: Optional[str] = None,  # 搜索用户名、邮箱、组织
+    organization: Optional[str] = None,  # 按组织筛选
+    sort_by: str = "created_at",  # created_at, username, email, last_login_at
+    sort_order: str = "desc",  # asc, desc
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin_user)
 ):
     """
-    Get all users (admin only)
-    
+    Get all users with enhanced filtering (admin only)
+
     Args:
         skip: Number of records to skip
         limit: Maximum number of records to return
-        role: Filter by role
+        role: Filter by role (ADMIN, PREMIUM, USER, GUEST)
+        user_type: Filter by user type (STUDENT, RESEARCHER, COMPANY)
         is_active: Filter by active status
+        search: Search in username, email, organization
+        organization: Filter by organization name
+        sort_by: Sort field (created_at, username, email, last_login_at)
+        sort_order: Sort order (asc, desc)
         db: Database session
         admin: Current admin user
-        
+
     Returns:
         List of users
     """
+    from app.models.user import UserType
+
     query = db.query(User)
-    
+
+    # 角色筛选
     if role:
         query = query.filter(User.role == role)
+
+    # 用户类型筛选
+    if user_type:
+        try:
+            user_type_enum = UserType(user_type)
+            query = query.filter(User.user_type == user_type_enum)
+        except ValueError:
+            pass  # 忽略无效的user_type值
+
+    # 激活状态筛选
     if is_active is not None:
         query = query.filter(User.is_active == is_active)
-    
+
+    # 组织筛选
+    if organization:
+        query = query.filter(User.organization.ilike(f"%{organization}%"))
+
+    # 搜索功能（用户名、邮箱、组织）
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            (User.username.ilike(search_pattern)) |
+            (User.email.ilike(search_pattern)) |
+            (User.organization.ilike(search_pattern))
+        )
+
+    # 排序
+    sort_column = {
+        "created_at": User.created_at,
+        "username": User.username,
+        "email": User.email,
+        "last_login_at": User.last_login_at,
+    }.get(sort_by, User.created_at)
+
+    if sort_order == "asc":
+        query = query.order_by(sort_column.asc())
+    else:
+        query = query.order_by(sort_column.desc())
+
     users = query.offset(skip).limit(limit).all()
     return users
+
+
+@router.get("/users/count/total")
+async def get_users_count(
+    role: Optional[UserRole] = None,
+    user_type: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    search: Optional[str] = None,
+    organization: Optional[str] = None,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """
+    Get total count of users with filters (admin only)
+
+    Args:
+        role: Filter by role
+        user_type: Filter by user type
+        is_active: Filter by active status
+        search: Search in username, email, organization
+        organization: Filter by organization name
+        db: Database session
+        admin: Current admin user
+
+    Returns:
+        Total count of users matching filters
+    """
+    from app.models.user import UserType
+
+    query = db.query(User)
+
+    if role:
+        query = query.filter(User.role == role)
+
+    if user_type:
+        try:
+            user_type_enum = UserType(user_type)
+            query = query.filter(User.user_type == user_type_enum)
+        except ValueError:
+            pass
+
+    if is_active is not None:
+        query = query.filter(User.is_active == is_active)
+
+    if organization:
+        query = query.filter(User.organization.ilike(f"%{organization}%"))
+
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            (User.username.ilike(search_pattern)) |
+            (User.email.ilike(search_pattern)) |
+            (User.organization.ilike(search_pattern))
+        )
+
+    total = query.count()
+    return {"total": total}
 
 
 @router.get("/users/{user_id}", response_model=UserDetail)

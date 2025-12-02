@@ -38,7 +38,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """Schema for creating a user"""
     password: str = Field(..., min_length=6, max_length=100)
-    role: Optional[UserRole] = UserRole.USER
+    role: UserRole = Field(default=UserRole.USER, description="用户角色，默认为普通用户")
     # 新增字段
     user_type: UserType = Field(default=UserType.STUDENT, description="用户类型：学生/研究者/企业")
     organization: str = Field(..., min_length=2, max_length=200, description="单位名称")
