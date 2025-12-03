@@ -2363,21 +2363,24 @@ async def get_structure_info(
                         lines = f.readlines()
 
                     # 辅助函数：从一行数据中提取密度和盒子尺寸
+                    # LAMMPS thermo 输出格式: Step CPU CPULeft Temp Density Lx Ly Lz ...
+                    # 列索引:                  0    1   2       3    4       5  6  7
                     def parse_thermo_line(parts):
                         density_val = None
                         box_vals = []
-                        for val in parts:
-                            try:
-                                fval = float(val)
-                                # 密度通常在 0.5 - 3.0 g/cm³ 之间
-                                if 0.5 < fval < 3.0 and density_val is None:
-                                    density_val = fval
-                                # 盒子尺寸通常在 15-100 Å 之间
-                                elif 15 < fval < 100:
-                                    if len(box_vals) < 3:
-                                        box_vals.append(fval)
-                            except ValueError:
-                                continue
+                        try:
+                            # 根据列位置提取密度（第5列，索引4）
+                            if len(parts) > 4:
+                                density_val = float(parts[4])
+
+                            # 根据列位置提取盒子尺寸（第6-8列，索引5-7）
+                            if len(parts) > 7:
+                                box_vals = [float(parts[5]), float(parts[6]), float(parts[7])]
+                        except (ValueError, IndexError):
+                            # 如果按列位置提取失败，返回 None
+                            density_val = None
+                            box_vals = []
+
                         return density_val, box_vals
 
                     # 判断是否为有效数据行
