@@ -346,15 +346,43 @@ export default function JobDetail() {
               <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
                 任务进度
               </Text>
-              <Progress
-                percent={job.progress}
-                status={job.status === JobStatus.RUNNING ? 'active' : 'normal'}
-                strokeColor={{
-                  '0%': '#108ee9',
-                  '100%': '#87d068',
-                }}
-                size="small"
-              />
+              {(() => {
+                // 根据状态计算显示的进度值
+                const getProgressByStatus = () => {
+                  switch (job.status) {
+                    case JobStatus.CREATED:
+                      return { percent: 0, status: 'normal' as const, text: '待配置' };
+                    case JobStatus.QUEUED:
+                      return { percent: 15, status: 'active' as const, text: '排队中' };
+                    case JobStatus.RUNNING:
+                      return { percent: job.progress || 50, status: 'active' as const, text: '运行中' };
+                    case JobStatus.POSTPROCESSING:
+                      return { percent: 90, status: 'active' as const, text: '后处理' };
+                    case JobStatus.COMPLETED:
+                      return { percent: 100, status: 'success' as const, text: '已完成' };
+                    case JobStatus.FAILED:
+                      return { percent: 100, status: 'exception' as const, text: '失败' };
+                    case JobStatus.CANCELLED:
+                      return { percent: job.progress || 0, status: 'exception' as const, text: '已取消' };
+                    default:
+                      return { percent: 0, status: 'normal' as const, text: '' };
+                  }
+                };
+                const progressInfo = getProgressByStatus();
+                return (
+                  <Progress
+                    percent={progressInfo.percent}
+                    status={progressInfo.status}
+                    strokeColor={
+                      progressInfo.status === 'active'
+                        ? { '0%': '#108ee9', '100%': '#87d068' }
+                        : undefined
+                    }
+                    size="small"
+                    format={() => `${progressInfo.percent}%`}
+                  />
+                );
+              })()}
             </div>
           </Col>
 

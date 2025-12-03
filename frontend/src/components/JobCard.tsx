@@ -304,19 +304,54 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
             </div>
           )}
 
-          {/* 进度条 - 仅运行中显示 */}
-          {(job.status === JobStatus.RUNNING || job.status === JobStatus.POSTPROCESSING) && (
-            <Progress
-              percent={job.progress || 0}
-              size="small"
-              status="active"
-              strokeColor={{
-                '0%': '#108ee9',
-                '100%': '#87d068',
-              }}
-              style={{ marginBottom: 8 }}
-            />
-          )}
+          {/* 进度条 - 根据状态显示 */}
+          {(() => {
+            // 根据状态计算显示的进度值
+            const getProgressByStatus = () => {
+              switch (job.status) {
+                case JobStatus.CREATED:
+                  return { percent: 0, status: 'normal' as const, text: '待配置' };
+                case JobStatus.QUEUED:
+                  return { percent: 15, status: 'active' as const, text: '排队中' };
+                case JobStatus.RUNNING:
+                  // 运行中使用实际进度，如果没有则显示中间值
+                  return { percent: job.progress || 50, status: 'active' as const, text: '运行中' };
+                case JobStatus.POSTPROCESSING:
+                  return { percent: 90, status: 'active' as const, text: '后处理' };
+                case JobStatus.COMPLETED:
+                  return { percent: 100, status: 'success' as const, text: '已完成' };
+                case JobStatus.FAILED:
+                  return { percent: 100, status: 'exception' as const, text: '失败' };
+                case JobStatus.CANCELLED:
+                  return { percent: job.progress || 0, status: 'exception' as const, text: '已取消' };
+                default:
+                  return { percent: 0, status: 'normal' as const, text: '' };
+              }
+            };
+
+            const progressInfo = getProgressByStatus();
+
+            // 只在非CREATED状态显示进度条
+            if (job.status === JobStatus.CREATED) {
+              return null;
+            }
+
+            return (
+              <div style={{ marginBottom: 8 }}>
+                <Progress
+                  percent={progressInfo.percent}
+                  size="small"
+                  status={progressInfo.status}
+                  strokeColor={
+                    progressInfo.status === 'active'
+                      ? { '0%': '#108ee9', '100%': '#87d068' }
+                      : undefined
+                  }
+                  format={() => progressInfo.text}
+                />
+              </div>
+            );
+          })()}
 
           <Space size={4}>
             <CalendarOutlined style={{ color: '#bfbfbf', fontSize: 12 }} />
