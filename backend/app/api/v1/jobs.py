@@ -959,7 +959,7 @@ def list_md_jobs(
 ):
     """
     List MD jobs
-    
+
     Args:
         system_id: Filter by system ID
         status_filter: Filter by job status
@@ -967,16 +967,18 @@ def list_md_jobs(
         limit: Maximum number of records to return
         db: Database session
         current_user: Current authenticated user
-        
-    Returns:
-        List[MDJob]: List of MD jobs
-    """
-    query = db.query(MDJob)
 
-    # Filter by user unless admin
-    if current_user.role != UserRole.ADMIN:
-        query = query.filter(MDJob.user_id == current_user.id)
-    
+    Returns:
+        List[MDJob]: List of MD jobs (with user info for admins)
+    """
+    # 管理员可以看到所有任务，普通用户只能看到自己的任务
+    if current_user.role == UserRole.ADMIN:
+        # 管理员：使用 join 查询，获取用户信息
+        query = db.query(MDJob, User).join(User, MDJob.user_id == User.id)
+    else:
+        # 普通用户：只查询自己的任务
+        query = db.query(MDJob).filter(MDJob.user_id == current_user.id)
+
     # Filter by system if specified
     if system_id:
         query = query.filter(MDJob.system_id == system_id)
@@ -984,16 +986,18 @@ def list_md_jobs(
     # Filter by status if specified
     if status_filter:
         query = query.filter(MDJob.status == status_filter)
-    
+
     # Order by creation time (newest first)
     query = query.order_by(MDJob.created_at.desc())
 
-    jobs = query.offset(skip).limit(limit).all()
+    # 执行查询
+    results = query.offset(skip).limit(limit).all()
 
     # 为管理员添加用户信息
     if current_user.role == UserRole.ADMIN:
-        result = []
-        for job in jobs:
+        # results 是 (MDJob, User) 元组列表
+        job_list = []
+        for job, user in results:
             job_dict = {
                 "id": job.id,
                 "system_id": job.system_id,
@@ -1009,16 +1013,15 @@ def list_md_jobs(
                 "updated_at": job.updated_at,
                 "started_at": job.started_at,
                 "finished_at": job.finished_at,
+                # 添加用户信息（仅管理员可见）
+                "username": user.username,
+                "user_email": user.email,
             }
-            # 添加用户信息
-            user = db.query(User).filter(User.id == job.user_id).first()
-            if user:
-                job_dict["username"] = user.username
-                job_dict["user_email"] = user.email
-            result.append(job_dict)
-        return result
+            job_list.append(job_dict)
+        return job_list
 
-    return jobs
+    # 普通用户：直接返回任务列表
+    return results
 
 
 @router.get("/{job_id}", response_model=MDJobSchema)

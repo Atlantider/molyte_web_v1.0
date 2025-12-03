@@ -50,10 +50,11 @@ import { getElectrolytes, createElectrolyteNew } from '../api/electrolytes';
 import { getPartitions, getSlurmSuggestion, type PartitionInfo } from '../api/slurm';
 import { getProjects } from '../api/projects';
 import type { MDJob, MDJobCreate, ElectrolyteSystem, Project } from '../types';
-import { JobStatus } from '../types';
+import { JobStatus, UserRole } from '../types';
 import ElectrolyteFormOptimized from '../components/ElectrolyteFormOptimized';
 import AccuracyLevelSelector from '../components/AccuracyLevelSelector';
 import dayjs, { Dayjs } from 'dayjs';
+import { useAuthStore } from '../stores/authStore';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -61,6 +62,7 @@ const { RangePicker } = DatePicker;
 export default function Jobs() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [jobs, setJobs] = useState<MDJob[]>([]);
   const [electrolytes, setElectrolytes] = useState<ElectrolyteSystem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -979,6 +981,17 @@ export default function Jobs() {
                     </a>
                   ),
                 },
+                // 仅管理员可见：提交用户列
+                ...(user?.role === UserRole.ADMIN ? [{
+                  title: '提交用户',
+                  key: 'username',
+                  width: 150,
+                  render: (_: any, record: MDJob) => (
+                    <Tooltip title={record.user_email || '未知邮箱'}>
+                      <Text>{record.username || '未知用户'}</Text>
+                    </Tooltip>
+                  ),
+                }] : []),
                 {
                   title: '状态',
                   dataIndex: 'status',
