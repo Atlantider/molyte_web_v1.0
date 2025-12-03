@@ -111,9 +111,10 @@ export GAUSS_SCRDIR=/public/software/g16/scratch
 source /public/software/g16/bsd/g16.profile
 
 # 设置 Multiwfn 环境
-export Multiwfnpath=/public/software/Multiwfn
+export Multiwfnpath=/public/software/Multiwfn_3.8_dev_bin_Linux
 export PATH=$Multiwfnpath:$PATH
 export OMP_STACKSIZE=200M
+export LD_LIBRARY_PATH=/lib64:/usr/lib64:$LD_LIBRARY_PATH
 ulimit -s unlimited
 
 # 运行 RESP2 计算
