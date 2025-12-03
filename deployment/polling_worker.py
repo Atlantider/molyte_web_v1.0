@@ -228,7 +228,7 @@ class PollingWorker:
 
     def _recover_from_local_dirs(self, running_slurm_jobs: Dict[str, str]):
         """从本地工作目录恢复任务追踪"""
-        md_work_dir = Path(self.config['paths']['md_work_dir'])
+        md_work_dir = Path(self.config['local']['work_base_path'])
 
         for job_name, slurm_job_id in running_slurm_jobs.items():
             # 尝试从任务名解析任务 ID
