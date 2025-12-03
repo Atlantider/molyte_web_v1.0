@@ -78,7 +78,7 @@ export default function DesolvationAnalysisPanel({
       const newJob = await createDesolvationJob({
         md_job_id: jobId,
         solvation_structure_id: clusterId,
-        method_level: 'fast_xtb'
+        method_level: 'standard'  // 使用 QC 标准方法（B3LYP/6-31++G(d,p)）
       });
       message.success('去溶剂化能任务已创建');
       await loadJobs();

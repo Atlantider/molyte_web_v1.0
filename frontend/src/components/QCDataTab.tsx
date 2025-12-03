@@ -1572,6 +1572,15 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
       dataIndex: 'status',
       key: 'status',
       width: 100,
+      filters: [
+        { text: '已创建', value: 'CREATED' },
+        { text: '已提交', value: 'SUBMITTED' },
+        { text: '运行中', value: 'RUNNING' },
+        { text: '已完成', value: 'COMPLETED' },
+        { text: '失败', value: 'FAILED' },
+        { text: '已取消', value: 'CANCELLED' },
+      ],
+      onFilter: (value: any, record: any) => record.status === value,
       render: (status: string) => {
         const statusConfig: any = {
           CREATED: { color: 'default', text: '已创建' },

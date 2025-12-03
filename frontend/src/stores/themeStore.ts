@@ -59,6 +59,17 @@ export const getAntdTheme = (mode: ThemeMode) => {
       colorBorder: tokens.colorBorder,
       borderRadius: tokens.borderRadius,
     },
+    components: {
+      Table: {
+        headerBg: mode === 'dark' ? '#1a1a1a' : '#fafafa',
+        headerColor: mode === 'dark' ? '#E8E8E8' : '#333333',
+        rowHoverBg: mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)',
+        bodySortBg: mode === 'dark' ? '#1a1a1a' : '#fafafa',
+      },
+      Card: {
+        headerBg: mode === 'dark' ? 'transparent' : '#fafafa',
+      },
+    },
   };
 };
 

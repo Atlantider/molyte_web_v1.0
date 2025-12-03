@@ -143,18 +143,22 @@ export default function DataVisibilityAdmin() {
       dataIndex: 'id',
       key: 'id',
       width: 80,
+      sorter: (a, b) => a.id - b.id,
+      defaultSortOrder: 'descend',
     },
     {
       title: '任务名称',
       dataIndex: 'name',
       key: 'name',
       ellipsis: true,
+      sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
     },
     {
       title: '用户',
       dataIndex: 'username',
       key: 'username',
       width: 120,
+      sorter: (a, b) => (a.username || '').localeCompare(b.username || ''),
       render: (username: string) => (
         <Space>
           <UserOutlined />
@@ -167,6 +171,13 @@ export default function DataVisibilityAdmin() {
       dataIndex: 'visibility',
       key: 'visibility',
       width: 120,
+      filters: [
+        { text: '公开', value: DataVisibility.PUBLIC },
+        { text: '延期公开', value: DataVisibility.DELAYED },
+        { text: '私有', value: DataVisibility.PRIVATE },
+        { text: '仅管理员', value: DataVisibility.ADMIN_ONLY },
+      ],
+      onFilter: (value, record) => record.visibility === value,
       render: (visibility: DataVisibility) => {
         const config = visibilityConfig[visibility];
         return (
@@ -181,19 +192,26 @@ export default function DataVisibilityAdmin() {
       dataIndex: 'visibility_delay_until',
       key: 'visibility_delay_until',
       width: 120,
+      sorter: (a, b) => {
+        if (!a.visibility_delay_until) return 1;
+        if (!b.visibility_delay_until) return -1;
+        return new Date(a.visibility_delay_until).getTime() - new Date(b.visibility_delay_until).getTime();
+      },
       render: (date: string | null, record) => {
         if (record.visibility !== DataVisibility.DELAYED || !date) return '-';
         return new Date(date).toLocaleDateString('zh-CN');
       },
     },
     {
-      title: '查看/下载',
-      key: 'counts',
+      title: '查看次数',
+      dataIndex: 'view_count',
+      key: 'view_count',
       width: 100,
-      render: (_, record) => (
+      sorter: (a, b) => a.view_count - b.view_count,
+      render: (count: number) => (
         <Space>
           <Tooltip title="查看次数">
-            <span><EyeOutlined /> {record.view_count}</span>
+            <span><EyeOutlined /> {count}</span>
           </Tooltip>
         </Space>
       ),
@@ -203,6 +221,11 @@ export default function DataVisibilityAdmin() {
       dataIndex: 'is_free_quota',
       key: 'is_free_quota',
       width: 80,
+      filters: [
+        { text: '免费', value: true },
+        { text: '付费', value: false },
+      ],
+      onFilter: (value, record) => record.is_free_quota === value,
       render: (isFree: boolean) => (
         isFree ? <Tag color="blue">免费</Tag> : <Tag>付费</Tag>
       ),
@@ -211,6 +234,7 @@ export default function DataVisibilityAdmin() {
       title: '操作',
       key: 'action',
       width: 80,
+      fixed: 'right' as const,
       render: (_, record) => (
         <Button type="link" size="small" onClick={() => handleEdit(record)}>
           设置

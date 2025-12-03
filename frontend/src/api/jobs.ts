@@ -294,6 +294,37 @@ export const exportSolvationData = async (jobId: number, format: 'json' | 'csv' 
   return response.data;
 };
 
+/**
+ * 自动挑选的溶剂化结构类型
+ */
+export interface AutoSelectedStructure {
+  id: number;
+  center_ion: string;
+  coordination_num: number;
+  composition: Record<string, number>;
+  composition_key: string;
+  group_size: number;
+  snapshot_frame: number;
+  structure_type: string;
+}
+
+/**
+ * 自动挑选溶剂化结构响应类型
+ */
+export interface AutoSelectResponse {
+  total_structures: number;
+  unique_compositions: number;
+  selected_structures: AutoSelectedStructure[];
+}
+
+/**
+ * 自动挑选不同配位组成的溶剂化结构
+ */
+export const autoSelectSolvationStructures = async (jobId: number): Promise<AutoSelectResponse> => {
+  const response = await client.get(`/jobs/${jobId}/solvation/auto-select`);
+  return response.data;
+};
+
 // ============== QC任务关联 API ==============
 
 /**

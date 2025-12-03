@@ -48,10 +48,12 @@ import {
   getSystemStructure,
   getFrameCount,
   exportSolvationData,
+  autoSelectSolvationStructures,
   type SolvationStructure,
   type SolvationStatistics,
   type SystemStructure,
   type SolvationStructureContent,
+  type AutoSelectResponse,
 } from '../api/jobs';
 import DesolvationAnalysisPanel from './DesolvationAnalysisPanel';
 import { useThemeStore } from '../stores/themeStore';
@@ -80,18 +82,18 @@ const RESPONSIVE_STYLES = `
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 20px;
+    gap: 12px;
   }
   .charts-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 20px;
+    gap: 12px;
   }
   /* 三列布局：左侧小卡片、中间列表、右侧大卡片 */
   .structure-grid {
     display: grid;
     grid-template-columns: 340px 1fr 1fr;
-    gap: 20px;
+    gap: 12px;
     align-items: stretch;
   }
   .structure-grid > .structure-card-left {
@@ -148,22 +150,7 @@ const RESPONSIVE_STYLES = `
     cursor: pointer;
     transition: all 0.2s ease;
   }
-  .solvation-table .ant-table-row:hover {
-    background: rgba(24, 144, 255, 0.06) !important;
-  }
-  .solvation-table .ant-table-row-selected {
-    background: rgba(114, 46, 209, 0.08) !important;
-    border-left: 3px solid #722ed1;
-  }
-  .solvation-table .ant-table-row-selected:hover {
-    background: rgba(114, 46, 209, 0.12) !important;
-  }
-  .solvation-table .ant-table-row-selected td:first-child {
-    font-weight: 600;
-    color: #722ed1;
-  }
   .solvation-table .ant-table-thead > tr > th {
-    background: #fafafa;
     font-weight: 600;
     font-size: 12px;
     padding: 8px 12px;
@@ -181,11 +168,8 @@ const RESPONSIVE_STYLES = `
   }
   /* 3D查看器容器 */
   .viewer-container {
-    border: 1px solid #e8e8e8;
     border-radius: 8px;
-    background: linear-gradient(135deg, #f8f9fa 0%, #f0f2f5 100%);
     overflow: hidden;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
     position: relative;
   }
   /* 3D结构卡片增强样式 */
@@ -476,7 +460,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
     }
 
     const viewer = window.$3Dmol.createViewer(container, {
-      backgroundColor: '#f8f9fa',
+      backgroundColor: isDark ? '#1a1a1a' : '#f8f9fa',
     });
     systemViewerInstance.current = viewer;
 
@@ -500,7 +484,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [systemStructure]);
+  }, [systemStructure, isDark]);
 
   // 渲染侧边溶剂化结构 3D
   useEffect(() => {
@@ -522,7 +506,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
     }
 
     const viewer = window.$3Dmol.createViewer(container, {
-      backgroundColor: '#f8f9fa',
+      backgroundColor: isDark ? '#1a1a1a' : '#f8f9fa',
     });
     sideViewerInstance.current = viewer;
 
@@ -560,7 +544,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [sideStructureContent]);
+  }, [sideStructureContent, isDark]);
 
   // 导出图片
   const exportChart = (chartRef: any, filename: string) => {
@@ -602,6 +586,35 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
       message.success(`数据已导出为 ${format.toUpperCase()} 格式`);
     } catch (error) {
       message.error('导出数据失败');
+    }
+  };
+
+  // 自动挑选不同配位组成的溶剂化结构
+  const handleAutoSelect = async () => {
+    try {
+      const result: AutoSelectResponse = await autoSelectSolvationStructures(jobId);
+
+      if (result.selected_structures.length === 0) {
+        message.warning('没有找到溶剂化结构');
+        return;
+      }
+
+      // 只显示自动挑选的结构
+      const selectedIds = new Set(result.selected_structures.map(s => s.id));
+      const filteredStructures = structures.filter(s => selectedIds.has(s.id));
+      setStructures(filteredStructures);
+
+      message.success(
+        `已自动挑选 ${result.unique_compositions} 种不同配位组成的结构（共 ${result.total_structures} 个结构）`
+      );
+
+      // 自动选择第一个结构
+      if (filteredStructures.length > 0) {
+        setSelectedStructureId(filteredStructures[0].id);
+        loadSideStructure(filteredStructures[0].id);
+      }
+    } catch (error) {
+      message.error('自动挑选失败');
     }
   };
 
@@ -655,7 +668,6 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
 
   // Nature 期刊统一样式常量
   const CHART_FONT_FAMILY = 'Arial, Helvetica, sans-serif';
-  const CHART_TITLE_SIZE = 13;
   const CHART_LABEL_SIZE = 11;
   const CHART_LEGEND_SIZE = 11;
 
@@ -670,10 +682,10 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
   const cnPieOption: EChartsOption = {
     tooltip: {
       trigger: 'item',
-      backgroundColor: 'rgba(255, 255, 255, 0.96)',
-      borderColor: '#e0e0e0',
+      backgroundColor: isDark ? 'rgba(31, 31, 31, 0.96)' : 'rgba(255, 255, 255, 0.96)',
+      borderColor: isDark ? '#404040' : '#e0e0e0',
       borderWidth: 1,
-      textStyle: { color: '#333', fontSize: CHART_LABEL_SIZE, fontFamily: CHART_FONT_FAMILY },
+      textStyle: { color: isDark ? '#E8E8E8' : '#333', fontSize: CHART_LABEL_SIZE, fontFamily: CHART_FONT_FAMILY },
       formatter: '{b}: {c} ({d}%)',
     },
     legend: {
@@ -685,7 +697,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
       textStyle: {
         fontSize: CHART_LEGEND_SIZE,
         fontFamily: CHART_FONT_FAMILY,
-        color: '#333',
+        color: isDark ? '#E8E8E8' : '#333',
       },
     },
     series: [
@@ -696,14 +708,14 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
         avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 3,
-          borderColor: '#fff',
+          borderColor: isDark ? '#1F1F1F' : '#fff',
           borderWidth: 2,
         },
         label: {
           show: true,
           fontSize: CHART_LABEL_SIZE,
           fontFamily: CHART_FONT_FAMILY,
-          color: '#333',
+          color: isDark ? '#E8E8E8' : '#333',
           formatter: '{d}%',
         },
         labelLine: {
@@ -727,10 +739,10 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
   const pieOption: EChartsOption = {
     tooltip: {
       trigger: 'item',
-      backgroundColor: 'rgba(255, 255, 255, 0.96)',
-      borderColor: '#e0e0e0',
+      backgroundColor: isDark ? 'rgba(31, 31, 31, 0.96)' : 'rgba(255, 255, 255, 0.96)',
+      borderColor: isDark ? '#404040' : '#e0e0e0',
       borderWidth: 1,
-      textStyle: { color: '#333', fontSize: CHART_LABEL_SIZE, fontFamily: CHART_FONT_FAMILY },
+      textStyle: { color: isDark ? '#E8E8E8' : '#333', fontSize: CHART_LABEL_SIZE, fontFamily: CHART_FONT_FAMILY },
       formatter: '{b}: {c} ({d}%)',
     },
     legend: {
@@ -742,7 +754,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
       textStyle: {
         fontSize: CHART_LEGEND_SIZE,
         fontFamily: CHART_FONT_FAMILY,
-        color: '#333',
+        color: isDark ? '#E8E8E8' : '#333',
       },
     },
     series: [
@@ -753,14 +765,14 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
         avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 3,
-          borderColor: '#fff',
+          borderColor: isDark ? '#1F1F1F' : '#fff',
           borderWidth: 2,
         },
         label: {
           show: true,
           fontSize: CHART_LABEL_SIZE,
           fontFamily: CHART_FONT_FAMILY,
-          color: '#333',
+          color: isDark ? '#E8E8E8' : '#333',
           formatter: '{d}%',
         },
         labelLine: {
@@ -792,10 +804,10 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
   const anionCnPieOption: EChartsOption = {
     tooltip: {
       trigger: 'item',
-      backgroundColor: 'rgba(255, 255, 255, 0.96)',
-      borderColor: '#e0e0e0',
+      backgroundColor: isDark ? 'rgba(31, 31, 31, 0.96)' : 'rgba(255, 255, 255, 0.96)',
+      borderColor: isDark ? '#404040' : '#e0e0e0',
       borderWidth: 1,
-      textStyle: { color: '#333', fontSize: CHART_LABEL_SIZE, fontFamily: CHART_FONT_FAMILY },
+      textStyle: { color: isDark ? '#E8E8E8' : '#333', fontSize: CHART_LABEL_SIZE, fontFamily: CHART_FONT_FAMILY },
       formatter: '{b}: {c} ({d}%)',
     },
     legend: {
@@ -807,7 +819,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
       textStyle: {
         fontSize: CHART_LEGEND_SIZE,
         fontFamily: CHART_FONT_FAMILY,
-        color: '#333',
+        color: isDark ? '#E8E8E8' : '#333',
       },
     },
     series: [
@@ -818,14 +830,14 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
         avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 3,
-          borderColor: '#fff',
+          borderColor: isDark ? '#1F1F1F' : '#fff',
           borderWidth: 2,
         },
         label: {
           show: true,
           fontSize: CHART_LABEL_SIZE,
           fontFamily: CHART_FONT_FAMILY,
-          color: '#333',
+          color: isDark ? '#E8E8E8' : '#333',
           formatter: '{d}%',
         },
         labelLine: {
@@ -861,10 +873,10 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
   const ionPairPieOption: EChartsOption = {
     tooltip: {
       trigger: 'item',
-      backgroundColor: 'rgba(255, 255, 255, 0.96)',
-      borderColor: '#e0e0e0',
+      backgroundColor: isDark ? 'rgba(31, 31, 31, 0.96)' : 'rgba(255, 255, 255, 0.96)',
+      borderColor: isDark ? '#404040' : '#e0e0e0',
       borderWidth: 1,
-      textStyle: { color: '#333', fontSize: CHART_LABEL_SIZE, fontFamily: CHART_FONT_FAMILY },
+      textStyle: { color: isDark ? '#E8E8E8' : '#333', fontSize: CHART_LABEL_SIZE, fontFamily: CHART_FONT_FAMILY },
       formatter: (params: any) => {
         const percent = totalIonPairs > 0 ? ((params.value / totalIonPairs) * 100).toFixed(1) : '0';
         return `${params.name}: ${params.value} (${percent}%)`;
@@ -879,7 +891,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
       textStyle: {
         fontSize: CHART_LEGEND_SIZE,
         fontFamily: CHART_FONT_FAMILY,
-        color: '#333',
+        color: isDark ? '#E8E8E8' : '#333',
       },
     },
     series: [
@@ -890,14 +902,14 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
         avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 3,
-          borderColor: '#fff',
+          borderColor: isDark ? '#1F1F1F' : '#fff',
           borderWidth: 2,
         },
         label: {
           show: true,
           fontSize: CHART_LABEL_SIZE,
           fontFamily: CHART_FONT_FAMILY,
-          color: '#333',
+          color: isDark ? '#E8E8E8' : '#333',
           formatter: '{d}%',
         },
         labelLine: {
@@ -1092,6 +1104,14 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
               >
                 应用 (Apply)
               </Button>
+              <Button
+                size="small"
+                icon={<AppstoreOutlined />}
+                onClick={handleAutoSelect}
+                style={{ borderRadius: 6 }}
+              >
+                自动挑选
+              </Button>
               <Dropdown menu={{ items: [
                 { key: 'json', icon: <FileTextOutlined />, label: '导出 JSON', onClick: () => handleExportData('json') },
                 { key: 'csv', icon: <FileTextOutlined />, label: '导出 CSV', onClick: () => handleExportData('csv') },
@@ -1284,8 +1304,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                   minHeight: 280,
                   borderRadius: 8,
                   overflow: 'hidden',
-                  background: 'linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%)',
-                  border: '1px solid #e0e0e0',
+                  border: `1px solid ${token.colorBorder}`,
                 }}
               />
               <div style={{ marginTop: 6, textAlign: 'center', lineHeight: 1.4 }}>
@@ -1302,9 +1321,9 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: '#f5f5f5',
+                background: isDark ? '#1F1F1F' : '#f5f5f5',
                 borderRadius: 8,
-                border: '1px dashed #d9d9d9',
+                border: `1px dashed ${token.colorBorder}`,
               }}
             >
               <Spin size="small" tip="加载体系..." />
@@ -1460,7 +1479,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: '#f5f5f5',
+                background: isDark ? 'rgba(255,255,255,0.04)' : '#f5f5f5',
                 borderRadius: 8,
               }}
             >
@@ -1485,8 +1504,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                   minHeight: 280,
                   borderRadius: 8,
                   overflow: 'hidden',
-                  background: 'linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%)',
-                  border: '1px solid #e0e0e0',
+                  border: `1px solid ${token.colorBorder}`,
                 }}
               />
               {/* 溶剂壳组成标签 */}
@@ -1521,9 +1539,9 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: '#f5f5f5',
+                background: isDark ? '#1F1F1F' : '#f5f5f5',
                 borderRadius: 8,
-                border: '1px dashed #d9d9d9',
+                border: `1px dashed ${token.colorBorder}`,
               }}
             >
               <Text type="secondary" style={{ fontSize: 12 }}>

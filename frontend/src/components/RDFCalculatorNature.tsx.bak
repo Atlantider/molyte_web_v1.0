@@ -794,17 +794,16 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
-      backgroundColor: isDark ? 'rgba(31, 31, 31, 0.96)' : 'rgba(255, 255, 255, 0.96)',
-      borderColor: isDark ? '#404040' : '#e0e0e0',
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      borderColor: '#e0e0e0',
       borderWidth: 1,
       textStyle: {
         fontSize: CHART_LABEL_SIZE,
         fontFamily: CHART_FONT_FAMILY,
-        color: isDark ? '#E8E8E8' : '#333',
+        color: '#333',
       },
       formatter: (params: any) => {
-        const titleColor = isDark ? '#E8E8E8' : '#111827';
-        return `<div style="font-weight: 600; color: ${titleColor};">${params.name}</div><div style="margin-top: 4px;">CN: <strong>${params.value.toFixed(2)}</strong> (${params.percent.toFixed(1)}%)</div>`;
+        return `<div style="font-weight: 600; color: #111827;">${params.name}</div><div style="margin-top: 4px;">CN: <strong>${params.value.toFixed(2)}</strong> (${params.percent.toFixed(1)}%)</div>`;
       },
     },
     legend: {
@@ -814,7 +813,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
       textStyle: {
         fontSize: CHART_LEGEND_SIZE,
         fontFamily: CHART_FONT_FAMILY,
-        color: isDark ? '#E8E8E8' : '#333',
+        color: '#333',
       },
       formatter: (name: string) => {
         const stat = coordinationStats.find(s => s.label === name);
@@ -903,11 +902,11 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
                 <PieChartOutlined style={{ fontSize: 24, color: '#fff' }} />
               </div>
               <div>
-                <div style={{ fontSize: 12, color: token.colorTextSecondary }}>总配位数 @ {cnCutoff.toFixed(1)}Å</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>总配位数 @ {cnCutoff.toFixed(1)}Å</div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: '#52c41a' }}>
                   {totalCN.toFixed(2)}
                 </div>
-                <div style={{ fontSize: 11, color: token.colorTextTertiary }}>N(r={cnCutoff.toFixed(1)}Å)</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>N(r={cnCutoff.toFixed(1)}Å)</div>
               </div>
             </div>
           </div>
@@ -925,13 +924,13 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
                 <span style={{ fontSize: 16, color: '#fff', fontWeight: 700 }}>r₁</span>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: token.colorTextSecondary }}>平均第一峰位</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>平均第一峰位</div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: '#722ed1' }}>
                   {coordinationStats.length > 0
                     ? (coordinationStats.reduce((sum, s) => sum + (s.first_peak_position || 0), 0) / coordinationStats.length).toFixed(2)
                     : 'N/A'}
                 </div>
-                <div style={{ fontSize: 11, color: token.colorTextTertiary }}>Å</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>Å</div>
               </div>
             </div>
           </div>
@@ -940,7 +939,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
         {/* 截断距离滑块 + 操作按钮 */}
         <div className="dashboard-card" style={dashboardCardStyle}>
           <div style={{ padding: DASHBOARD_STYLES.cardPadding }}>
-            <div style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
               <SettingOutlined style={{ marginRight: 4 }} />
               截断距离 (Cutoff)
             </div>
@@ -1226,7 +1225,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
                               backgroundColor: stat.color
                             }}
                           />
-                          <Text strong style={{ fontSize: 13, color: token.colorText }}>
+                          <Text strong style={{ fontSize: 13, color: '#334155' }}>
                             {stat.fullLabel}
                           </Text>
                         </Space>
@@ -1234,20 +1233,20 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
                       <Col span={14}>
                         <Row gutter={8}>
                           <Col span={8} style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: 10, color: token.colorTextTertiary }}>CN @ {cnCutoff.toFixed(1)}Å</div>
+                            <div style={{ fontSize: 10, color: '#94a3b8' }}>CN @ {cnCutoff.toFixed(1)}Å</div>
                             <div style={{ fontSize: 14, fontWeight: 700, color: stat.color }}>
                               {stat.cn_at_cutoff.toFixed(2)}
                             </div>
                           </Col>
                           <Col span={8} style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: 10, color: token.colorTextTertiary }}>峰位</div>
-                            <div style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
+                            <div style={{ fontSize: 10, color: '#94a3b8' }}>峰位</div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>
                               {stat.first_peak_position?.toFixed(2)} Å
                             </div>
                           </Col>
                           <Col span={8} style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: 10, color: token.colorTextTertiary }}>峰高</div>
-                            <div style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
+                            <div style={{ fontSize: 10, color: '#94a3b8' }}>峰高</div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>
                               {stat.first_peak_height?.toFixed(2)}
                             </div>
                           </Col>
@@ -1261,21 +1260,12 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
           </div>
 
           {/* 说明信息 */}
-          <Card
-            className="dashboard-card"
-            style={{
-              ...dashboardCardStyle,
-              background: isDark
-                ? 'linear-gradient(135deg, rgba(24, 144, 255, 0.15) 0%, rgba(24, 144, 255, 0.08) 100%)'
-                : 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-              border: isDark ? '1px solid rgba(24, 144, 255, 0.3)' : '1px solid #bae6fd'
-            }}
-          >
+          <Card className="dashboard-card" style={{ ...dashboardCardStyle, background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)', border: '1px solid #bae6fd' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-              <div style={{ width: 4, height: 40, backgroundColor: token.colorPrimary, borderRadius: 2, flexShrink: 0 }} />
+              <div style={{ width: 4, height: 40, backgroundColor: '#1890ff', borderRadius: 2, flexShrink: 0 }} />
               <div>
-                <Text strong style={{ fontSize: 13, color: token.colorPrimary }}>分析说明</Text>
-                <div style={{ marginTop: 4, fontSize: 12, color: token.colorTextSecondary, lineHeight: 1.6 }}>
+                <Text strong style={{ fontSize: 13, color: '#0369a1' }}>分析说明</Text>
+                <div style={{ marginTop: 4, fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
                   径向分布函数 g(r) 描述了粒子间的空间分布概率。配位数 N(r) 表示在距离 r 内的平均配位粒子数。
                   第一峰位置对应最近邻距离，峰高反映局部结构有序度。
                 </div>

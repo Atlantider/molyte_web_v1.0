@@ -62,3 +62,23 @@ code {
   min-height: 100vh;
 }
 
+/* Dark 模式下的 Ant Design 组件样式覆盖 */
+[data-theme='dark'] .ant-card-head {
+  background: transparent !important;
+  border-bottom-color: var(--color-border) !important;
+}
+
+[data-theme='dark'] .ant-table-thead > tr > th {
+  background: #1a1a1a !important;
+  color: var(--color-text) !important;
+  border-bottom-color: var(--color-border) !important;
+}
+
+[data-theme='dark'] .ant-table-tbody > tr > td {
+  border-bottom-color: var(--color-border) !important;
+}
+
+[data-theme='dark'] .ant-table-tbody > tr:hover > td {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+

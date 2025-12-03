@@ -65,12 +65,10 @@ export default function Research() {
   const [solventOptions, setSolventOptions] = useState<string[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(false);
 
-  // 加载统计数据、可用选项，并自动执行初始搜索
+  // 加载统计数据和可用选项
   useEffect(() => {
     loadStats();
     loadAvailableOptions();
-    // 页面加载时自动搜索显示所有数据
-    handleSearch({});
   }, []);
 
   const loadStats = async () => {
@@ -131,7 +129,7 @@ export default function Research() {
       const response = await searchMyElectrolytes(params);
       setResults(response.data);
       setTotal(response.total);
-      message.success(`找到 ${response.total} 个匹配的结果`);
+      // 不显示搜索成功消息，避免干扰用户
     } catch (error: any) {
       message.error(error.response?.data?.detail || '搜索失败');
     } finally {
@@ -158,6 +156,8 @@ export default function Research() {
       dataIndex: 'job_name',
       key: 'job_name',
       width: 200,
+      sorter: (a: ElectrolyteSearchResult, b: ElectrolyteSearchResult) =>
+        (a.job_name || '').localeCompare(b.job_name || ''),
       render: (name: string, record: ElectrolyteSearchResult) => (
         <div style={{ lineHeight: 1.4 }}>
           <Text strong style={{ fontSize: 12, wordBreak: 'break-all' }}>
@@ -176,6 +176,8 @@ export default function Research() {
       dataIndex: 'system_name',
       key: 'system_name',
       width: 180,
+      sorter: (a: ElectrolyteSearchResult, b: ElectrolyteSearchResult) =>
+        (a.system_name || '').localeCompare(b.system_name || ''),
       render: (name: string) => (
         <Text style={{ fontSize: 12, wordBreak: 'break-all', lineHeight: 1.4 }}>
           {name}
@@ -274,6 +276,8 @@ export default function Research() {
       dataIndex: 'temperature',
       key: 'temperature',
       width: 60,
+      sorter: (a: ElectrolyteSearchResult, b: ElectrolyteSearchResult) =>
+        (a.temperature || 0) - (b.temperature || 0),
       render: (temp: number) => <Text style={{ fontSize: 11 }}>{temp ? `${temp.toFixed(0)}K` : '-'}</Text>,
     },
     {

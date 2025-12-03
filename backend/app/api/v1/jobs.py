@@ -3145,6 +3145,111 @@ def get_frame_count_endpoint(
     return {"frame_count": frame_count}
 
 
+@router.get("/{job_id}/solvation/auto-select")
+def auto_select_solvation_structures(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    自动挑选不同配位组成的溶剂化结构
+
+    策略：
+    1. 按配位组成分组（如 Li-2FSI-1DME-1DMC）
+    2. 每种组成只选一个代表性结构（选择该组中第一个出现的）
+    3. 返回所有不同组成的结构列表
+    """
+    from app.models.result import SolvationStructure
+    from app.dependencies import check_job_permission
+    from collections import defaultdict
+
+    # 获取任务
+    job = db.query(MDJob).filter(MDJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # 数据隔离：检查权限（支持公开数据访问）
+    check_job_permission(job, current_user)
+
+    # 获取所有溶剂化结构
+    structures = db.query(SolvationStructure).filter(
+        SolvationStructure.md_job_id == job_id
+    ).all()
+
+    if not structures:
+        return {
+            "total_structures": 0,
+            "unique_compositions": 0,
+            "selected_structures": []
+        }
+
+    # 按配位组成分组
+    composition_groups = defaultdict(list)
+
+    for structure in structures:
+        # 生成组成键：中心离子-配体组成
+        # 例如：Li-2FSI-1DME-1DMC
+        composition_key = _generate_composition_key(
+            structure.center_ion,
+            structure.composition
+        )
+        composition_groups[composition_key].append(structure)
+
+    # 每组选择一个代表性结构（选择第一个）
+    selected_structures = []
+    for composition_key, group in composition_groups.items():
+        # 选择第一个结构作为代表
+        representative = group[0]
+        selected_structures.append({
+            "id": representative.id,
+            "center_ion": representative.center_ion,
+            "coordination_num": representative.coordination_num,
+            "composition": representative.composition,
+            "composition_key": composition_key,
+            "group_size": len(group),  # 这种组成有多少个结构
+            "snapshot_frame": representative.snapshot_frame,
+            "structure_type": representative.structure_type,
+        })
+
+    # 按配位数排序
+    selected_structures.sort(
+        key=lambda s: s["coordination_num"],
+        reverse=False
+    )
+
+    return {
+        "total_structures": len(structures),
+        "unique_compositions": len(composition_groups),
+        "selected_structures": selected_structures
+    }
+
+
+def _generate_composition_key(center_ion: str, composition: dict) -> str:
+    """
+    生成配位组成键
+
+    Args:
+        center_ion: 中心离子，如 "Li"
+        composition: 配体组成字典，如 {"FSI": 2, "DME": 1, "DMC": 1}
+
+    Returns:
+        组成键字符串，如 "Li-2FSI-1DME-1DMC"
+    """
+    if not composition:
+        return f"{center_ion}-empty"
+
+    # 按配体名称排序，确保相同组成生成相同的键
+    sorted_ligands = sorted(composition.items())
+
+    # 构建键：中心离子-数量配体名
+    parts = [center_ion]
+    for ligand_name, count in sorted_ligands:
+        if count > 0:
+            parts.append(f"{count}{ligand_name}")
+
+    return "-".join(parts)
+
+
 @router.get("/{job_id}/solvation/export-data")
 def export_solvation_data(
     job_id: int,

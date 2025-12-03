@@ -51,6 +51,7 @@ interface QCResultsPanelProps {
 export default function QCResultsPanel({ results, compact = false, job }: QCResultsPanelProps) {
   const { mode } = useThemeStore();
   const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [espImageUrl, setEspImageUrl] = useState<string | null>(null);
   const [homoImageUrl, setHomoImageUrl] = useState<string | null>(null);
   const [lumoImageUrl, setLumoImageUrl] = useState<string | null>(null);
@@ -145,7 +146,7 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
   if (!results || results.length === 0 || !result) {
     return (
       <Card title="QC计算结果">
-        <div style={{ textAlign: 'center', padding: 20, color: '#999' }}>
+        <div style={{ textAlign: 'center', padding: 20, color: token.colorTextSecondary }}>
           暂无QC计算结果
         </div>
       </Card>
@@ -237,12 +238,15 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
       <Row gutter={[16, 16]}>
         <Col span={12}>
           <div style={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: isDark
+              ? 'linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%)'
+              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             borderRadius: 8,
             padding: '16px 20px',
-            color: '#fff'
+            color: isDark ? token.colorText : '#fff',
+            border: isDark ? `1px solid ${token.colorBorder}` : 'none',
           }}>
-            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>总能量</Text>
+            <Text style={{ color: isDark ? token.colorTextSecondary : 'rgba(255,255,255,0.8)', fontSize: 12 }}>总能量</Text>
             <div style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>
               {result.energy_au?.toFixed(6) || '-'}
               <span style={{ fontSize: 12, fontWeight: 400, marginLeft: 4 }}>A.U.</span>
@@ -251,12 +255,15 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
         </Col>
         <Col span={12}>
           <div style={{
-            background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+            background: isDark
+              ? 'linear-gradient(135deg, rgba(240, 147, 251, 0.3) 0%, rgba(245, 87, 108, 0.3) 100%)'
+              : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
             borderRadius: 8,
             padding: '16px 20px',
-            color: '#fff'
+            color: isDark ? token.colorText : '#fff',
+            border: isDark ? `1px solid ${token.colorBorder}` : 'none',
           }}>
-            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>HOMO-LUMO Gap</Text>
+            <Text style={{ color: isDark ? token.colorTextSecondary : 'rgba(255,255,255,0.8)', fontSize: 12 }}>HOMO-LUMO Gap</Text>
             <div style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>
               {result.homo_lumo_gap?.toFixed(3) || '-'}
               <span style={{ fontSize: 12, fontWeight: 400, marginLeft: 4 }}>eV</span>
@@ -270,7 +277,7 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
             title={<><Tag color="blue" style={{ marginRight: 4 }}>HOMO</Tag></>}
             value={homoEv?.toFixed(3) || '-'}
             suffix="eV"
-            valueStyle={{ fontSize: 16, color: '#1890ff' }}
+            valueStyle={{ fontSize: 16, color: token.colorPrimary }}
           />
         </Col>
         <Col span={6}>
@@ -278,12 +285,12 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
             title={<><Tag color="green" style={{ marginRight: 4 }}>LUMO</Tag></>}
             value={lumoEv?.toFixed(3) || '-'}
             suffix="eV"
-            valueStyle={{ fontSize: 16, color: '#52c41a' }}
+            valueStyle={{ fontSize: 16, color: token.colorSuccess }}
           />
         </Col>
         <Col span={6}>
           <Statistic
-            title={<Space size={4}><FireOutlined style={{ color: '#1890ff' }} />ESP Min</Space>}
+            title={<Space size={4}><FireOutlined style={{ color: token.colorPrimary }} />ESP Min</Space>}
             value={result.esp_min_kcal?.toFixed(2) || '-'}
             suffix="kcal/mol"
             valueStyle={{ fontSize: 14 }}
@@ -291,7 +298,7 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
         </Col>
         <Col span={6}>
           <Statistic
-            title={<Space size={4}><FireOutlined style={{ color: '#f5222d' }} />ESP Max</Space>}
+            title={<Space size={4}><FireOutlined style={{ color: token.colorError }} />ESP Max</Space>}
             value={result.esp_max_kcal?.toFixed(2) || '-'}
             suffix="kcal/mol"
             valueStyle={{ fontSize: 14 }}
@@ -431,16 +438,16 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
         textAlign: 'center',
         marginTop: 12,
         padding: '8px 16px',
-        background: '#f5f5f5',
+        background: isDark ? 'rgba(255,255,255,0.04)' : '#f5f5f5',
         borderRadius: 4
       }}>
         <Space split={<Divider type="vertical" />}>
           <Space size={4}>
-            <div style={{ width: 12, height: 12, background: '#1890ff', borderRadius: 2 }} />
+            <div style={{ width: 12, height: 12, background: token.colorPrimary, borderRadius: 2 }} />
             <Text type="secondary">正相位</Text>
           </Space>
           <Space size={4}>
-            <div style={{ width: 12, height: 12, background: '#ff4d4f', borderRadius: 2 }} />
+            <div style={{ width: 12, height: 12, background: token.colorError, borderRadius: 2 }} />
             <Text type="secondary">负相位</Text>
           </Space>
         </Space>

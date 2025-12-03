@@ -10,7 +10,7 @@ class DesolvationJobCreate(BaseModel):
     """创建去溶剂化能任务"""
     md_job_id: int = Field(..., description="MD job ID")
     solvation_structure_id: int = Field(..., description="Solvation structure ID")
-    method_level: str = Field(default="fast_xtb", description="Calculation method level: fast_xtb, standard, accurate")
+    method_level: str = Field(default="standard", description="Calculation method level: fast (6-31G(d)/B3LYP), standard (6-31++G(d,p)/B3LYP), accurate (6-311++G(2d,2p)/wB97XD)")
 
 
 class LigandDesolvationResult(BaseModel):

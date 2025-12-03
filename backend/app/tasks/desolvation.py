@@ -2,12 +2,14 @@
 去溶剂化能计算任务
 
 计算公式：ΔE_i = E_cluster - (E_cluster_minus_i + E_i)
+
+两阶段处理：
+1. 创建所有需要的 QC 任务（cluster, ligands, cluster_minus）
+2. 等待所有 QC 任务完成后，计算去溶剂化能
 """
 import logging
-import tempfile
-import subprocess
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 from collections import defaultdict
 
@@ -15,6 +17,7 @@ import numpy as np
 
 from app.database import SessionLocal
 from app.models.job import PostprocessJob, JobStatus
+from app.models.qc import QCJob, QCJobStatus, QCResult
 from app.models.result import SolvationStructure, DesolvationEnergyResult
 
 logger = logging.getLogger(__name__)
@@ -25,115 +28,385 @@ HARTREE_TO_KCAL = 627.509474
 
 def run_desolvation_job(job: PostprocessJob, db: SessionLocal) -> Dict[str, Any]:
     """
-    执行去溶剂化能计算任务
-    
+    执行去溶剂化能计算任务（两阶段处理）
+
+    阶段 1：创建所有需要的 QC 任务
+    阶段 2：等待 QC 任务完成后计算去溶剂化能
+
     Args:
         job: PostprocessJob 对象
         db: 数据库会话
-    
+
     Returns:
         结果字典 {"success": bool, "job_id": int, ...}
     """
     try:
         logger.info(f"Starting desolvation job {job.id}")
-        
-        # 1. 更新状态为 RUNNING
-        job.status = JobStatus.RUNNING
-        job.started_at = datetime.now()
-        db.commit()
-        
-        # 2. 获取配置
+
+        # 获取配置
         config = job.config or {}
         solvation_structure_id = config.get("solvation_structure_id")
-        method_level = config.get("method_level", "fast_xtb")
-        
+        method_level = config.get("method_level", "standard")
+
         if not solvation_structure_id:
             raise ValueError("Missing solvation_structure_id in job config")
-        
-        # 3. 加载溶剂化结构
+
+        # 加载溶剂化结构
         solvation_structure = db.query(SolvationStructure).filter(
             SolvationStructure.id == solvation_structure_id
         ).first()
-        
+
         if not solvation_structure:
             raise ValueError(f"Solvation structure {solvation_structure_id} not found")
-        
+
         if not solvation_structure.xyz_content:
             raise ValueError(f"Solvation structure {solvation_structure_id} has no XYZ content")
-        
+
         logger.info(f"Loaded solvation structure {solvation_structure_id}: {solvation_structure.center_ion}, CN={solvation_structure.coordination_num}")
-        
-        # 4. 解析溶剂化结构
-        cluster_data = parse_solvation_cluster(solvation_structure)
-        logger.info(f"Parsed cluster: center={cluster_data['center_ion']}, ligands={len(cluster_data['ligands'])}")
-        
-        # 5. 计算 E_cluster
-        logger.info("Calculating cluster energy...")
-        e_cluster = calculate_energy_with_xtb(
-            cluster_data['xyz_content'],
-            charge=cluster_data['total_charge']
-        )
-        logger.info(f"E_cluster = {e_cluster:.6f} A.U.")
-        
-        # 6. 计算每个配体的去溶剂化能
-        per_ligand_results = []
-        for i, ligand in enumerate(cluster_data['ligands']):
-            logger.info(f"Processing ligand {i+1}/{len(cluster_data['ligands'])}: {ligand['ligand_label']}")
-            
-            result = calculate_ligand_desolvation(
-                cluster_data, ligand, e_cluster, method_level
-            )
-            per_ligand_results.append(result)
-            
-            logger.info(f"  ΔE = {result['delta_e']:.2f} kcal/mol")
-        
-        # 7. 按类型汇总
-        per_type_summary = summarize_by_type(per_ligand_results)
-        logger.info(f"Type summary: {len(per_type_summary)} types")
-        
-        # 8. 保存结果
-        desolvation_result = DesolvationEnergyResult(
-            postprocess_job_id=job.id,
-            solvation_structure_id=solvation_structure_id,
-            method_level=method_level,
-            basis_set="GFN2-xTB" if method_level == "fast_xtb" else None,
-            functional="GFN2-xTB" if method_level == "fast_xtb" else None,
-            e_cluster=e_cluster,
-            per_ligand_results=per_ligand_results,
-            per_type_summary=per_type_summary
-        )
-        
-        db.add(desolvation_result)
-        
-        # 9. 更新任务状态
-        job.status = JobStatus.COMPLETED
-        job.finished_at = datetime.now()
-        job.progress = 100.0
-        
-        db.commit()
-        
-        logger.info(f"Desolvation job {job.id} completed successfully")
-        
-        return {
-            "success": True,
-            "job_id": job.id,
-            "result_id": desolvation_result.id
-        }
-        
+
+        # 检查当前阶段
+        phase = config.get("phase", 1)
+
+        if phase == 1:
+            # 阶段 1：创建 QC 任务
+            return _phase1_create_qc_jobs(job, solvation_structure, method_level, db)
+        elif phase == 2:
+            # 阶段 2：计算去溶剂化能
+            return _phase2_calculate_desolvation(job, solvation_structure, method_level, db)
+        else:
+            raise ValueError(f"Unknown phase: {phase}")
+
     except Exception as e:
         logger.error(f"Desolvation job {job.id} failed: {e}", exc_info=True)
-        
+
         job.status = JobStatus.FAILED
         job.finished_at = datetime.now()
         job.error_message = str(e)
-        
+
         db.commit()
-        
+
         return {
             "success": False,
             "job_id": job.id,
             "error": str(e)
         }
+
+
+def _phase1_create_qc_jobs(
+    job: PostprocessJob,
+    solvation_structure: SolvationStructure,
+    method_level: str,
+    db: SessionLocal
+) -> Dict[str, Any]:
+    """
+    阶段 1：创建所有需要的 QC 任务
+
+    需要创建的 QC 任务：
+    1. E_cluster：完整溶剂化簇
+    2. E_ligand_i：每个配体分子（去重）
+    3. E_cluster_minus_i：移除每个配体后的簇
+    """
+    logger.info(f"Phase 1: Creating QC jobs for desolvation job {job.id}")
+
+    # 更新状态为 RUNNING
+    job.status = JobStatus.RUNNING
+    job.started_at = datetime.now()
+    db.commit()
+
+    # 解析溶剂化结构
+    cluster_data = parse_solvation_cluster(solvation_structure)
+    logger.info(f"Parsed cluster: center={cluster_data['center_ion']}, ligands={len(cluster_data['ligands'])}")
+
+    # 获取计算参数
+    basis_set, functional = get_qc_params_for_method_level(method_level)
+
+    # 获取 MD job 和 user
+    md_job_id = job.md_job_id
+    from app.models.job import MDJob
+    md_job = db.query(MDJob).filter(MDJob.id == md_job_id).first()
+    if not md_job:
+        raise ValueError(f"MD job {md_job_id} not found")
+    user_id = md_job.user_id
+
+    created_qc_jobs = []
+
+    # 1. 创建 E_cluster QC 任务
+    cluster_qc_job = create_qc_job_for_structure(
+        db=db,
+        user_id=user_id,
+        md_job_id=md_job_id,
+        molecule_name=f"Cluster_{solvation_structure.id}",
+        xyz_content=cluster_data['xyz_content'],
+        charge=cluster_data['total_charge'],
+        basis_set=basis_set,
+        functional=functional,
+        job_type="cluster"
+    )
+    created_qc_jobs.append(cluster_qc_job.id)
+    logger.info(f"Created cluster QC job {cluster_qc_job.id}")
+
+    # 2. 创建每个配体的 QC 任务（去重）
+    ligand_qc_jobs = {}
+    for ligand in cluster_data['ligands']:
+        ligand_key = f"{ligand['ligand_type']}_{ligand['charge']}"
+
+        if ligand_key not in ligand_qc_jobs:
+            ligand_qc_job = create_qc_job_for_structure(
+                db=db,
+                user_id=user_id,
+                md_job_id=md_job_id,
+                molecule_name=f"{ligand['ligand_type']}",
+                xyz_content=ligand['xyz_content'],
+                charge=ligand['charge'],
+                basis_set=basis_set,
+                functional=functional,
+                job_type="ligand"
+            )
+            ligand_qc_jobs[ligand_key] = ligand_qc_job.id
+            created_qc_jobs.append(ligand_qc_job.id)
+            logger.info(f"Created ligand QC job {ligand_qc_job.id} for {ligand['ligand_type']}")
+
+    # 3. 创建每个 cluster_minus_i 的 QC 任务
+    for i, ligand in enumerate(cluster_data['ligands']):
+        cluster_minus_xyz = generate_cluster_minus_xyz(cluster_data, ligand)
+        cluster_minus_charge = cluster_data['total_charge'] - ligand['charge']
+
+        cluster_minus_qc_job = create_qc_job_for_structure(
+            db=db,
+            user_id=user_id,
+            md_job_id=md_job_id,
+            molecule_name=f"Cluster_{solvation_structure.id}_minus_{ligand['ligand_label']}",
+            xyz_content=cluster_minus_xyz,
+            charge=cluster_minus_charge,
+            basis_set=basis_set,
+            functional=functional,
+            job_type="cluster_minus"
+        )
+        created_qc_jobs.append(cluster_minus_qc_job.id)
+        logger.info(f"Created cluster_minus QC job {cluster_minus_qc_job.id} for ligand {ligand['ligand_label']}")
+
+    # 保存 QC job IDs 到 config
+    job.config = job.config or {}
+    job.config['qc_job_ids'] = created_qc_jobs
+    job.config['cluster_qc_job_id'] = cluster_qc_job.id
+    job.config['ligand_qc_jobs'] = ligand_qc_jobs
+    job.config['phase'] = 2  # 下次进入阶段 2
+    job.config['cluster_data'] = {
+        'center_ion': cluster_data['center_ion'],
+        'total_charge': cluster_data['total_charge'],
+        'ligands': [
+            {
+                'ligand_id': lig['ligand_id'],
+                'ligand_type': lig['ligand_type'],
+                'ligand_label': lig['ligand_label'],
+                'charge': lig['charge']
+            }
+            for lig in cluster_data['ligands']
+        ]
+    }
+
+    # 更新状态为 POSTPROCESSING（等待 QC 任务完成）
+    job.status = JobStatus.POSTPROCESSING
+    job.progress = 10.0
+
+    db.commit()
+
+    logger.info(f"Phase 1 completed: Created {len(created_qc_jobs)} QC jobs")
+
+    return {
+        "success": True,
+        "job_id": job.id,
+        "phase": 1,
+        "qc_jobs_created": len(created_qc_jobs)
+    }
+
+
+def _phase2_calculate_desolvation(
+    job: PostprocessJob,
+    solvation_structure: SolvationStructure,
+    method_level: str,
+    db: SessionLocal
+) -> Dict[str, Any]:
+    """
+    阶段 2：从 QC 结果计算去溶剂化能
+
+    前提：所有 QC 任务已完成
+    """
+    logger.info(f"Phase 2: Calculating desolvation energies for job {job.id}")
+
+    config = job.config or {}
+    qc_job_ids = config.get('qc_job_ids', [])
+    cluster_qc_job_id = config.get('cluster_qc_job_id')
+    ligand_qc_jobs = config.get('ligand_qc_jobs', {})
+    cluster_data = config.get('cluster_data', {})
+
+    # 检查所有 QC 任务是否完成
+    all_completed = True
+    for qc_job_id in qc_job_ids:
+        qc_job = db.query(QCJob).filter(QCJob.id == qc_job_id).first()
+        if not qc_job or qc_job.status != QCJobStatus.COMPLETED:
+            all_completed = False
+            logger.info(f"QC job {qc_job_id} not completed yet (status: {qc_job.status if qc_job else 'NOT_FOUND'})")
+            break
+
+    if not all_completed:
+        logger.info(f"Not all QC jobs completed yet, waiting...")
+        return {
+            "success": True,
+            "job_id": job.id,
+            "phase": 2,
+            "status": "waiting_for_qc_jobs"
+        }
+
+    # 获取 E_cluster
+    cluster_result = db.query(QCResult).filter(
+        QCResult.qc_job_id == cluster_qc_job_id
+    ).first()
+
+    if not cluster_result or cluster_result.total_energy is None:
+        raise ValueError(f"Cluster QC result not found or missing energy")
+
+    e_cluster = cluster_result.total_energy
+    logger.info(f"E_cluster = {e_cluster:.6f} A.U.")
+
+    # 计算每个配体的去溶剂化能
+    per_ligand_results = []
+
+    for i, ligand_info in enumerate(cluster_data['ligands']):
+        ligand_type = ligand_info['ligand_type']
+        ligand_label = ligand_info['ligand_label']
+        ligand_charge = ligand_info['charge']
+
+        # 获取 E_ligand
+        ligand_key = f"{ligand_type}_{ligand_charge}"
+        ligand_qc_job_id = ligand_qc_jobs.get(ligand_key)
+
+        if not ligand_qc_job_id:
+            raise ValueError(f"Ligand QC job not found for {ligand_key}")
+
+        ligand_result = db.query(QCResult).filter(
+            QCResult.qc_job_id == ligand_qc_job_id
+        ).first()
+
+        if not ligand_result or ligand_result.total_energy is None:
+            raise ValueError(f"Ligand QC result not found for {ligand_type}")
+
+        e_ligand = ligand_result.total_energy
+
+        # 获取 E_cluster_minus
+        cluster_minus_qc_job_id = qc_job_ids[1 + len(ligand_qc_jobs) + i]  # cluster + ligands + cluster_minus_i
+        cluster_minus_result = db.query(QCResult).filter(
+            QCResult.qc_job_id == cluster_minus_qc_job_id
+        ).first()
+
+        if not cluster_minus_result or cluster_minus_result.total_energy is None:
+            raise ValueError(f"Cluster_minus QC result not found for ligand {ligand_label}")
+
+        e_cluster_minus = cluster_minus_result.total_energy
+
+        # 计算 ΔE_i
+        delta_e_au = e_cluster - (e_cluster_minus + e_ligand)
+        delta_e_kcal = delta_e_au * HARTREE_TO_KCAL
+
+        per_ligand_results.append({
+            'ligand_id': ligand_info['ligand_id'],
+            'ligand_type': ligand_type,
+            'ligand_label': ligand_label,
+            'e_ligand': e_ligand,
+            'e_cluster_minus': e_cluster_minus,
+            'delta_e': delta_e_kcal
+        })
+
+        logger.info(f"Ligand {ligand_label}: ΔE = {delta_e_kcal:.2f} kcal/mol")
+
+    # 按类型汇总
+    per_type_summary = summarize_by_type(per_ligand_results)
+    logger.info(f"Type summary: {len(per_type_summary)} types")
+
+    # 获取计算参数
+    basis_set, functional = get_qc_params_for_method_level(method_level)
+
+    # 保存结果
+    desolvation_result = DesolvationEnergyResult(
+        postprocess_job_id=job.id,
+        solvation_structure_id=solvation_structure.id,
+        method_level=method_level,
+        basis_set=basis_set,
+        functional=functional,
+        e_cluster=e_cluster,
+        per_ligand_results=per_ligand_results,
+        per_type_summary=per_type_summary
+    )
+
+    db.add(desolvation_result)
+
+    # 更新任务状态
+    job.status = JobStatus.COMPLETED
+    job.finished_at = datetime.now()
+    job.progress = 100.0
+
+    db.commit()
+
+    logger.info(f"Desolvation job {job.id} completed successfully")
+
+    return {
+        "success": True,
+        "job_id": job.id,
+        "result_id": desolvation_result.id
+    }
+
+
+def get_qc_params_for_method_level(method_level: str) -> tuple:
+    """根据 method_level 返回 (basis_set, functional)"""
+    if method_level == "fast":
+        return ("6-31G(d)", "B3LYP")
+    elif method_level == "standard":
+        return ("6-31++G(d,p)", "B3LYP")
+    elif method_level == "accurate":
+        return ("6-311++G(2d,2p)", "wB97XD")
+    else:
+        return ("6-31++G(d,p)", "B3LYP")  # 默认
+
+
+def create_qc_job_for_structure(
+    db: SessionLocal,
+    user_id: int,
+    md_job_id: int,
+    molecule_name: str,
+    xyz_content: str,
+    charge: int,
+    basis_set: str,
+    functional: str,
+    job_type: str
+) -> QCJob:
+    """创建 QC 任务"""
+    # 从 XYZ 生成 SMILES（简化版，实际应该用 RDKit）
+    smiles = "C"  # 占位符
+
+    qc_job = QCJob(
+        user_id=user_id,
+        md_job_id=md_job_id,
+        molecule_name=molecule_name,
+        smiles=smiles,
+        molecule_type="custom",
+        basis_set=basis_set,
+        functional=functional,
+        charge=charge,
+        spin_multiplicity=1,  # 默认单重态
+        solvent_model="gas",
+        status=QCJobStatus.CREATED,
+        config={
+            "xyz_content": xyz_content,
+            "desolvation_job_type": job_type,
+            "accuracy_level": "standard"
+        }
+    )
+
+    db.add(qc_job)
+    db.commit()
+    db.refresh(qc_job)
+
+    return qc_job
 
 
 def parse_solvation_cluster(solvation_structure: SolvationStructure) -> Dict[str, Any]:
@@ -279,101 +552,6 @@ def estimate_atoms_per_molecule(mol_type: str) -> int:
     }
     return atom_counts.get(mol_type, 15)  # 默认 15 个原子
 
-
-def calculate_energy_with_xtb(xyz_content: str, charge: int = 0) -> float:
-    """
-    使用 xTB 计算能量
-
-    Args:
-        xyz_content: XYZ 格式的结构
-        charge: 电荷
-
-    Returns:
-        能量 (A.U.)
-    """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir_path = Path(tmpdir)
-
-        # 写入 XYZ 文件
-        xyz_file = tmpdir_path / "structure.xyz"
-        xyz_file.write_text(xyz_content)
-
-        # 运行 xTB
-        cmd = f"xtb {xyz_file.name} --chrg {charge} --gfn 2"
-
-        try:
-            result = subprocess.run(
-                cmd,
-                shell=True,
-                cwd=tmpdir,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 分钟超时
-            )
-
-            if result.returncode != 0:
-                raise RuntimeError(f"xTB failed with return code {result.returncode}: {result.stderr}")
-
-            # 解析能量
-            for line in result.stdout.split('\n'):
-                if 'TOTAL ENERGY' in line:
-                    # 格式: "TOTAL ENERGY      -42.123456 Eh"
-                    parts = line.split()
-                    energy_hartree = float(parts[3])
-                    return energy_hartree
-
-            raise ValueError("Failed to extract energy from xTB output")
-
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("xTB calculation timed out after 5 minutes")
-        except Exception as e:
-            logger.error(f"xTB calculation failed: {e}")
-            raise
-
-
-def calculate_ligand_desolvation(
-    cluster_data: Dict[str, Any],
-    ligand: Dict[str, Any],
-    e_cluster: float,
-    method_level: str
-) -> Dict[str, Any]:
-    """
-    计算单个配体的去溶剂化能
-
-    Returns:
-        {
-            ligand_id, ligand_type, ligand_label,
-            e_ligand, e_cluster_minus, delta_e
-        }
-    """
-    # 1. 计算单分子能量 E_i
-    e_ligand = calculate_energy_with_xtb(
-        ligand['xyz_content'],
-        charge=ligand['charge']
-    )
-
-    # 2. 生成 cluster_minus_i 的 XYZ
-    cluster_minus_xyz = generate_cluster_minus_xyz(cluster_data, ligand)
-    cluster_minus_charge = cluster_data['total_charge'] - ligand['charge']
-
-    # 3. 计算 E_cluster_minus_i
-    e_cluster_minus = calculate_energy_with_xtb(
-        cluster_minus_xyz,
-        charge=cluster_minus_charge
-    )
-
-    # 4. 计算 ΔE_i
-    delta_e_au = e_cluster - (e_cluster_minus + e_ligand)
-    delta_e_kcal = delta_e_au * HARTREE_TO_KCAL
-
-    return {
-        'ligand_id': ligand['ligand_id'],
-        'ligand_type': ligand['ligand_type'],
-        'ligand_label': ligand['ligand_label'],
-        'e_ligand': e_ligand,
-        'e_cluster_minus': e_cluster_minus,
-        'delta_e': delta_e_kcal
-    }
 
 
 def generate_cluster_minus_xyz(cluster_data: Dict[str, Any], ligand_to_remove: Dict[str, Any]) -> str:

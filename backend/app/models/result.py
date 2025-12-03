@@ -178,7 +178,7 @@ class DesolvationEnergyResult(Base):
     solvation_structure_id = Column(Integer, ForeignKey("solvation_structures.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # 计算参数
-    method_level = Column(String(50), default="fast_xtb")  # fast_xtb, standard, accurate
+    method_level = Column(String(50), default="standard")  # fast, standard, accurate
     basis_set = Column(String(50))
     functional = Column(String(50))
 

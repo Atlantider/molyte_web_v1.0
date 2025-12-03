@@ -84,21 +84,21 @@ const getStatusText = (status: string): string => {
   }
 };
 
-// 状态图标映射
-const getStatusIcon = (status: string) => {
+// 状态图标映射（需要在组件内部使用 token）
+const getStatusIcon = (status: string, token: any) => {
   switch (status) {
     case 'COMPLETED':
-      return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
+      return <CheckCircleOutlined style={{ color: token.colorSuccess }} />;
     case 'RUNNING':
     case 'POSTPROCESSING':
-      return <SyncOutlined spin style={{ color: '#1890ff' }} />;
+      return <SyncOutlined spin style={{ color: token.colorPrimary }} />;
     case 'QUEUED':
-      return <ClockCircleOutlined style={{ color: '#faad14' }} />;
+      return <ClockCircleOutlined style={{ color: token.colorWarning }} />;
     case 'FAILED':
     case 'CANCELLED':
-      return <CloseCircleOutlined style={{ color: '#ff4d4f' }} />;
+      return <CloseCircleOutlined style={{ color: token.colorError }} />;
     default:
-      return <ExperimentOutlined style={{ color: '#d9d9d9' }} />;
+      return <ExperimentOutlined style={{ color: token.colorTextDisabled }} />;
   }
 };
 
@@ -313,7 +313,7 @@ export default function QCTasksPanel({ mdJobId, refreshInterval = 10000 }: QCTas
                   {/* 标题行 */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <Space>
-                      {getStatusIcon(job.status)}
+                      {getStatusIcon(job.status, token)}
                       <Text strong style={{ fontSize: 14 }}>{job.molecule_name}</Text>
                       {getMoleculeTypeTag(job.molecule_type)}
                       <Tag color={getStatusColor(job.status)}>
