@@ -28,6 +28,7 @@ import {
   Statistic,
   Table,
   Switch,
+  theme,
 } from 'antd';
 import {
   PlusOutlined,
@@ -55,6 +56,7 @@ import ElectrolyteFormOptimized from '../components/ElectrolyteFormOptimized';
 import AccuracyLevelSelector from '../components/AccuracyLevelSelector';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAuthStore } from '../stores/authStore';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -63,6 +65,9 @@ export default function Jobs() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [jobs, setJobs] = useState<MDJob[]>([]);
   const [electrolytes, setElectrolytes] = useState<ElectrolyteSystem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -622,15 +627,16 @@ export default function Jobs() {
   return (
     <div style={{
       padding: '24px',
-      background: '#f5f7fb',
-      minHeight: 'calc(100vh - 64px)'
+      background: token.colorBgLayout,
+      minHeight: 'calc(100vh - 64px)',
+      transition: 'background 0.3s',
     }}>
       {/* 页面标题区域 */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
-              <RocketOutlined style={{ marginRight: 12, color: '#1677ff' }} />
+              <RocketOutlined style={{ marginRight: 12, color: token.colorPrimary }} />
               计算任务管理
             </Title>
             <Space>
@@ -659,7 +665,7 @@ export default function Jobs() {
               size="large"
               style={{
                 borderRadius: 8,
-                boxShadow: '0 2px 8px rgba(22, 119, 255, 0.3)',
+                boxShadow: isDark ? '0 2px 8px rgba(107, 154, 255, 0.3)' : '0 2px 8px rgba(91, 141, 239, 0.3)',
               }}
             >
               创建新任务
@@ -673,8 +679,8 @@ export default function Jobs() {
         style={{
           marginBottom: 24,
           borderRadius: 12,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-          border: 'none',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+          border: `1px solid ${token.colorBorder}`,
         }}
       >
         <Row gutter={24} align="middle" justify="space-around">
@@ -683,7 +689,7 @@ export default function Jobs() {
               <div style={{
                 fontSize: 28,
                 fontWeight: 700,
-                color: '#1677ff',
+                color: token.colorPrimary,
                 lineHeight: 1.2
               }}>
                 {jobs.length}
@@ -696,7 +702,7 @@ export default function Jobs() {
               <div style={{
                 fontSize: 28,
                 fontWeight: 700,
-                color: '#faad14',
+                color: token.colorWarning,
                 lineHeight: 1.2
               }}>
                 {createdCount}
@@ -709,7 +715,7 @@ export default function Jobs() {
               <div style={{
                 fontSize: 28,
                 fontWeight: 700,
-                color: '#52c41a',
+                color: token.colorSuccess,
                 lineHeight: 1.2
               }}>
                 {runningCount}
@@ -722,7 +728,7 @@ export default function Jobs() {
               <div style={{
                 fontSize: 28,
                 fontWeight: 700,
-                color: '#722ed1',
+                color: '#7C6EAF',
                 lineHeight: 1.2
               }}>
                 {completedCount}
@@ -735,7 +741,7 @@ export default function Jobs() {
               <div style={{
                 fontSize: 28,
                 fontWeight: 700,
-                color: '#ff4d4f',
+                color: token.colorError,
                 lineHeight: 1.2
               }}>
                 {failedCount}
@@ -751,8 +757,8 @@ export default function Jobs() {
         style={{
           marginBottom: 24,
           borderRadius: 12,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-          border: 'none',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+          border: `1px solid ${token.colorBorder}`,
         }}
         styles={{ body: { padding: '12px 24px' } }}
       >
@@ -774,9 +780,9 @@ export default function Jobs() {
         style={{
           marginBottom: 24,
           borderRadius: 12,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-          border: 'none',
-          background: '#fafafa',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+          border: `1px solid ${token.colorBorder}`,
+          background: isDark ? token.colorBgContainer : '#fafafa',
         }}
       >
         <Row gutter={[16, 16]}>

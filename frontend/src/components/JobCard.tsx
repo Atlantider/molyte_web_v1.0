@@ -1,7 +1,7 @@
 /**
  * 任务卡片组件
  */
-import { Card, Space, Button, Popconfirm, Typography, Descriptions, Steps, message, Progress, Tag, Tooltip } from 'antd';
+import { Card, Space, Button, Popconfirm, Typography, Descriptions, Steps, message, Progress, Tag, Tooltip, theme } from 'antd';
 import {
   EyeOutlined,
   StopOutlined,
@@ -22,6 +22,7 @@ import StatusTag from './StatusTag';
 import dayjs from 'dayjs';
 import { createMDJob } from '../api/jobs';
 import { useAuthStore } from '../stores/authStore';
+import { useThemeStore } from '../stores/themeStore';
 import { translateError } from '../utils/errorTranslator';
 
 const { Text } = Typography;
@@ -37,6 +38,9 @@ interface JobCardProps {
 export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDelete }: JobCardProps) {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
 
   // 判断是否可以取消（只有已提交到集群的任务才能取消）
   const canCancel = job.status === JobStatus.QUEUED || job.status === JobStatus.RUNNING;
@@ -139,9 +143,10 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
         height: '100%',
         cursor: 'pointer',
         transition: 'all 0.3s ease',
-        border: 'none',
+        border: `1px solid ${token.colorBorder}`,
         borderRadius: 12,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+        background: token.colorBgContainer,
       }}
       styles={{
         body: { padding: '20px' },
