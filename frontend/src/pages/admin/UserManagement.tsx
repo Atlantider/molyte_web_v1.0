@@ -20,6 +20,7 @@ import {
   Col,
   Statistic,
   Typography,
+  theme,
 } from 'antd';
 
 const { Title, Text } = Typography;
@@ -38,6 +39,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import AdminNav from '../../components/AdminNav';
+import { useThemeStore } from '../../stores/themeStore';
 import {
   getAllUsers,
   createUser,
@@ -53,6 +55,9 @@ import {
 
 const UserManagement: React.FC = () => {
   const navigate = useNavigate();
+  const { token } = theme.useToken();
+  const { mode } = useThemeStore();
+  const isDark = mode === 'dark';
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UserListItem[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<UserListItem[]>([]);
@@ -388,11 +393,11 @@ const UserManagement: React.FC = () => {
   const premiumUsers = users.filter((u) => u.role === 'PREMIUM').length;
 
   return (
-    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: '24px', background: token.colorBgLayout, minHeight: 'calc(100vh - 64px)' }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 24 }}>
         <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
-          <TeamOutlined style={{ marginRight: 12, color: '#1677ff' }} />
+          <TeamOutlined style={{ marginRight: 12, color: token.colorPrimary }} />
           用户管理
         </Title>
         <Text type="secondary">
@@ -477,7 +482,7 @@ const UserManagement: React.FC = () => {
       <Card
         title={
           <Space>
-            <UserOutlined style={{ color: '#1677ff' }} />
+            <UserOutlined style={{ color: token.colorPrimary }} />
             <span>用户列表</span>
           </Space>
         }
@@ -490,11 +495,12 @@ const UserManagement: React.FC = () => {
         style={{
           borderRadius: 12,
           border: 'none',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+          background: token.colorBgContainer,
         }}
       >
         {/* 筛选栏 */}
-        <div style={{ marginBottom: 16, padding: '16px', background: '#fafafa', borderRadius: 8 }}>
+        <div style={{ marginBottom: 16, padding: '16px', background: isDark ? 'rgba(255,255,255,0.04)' : '#fafafa', borderRadius: 8 }}>
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} md={6}>
               <Input

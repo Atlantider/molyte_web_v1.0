@@ -2,17 +2,21 @@
  * Audit Logs Page
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Tag, Input, Select, DatePicker, Space, Button, message, Typography, Row, Col } from 'antd';
+import { Card, Table, Tag, Input, Select, DatePicker, Space, Button, message, Typography, Row, Col, theme } from 'antd';
 import { SearchOutlined, ReloadOutlined, FileTextOutlined } from '@ant-design/icons';
 import AdminNav from '../../components/AdminNav';
 import { getAuditLogs, AuditLogItem } from '../../api/admin';
 import type { RangePickerProps } from 'antd/es/date-picker';
 import dayjs from 'dayjs';
+import { useThemeStore } from '../../stores/themeStore';
 
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
 
 const AuditLogs: React.FC = () => {
+  const { token } = theme.useToken();
+  const { mode } = useThemeStore();
+  const isDark = mode === 'dark';
   const [loading, setLoading] = useState(false);
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
   const [filters, setFilters] = useState({
@@ -141,11 +145,11 @@ const AuditLogs: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: '24px', background: token.colorBgLayout, minHeight: 'calc(100vh - 64px)' }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 24 }}>
         <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
-          <FileTextOutlined style={{ marginRight: 12, color: '#1677ff' }} />
+          <FileTextOutlined style={{ marginRight: 12, color: token.colorPrimary }} />
           审计日志
         </Title>
         <Text type="secondary">
@@ -161,8 +165,8 @@ const AuditLogs: React.FC = () => {
           marginBottom: 24,
           borderRadius: 12,
           border: 'none',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-          background: '#fafafa',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+          background: isDark ? 'rgba(255,255,255,0.04)' : '#fafafa',
         }}
         styles={{ body: { padding: '16px' } }}
       >
@@ -225,7 +229,7 @@ const AuditLogs: React.FC = () => {
       <Card
         title={
           <Space>
-            <FileTextOutlined style={{ color: '#1677ff' }} />
+            <FileTextOutlined style={{ color: token.colorPrimary }} />
             <span>操作记录</span>
           </Space>
         }
@@ -233,7 +237,8 @@ const AuditLogs: React.FC = () => {
         style={{
           borderRadius: 12,
           border: 'none',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+          background: token.colorBgContainer,
         }}
       >
         <Table

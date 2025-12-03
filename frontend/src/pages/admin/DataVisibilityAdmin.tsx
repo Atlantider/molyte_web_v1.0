@@ -20,6 +20,7 @@ import {
   Tooltip,
   Popconfirm,
   Typography,
+  theme,
 } from 'antd';
 import {
   EyeOutlined,
@@ -35,6 +36,7 @@ import type { ColumnsType } from 'antd/es/table';
 import AdminNav from '../../components/AdminNav';
 import * as visibilityApi from '../../api/visibility';
 import { DataVisibility, JobVisibility, VisibilityStats } from '../../api/visibility';
+import { useThemeStore } from '../../stores/themeStore';
 
 const { Title, Text } = Typography;
 
@@ -47,6 +49,9 @@ const visibilityConfig = {
 };
 
 export default function DataVisibilityAdmin() {
+  const { token } = theme.useToken();
+  const { mode } = useThemeStore();
+  const isDark = mode === 'dark';
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<JobVisibility[]>([]);
   const [stats, setStats] = useState<VisibilityStats | null>(null);
@@ -215,11 +220,11 @@ export default function DataVisibilityAdmin() {
   ];
 
   return (
-    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: '24px', background: token.colorBgLayout, minHeight: 'calc(100vh - 64px)' }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 24 }}>
         <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
-          <DatabaseOutlined style={{ marginRight: 12, color: '#1677ff' }} />
+          <DatabaseOutlined style={{ marginRight: 12, color: token.colorPrimary }} />
           数据可见性管理
         </Title>
         <Text type="secondary">
@@ -347,7 +352,7 @@ export default function DataVisibilityAdmin() {
       <Card
         title={
           <Space>
-            <DatabaseOutlined style={{ color: '#1677ff' }} />
+            <DatabaseOutlined style={{ color: token.colorPrimary }} />
             <span>数据可见性管理</span>
           </Space>
         }
@@ -378,7 +383,8 @@ export default function DataVisibilityAdmin() {
         style={{
           borderRadius: 12,
           border: 'none',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+          background: token.colorBgContainer,
         }}
       >
         <Table

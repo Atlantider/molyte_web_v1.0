@@ -448,8 +448,8 @@ export default function JobDetail() {
         </Row>
       </Card>
 
-      {/* 错误信息 */}
-      {job.error_message && (() => {
+      {/* 错误信息 - 只有在非成功状态下才显示 */}
+      {job.error_message && job.status !== JobStatus.COMPLETED && (() => {
         const translatedError = translateError(job.error_message);
         return translatedError ? (
           <Alert

@@ -17,6 +17,7 @@ import {
   message,
   Spin,
   Table,
+  theme,
 } from 'antd';
 import { EditOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -32,10 +33,14 @@ import {
   getAllPartitions,
   PartitionInfo,
 } from '../../api/admin';
+import { useThemeStore } from '../../stores/themeStore';
 
 const UserDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { token } = theme.useToken();
+  const { mode } = useThemeStore();
+  const isDark = mode === 'dark';
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<UserDetailType | null>(null);
   const [quota, setQuota] = useState<QuotaCheckResponse | null>(null);
@@ -132,7 +137,7 @@ const UserDetail: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: '100vh' }}>
+    <div style={{ padding: '24px', background: token.colorBgLayout, minHeight: '100vh' }}>
       <AdminNav />
 
       {/* Header */}
@@ -162,7 +167,8 @@ const UserDetail: React.FC = () => {
             bordered={false}
             style={{
               borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 10px 30px rgba(15, 100, 255, 0.08)',
+              background: token.colorBgContainer,
             }}
           >
             <Descriptions column={1}>
@@ -195,7 +201,8 @@ const UserDetail: React.FC = () => {
             bordered={false}
             style={{
               borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 10px 30px rgba(15, 100, 255, 0.08)',
+              background: token.colorBgContainer,
             }}
           >
             <Descriptions column={1}>
@@ -236,11 +243,12 @@ const UserDetail: React.FC = () => {
             bordered={false}
             style={{
               borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 10px 30px rgba(15, 100, 255, 0.08)',
+              background: token.colorBgContainer,
             }}
           >
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '14px', color: '#8c8c8c', marginBottom: '8px' }}>
+              <div style={{ fontSize: '14px', color: token.colorTextSecondary, marginBottom: '8px' }}>
                 CPU 核时使用
               </div>
               <Progress
@@ -255,7 +263,7 @@ const UserDetail: React.FC = () => {
                     : '#52c41a'
                 }
               />
-              <div style={{ marginTop: '12px', fontSize: '12px', color: '#8c8c8c' }}>
+              <div style={{ marginTop: '12px', fontSize: '12px', color: token.colorTextSecondary }}>
                 {user.used_cpu_hours.toFixed(1)} / {user.total_cpu_hours.toFixed(1)} 小时
               </div>
             </div>
@@ -267,17 +275,18 @@ const UserDetail: React.FC = () => {
             bordered={false}
             style={{
               borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 10px 30px rgba(15, 100, 255, 0.08)',
+              background: token.colorBgContainer,
             }}
           >
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '14px', color: '#8c8c8c', marginBottom: '8px' }}>
+              <div style={{ fontSize: '14px', color: token.colorTextSecondary, marginBottom: '8px' }}>
                 今日任务
               </div>
-              <div style={{ fontSize: '32px', fontWeight: 700, color: '#1677ff' }}>
+              <div style={{ fontSize: '32px', fontWeight: 700, color: token.colorPrimary }}>
                 {user.today_jobs}
               </div>
-              <div style={{ marginTop: '8px', fontSize: '12px', color: '#8c8c8c' }}>
+              <div style={{ marginTop: '8px', fontSize: '12px', color: token.colorTextSecondary }}>
                 / {user.daily_job_limit} 限制
               </div>
             </div>
@@ -289,17 +298,18 @@ const UserDetail: React.FC = () => {
             bordered={false}
             style={{
               borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 10px 30px rgba(15, 100, 255, 0.08)',
+              background: token.colorBgContainer,
             }}
           >
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '14px', color: '#8c8c8c', marginBottom: '8px' }}>
+              <div style={{ fontSize: '14px', color: token.colorTextSecondary, marginBottom: '8px' }}>
                 运行中任务
               </div>
               <div style={{ fontSize: '32px', fontWeight: 700, color: '#9254de' }}>
                 {user.running_jobs}
               </div>
-              <div style={{ marginTop: '8px', fontSize: '12px', color: '#8c8c8c' }}>
+              <div style={{ marginTop: '8px', fontSize: '12px', color: token.colorTextSecondary }}>
                 / {user.concurrent_job_limit} 限制
               </div>
             </div>
@@ -311,17 +321,18 @@ const UserDetail: React.FC = () => {
             bordered={false}
             style={{
               borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 10px 30px rgba(15, 100, 255, 0.08)',
+              background: token.colorBgContainer,
             }}
           >
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '14px', color: '#8c8c8c', marginBottom: '8px' }}>
+              <div style={{ fontSize: '14px', color: token.colorTextSecondary, marginBottom: '8px' }}>
                 总任务数
               </div>
               <div style={{ fontSize: '32px', fontWeight: 700, color: '#13c2c2' }}>
                 {user.total_jobs}
               </div>
-              <div style={{ marginTop: '8px', fontSize: '12px', color: '#8c8c8c' }}>
+              <div style={{ marginTop: '8px', fontSize: '12px', color: token.colorTextSecondary }}>
                 完成 {user.completed_jobs} / 失败 {user.failed_jobs}
               </div>
             </div>
@@ -336,8 +347,9 @@ const UserDetail: React.FC = () => {
           bordered={false}
           style={{
             borderRadius: '12px',
-            boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+            boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 10px 30px rgba(15, 100, 255, 0.08)',
             marginBottom: '24px',
+            background: token.colorBgContainer,
           }}
         >
           <Tag color={quota.allowed ? 'success' : 'error'} style={{ fontSize: '16px', padding: '8px 16px' }}>
@@ -350,7 +362,7 @@ const UserDetail: React.FC = () => {
           )}
           {quota.details && (
             <div style={{ marginTop: '16px' }}>
-              <pre style={{ background: '#f5f5f5', padding: '12px', borderRadius: '4px' }}>
+              <pre style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#f5f5f5', padding: '12px', borderRadius: '4px' }}>
                 {JSON.stringify(quota.details, null, 2)}
               </pre>
             </div>
@@ -364,7 +376,8 @@ const UserDetail: React.FC = () => {
         bordered={false}
         style={{
           borderRadius: '12px',
-          boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 10px 30px rgba(15, 100, 255, 0.08)',
+          background: token.colorBgContainer,
         }}
       >
         <Table

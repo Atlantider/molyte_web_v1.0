@@ -2,7 +2,7 @@
  * Admin Dashboard Page
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Table, Tag, Progress, Spin, message, Typography, Space } from 'antd';
+import { Card, Row, Col, Statistic, Table, Tag, Progress, Spin, message, Typography, Space, theme } from 'antd';
 import {
   UserOutlined,
   RocketOutlined,
@@ -25,11 +25,15 @@ import {
   UserUsageStatsItem,
   UserRanking,
 } from '../../api/admin';
+import { useThemeStore } from '../../stores/themeStore';
 
 const { Title, Text } = Typography;
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { token } = theme.useToken();
+  const { mode } = useThemeStore();
+  const isDark = mode === 'dark';
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<GlobalStats | null>(null);
   const [userStats, setUserStats] = useState<UserUsageStatsItem[]>([]);
@@ -93,11 +97,11 @@ const AdminDashboard: React.FC = () => {
   }));
 
   return (
-    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: '24px', background: token.colorBgLayout, minHeight: 'calc(100vh - 64px)' }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 24 }}>
         <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
-          <ControlOutlined style={{ marginRight: 12, color: '#1677ff' }} />
+          <ControlOutlined style={{ marginRight: 12, color: token.colorPrimary }} />
           管理面板
         </Title>
         <Text type="secondary">
@@ -195,7 +199,7 @@ const AdminDashboard: React.FC = () => {
           <Card
             title={
               <Space>
-                <ThunderboltOutlined style={{ color: '#1677ff' }} />
+                <ThunderboltOutlined style={{ color: token.colorPrimary }} />
                 <span>CPU 核时使用排行 Top 5</span>
               </Space>
             }
@@ -203,7 +207,8 @@ const AdminDashboard: React.FC = () => {
             style={{
               borderRadius: 12,
               border: 'none',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+              background: token.colorBgContainer,
             }}
           >
             {cpuRankingData.length > 0 ? (
@@ -211,10 +216,11 @@ const AdminDashboard: React.FC = () => {
                 data={cpuRankingData}
                 xField="username"
                 yField="value"
+                theme={isDark ? 'dark' : undefined}
                 label={{
                   position: 'top',
                   style: {
-                    fill: '#595959',
+                    fill: token.colorText,
                     fontSize: 12,
                   },
                   content: (originData: any) => {
@@ -239,7 +245,7 @@ const AdminDashboard: React.FC = () => {
                 height={300}
               />
             ) : (
-              <div style={{ textAlign: 'center', padding: '50px 0', color: '#8c8c8c' }}>
+              <div style={{ textAlign: 'center', padding: '50px 0', color: token.colorTextSecondary }}>
                 暂无数据
               </div>
             )}
@@ -251,7 +257,7 @@ const AdminDashboard: React.FC = () => {
           <Card
             title={
               <Space>
-                <DatabaseOutlined style={{ color: '#1677ff' }} />
+                <DatabaseOutlined style={{ color: token.colorPrimary }} />
                 <span>任务状态分布</span>
               </Space>
             }
@@ -259,7 +265,8 @@ const AdminDashboard: React.FC = () => {
             style={{
               borderRadius: 12,
               border: 'none',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+              background: token.colorBgContainer,
             }}
           >
             {jobStatusData.length > 0 ? (
@@ -269,6 +276,7 @@ const AdminDashboard: React.FC = () => {
                 colorField="type"
                 radius={0.8}
                 innerRadius={0.6}
+                theme={isDark ? 'dark' : undefined}
                 label={{
                   type: 'inner',
                   offset: '-30%',
@@ -292,7 +300,7 @@ const AdminDashboard: React.FC = () => {
                 height={300}
               />
             ) : (
-              <div style={{ textAlign: 'center', padding: '50px 0', color: '#8c8c8c' }}>
+              <div style={{ textAlign: 'center', padding: '50px 0', color: token.colorTextSecondary }}>
                 暂无数据
               </div>
             )}
@@ -309,7 +317,8 @@ const AdminDashboard: React.FC = () => {
         }
         style={{
           borderRadius: '12px',
-          boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 10px 30px rgba(15, 100, 255, 0.08)',
+          background: token.colorBgContainer,
         }}
       >
         <Table
