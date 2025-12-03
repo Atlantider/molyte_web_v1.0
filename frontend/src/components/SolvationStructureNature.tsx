@@ -21,6 +21,7 @@ import {
   Tooltip,
   Slider,
   Dropdown,
+  Modal,
   theme,
 } from 'antd';
 import {
@@ -36,6 +37,7 @@ import {
   NumberOutlined,
   ApartmentOutlined,
   AppstoreOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 
 import ReactECharts from 'echarts-for-react';
@@ -55,8 +57,14 @@ import {
   type SolvationStructureContent,
   type AutoSelectResponse,
 } from '../api/jobs';
-import DesolvationAnalysisPanel from './DesolvationAnalysisPanel';
 import { useThemeStore } from '../stores/themeStore';
+import {
+  createDesolvationJob,
+  getDesolvationJob,
+  listClusterDesolvationJobs,
+} from '../api/desolvation';
+import type { DesolvationJobResponse } from '../types/desolvation';
+import DesolvationResultView from './DesolvationResultView';
 
 const { Text } = Typography;
 
@@ -308,6 +316,13 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
   const [selectedStructureId, setSelectedStructureId] = useState<number | null>(null);
   const [sideStructureContent, setSideStructureContent] = useState<SolvationStructureContent | null>(null);
   const [loadingSideStructure, setLoadingSideStructure] = useState(false);
+
+  // 去溶剂化能计算状态
+  const [desolvationModalVisible, setDesolvationModalVisible] = useState(false);
+  const [desolvationJobs, setDesolvationJobs] = useState<DesolvationJobResponse[]>([]);
+  const [selectedDesolvationJob, setSelectedDesolvationJob] = useState<DesolvationJobResponse | null>(null);
+  const [loadingDesolvation, setLoadingDesolvation] = useState(false);
+  const [creatingDesolvation, setCreatingDesolvation] = useState(false);
 
   const cnChartRef = useRef<any>(null);
   const pieChartRef = useRef<any>(null);
@@ -618,6 +633,54 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
     }
   };
 
+  // 加载去溶剂化能任务列表
+  const loadDesolvationJobs = async (clusterId: number) => {
+    setLoadingDesolvation(true);
+    try {
+      const jobs = await listClusterDesolvationJobs(clusterId);
+      setDesolvationJobs(jobs);
+    } catch (error: any) {
+      message.error(`加载去溶剂化能任务失败: ${error.message || '未知错误'}`);
+    } finally {
+      setLoadingDesolvation(false);
+    }
+  };
+
+  // 创建去溶剂化能任务
+  const handleCreateDesolvationJob = async (clusterId: number) => {
+    setCreatingDesolvation(true);
+    try {
+      await createDesolvationJob({
+        md_job_id: jobId,
+        solvation_structure_id: clusterId,
+        method_level: 'standard',
+      });
+      message.success('去溶剂化能任务已创建');
+      await loadDesolvationJobs(clusterId);
+    } catch (error: any) {
+      message.error(`创建任务失败: ${error.response?.data?.detail || error.message || '未知错误'}`);
+    } finally {
+      setCreatingDesolvation(false);
+    }
+  };
+
+  // 查看去溶剂化能结果
+  const handleViewDesolvationResult = async (jobId: number) => {
+    try {
+      const job = await getDesolvationJob(jobId);
+      setSelectedDesolvationJob(job);
+    } catch (error: any) {
+      message.error(`获取任务详情失败: ${error.message || '未知错误'}`);
+    }
+  };
+
+  // 打开去溶剂化能 Modal
+  const handleOpenDesolvationModal = (clusterId: number) => {
+    setSelectedStructureId(clusterId);
+    setDesolvationModalVisible(true);
+    loadDesolvationJobs(clusterId);
+  };
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -709,7 +772,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
         itemStyle: {
           borderRadius: 3,
           borderColor: isDark ? '#1F1F1F' : '#fff',
-          borderWidth: 2,
+          borderWidth: 0.5,
         },
         label: {
           show: true,
@@ -766,7 +829,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
         itemStyle: {
           borderRadius: 3,
           borderColor: isDark ? '#1F1F1F' : '#fff',
-          borderWidth: 2,
+          borderWidth: 0.5,
         },
         label: {
           show: true,
@@ -831,7 +894,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
         itemStyle: {
           borderRadius: 3,
           borderColor: isDark ? '#1F1F1F' : '#fff',
-          borderWidth: 2,
+          borderWidth: 0.5,
         },
         label: {
           show: true,
@@ -903,7 +966,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
         itemStyle: {
           borderRadius: 3,
           borderColor: isDark ? '#1F1F1F' : '#fff',
-          borderWidth: 2,
+          borderWidth: 0.5,
         },
         label: {
           show: true,
@@ -973,23 +1036,37 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
       ),
     },
     {
-      title: '',
+      title: '操作',
       key: 'action',
-      width: 40,
-      align: 'right' as const,
-      render: (_: any, record: SolvationStructure) =>
-        record.file_path ? (
-          <Tooltip title="下载 XYZ">
+      width: 120,
+      align: 'center' as const,
+      render: (_: any, record: SolvationStructure) => (
+        <Space size="small">
+          <Tooltip title="计算去溶剂化能">
             <Button
               type="text"
               size="small"
-              icon={<DownloadOutlined style={{ color: '#52c41a' }} />}
-              href={`/api/v1/jobs/${jobId}/solvation/structure/${record.id}`}
-              target="_blank"
-              onClick={(e) => e.stopPropagation()}
+              icon={<ThunderboltOutlined style={{ color: '#1890ff' }} />}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenDesolvationModal(record.id);
+              }}
             />
           </Tooltip>
-        ) : null,
+          {record.file_path && (
+            <Tooltip title="下载 XYZ">
+              <Button
+                type="text"
+                size="small"
+                icon={<DownloadOutlined style={{ color: '#52c41a' }} />}
+                href={`/api/v1/jobs/${jobId}/solvation/structure/${record.id}`}
+                target="_blank"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </Tooltip>
+          )}
+        </Space>
+      ),
     },
   ];
 
@@ -1552,13 +1629,123 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
         </Card>
       </div>
 
-      {/* 去溶剂化能分析面板 */}
-      <div style={{ marginTop: DASHBOARD_STYLES.gutter }}>
-        <DesolvationAnalysisPanel
-          jobId={jobId}
-          clusterId={selectedStructureId || undefined}
-        />
-      </div>
+      {/* 去溶剂化能计算 Modal */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ThunderboltOutlined style={{ color: '#1890ff' }} />
+            <span>去溶剂化能计算 (Desolvation Energy)</span>
+          </div>
+        }
+        open={desolvationModalVisible}
+        onCancel={() => {
+          setDesolvationModalVisible(false);
+          setSelectedDesolvationJob(null);
+        }}
+        footer={null}
+        width={900}
+        destroyOnClose
+      >
+        <div style={{ marginTop: 16 }}>
+          {/* 创建任务按钮 */}
+          <Card size="small" style={{ marginBottom: 16 }}>
+            <Space>
+              <Button
+                type="primary"
+                icon={<ThunderboltOutlined />}
+                onClick={() => selectedStructureId && handleCreateDesolvationJob(selectedStructureId)}
+                loading={creatingDesolvation}
+                disabled={!selectedStructureId}
+              >
+                创建计算任务
+              </Button>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={() => selectedStructureId && loadDesolvationJobs(selectedStructureId)}
+                loading={loadingDesolvation}
+                disabled={!selectedStructureId}
+              >
+                刷新
+              </Button>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                方法: B3LYP/6-31++G(d,p)
+              </Text>
+            </Space>
+          </Card>
+
+          {/* 任务列表 */}
+          <Card title="任务列表" size="small" style={{ marginBottom: 16 }}>
+            <Table
+              dataSource={desolvationJobs}
+              rowKey="job_id"
+              loading={loadingDesolvation}
+              columns={[
+                {
+                  title: 'ID',
+                  dataIndex: 'job_id',
+                  key: 'job_id',
+                  width: 60,
+                },
+                {
+                  title: '方法',
+                  dataIndex: 'method_level',
+                  key: 'method_level',
+                  width: 100,
+                },
+                {
+                  title: '状态',
+                  dataIndex: 'status',
+                  key: 'status',
+                  width: 100,
+                  render: (status: string) => {
+                    const statusConfig: Record<string, { color: string; text: string }> = {
+                      CREATED: { color: 'default', text: '已创建' },
+                      SUBMITTED: { color: 'blue', text: '已提交' },
+                      QUEUED: { color: 'cyan', text: '排队中' },
+                      RUNNING: { color: 'processing', text: '运行中' },
+                      POSTPROCESSING: { color: 'purple', text: '后处理' },
+                      COMPLETED: { color: 'success', text: '已完成' },
+                      FAILED: { color: 'error', text: '失败' },
+                      CANCELLED: { color: 'default', text: '已取消' },
+                    };
+                    const config = statusConfig[status] || { color: 'default', text: status };
+                    return <Tag color={config.color}>{config.text}</Tag>;
+                  },
+                },
+                {
+                  title: '创建时间',
+                  dataIndex: 'created_at',
+                  key: 'created_at',
+                  width: 160,
+                  render: (time: string) => new Date(time).toLocaleString('zh-CN'),
+                },
+                {
+                  title: '操作',
+                  key: 'action',
+                  width: 100,
+                  render: (_: any, record: DesolvationJobResponse) => (
+                    <Button
+                      type="link"
+                      size="small"
+                      disabled={record.status !== 'COMPLETED'}
+                      onClick={() => handleViewDesolvationResult(record.job_id)}
+                    >
+                      查看结果
+                    </Button>
+                  ),
+                },
+              ]}
+              pagination={false}
+              size="small"
+            />
+          </Card>
+
+          {/* 结果展示 */}
+          {selectedDesolvationJob && selectedDesolvationJob.result && (
+            <DesolvationResultView result={selectedDesolvationJob.result} />
+          )}
+        </div>
+      </Modal>
 
     </div>
   );
