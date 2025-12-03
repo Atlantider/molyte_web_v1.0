@@ -116,7 +116,8 @@ export PATH=$(echo $PATH | tr ':' '\\n' | grep -v -i multiwfn | tr '\\n' ':' | s
 export Multiwfnpath=/public/software/Multiwfn_3.8_dev_bin_Linux
 export PATH=$Multiwfnpath:$PATH
 export OMP_STACKSIZE=200M
-export LD_LIBRARY_PATH=/lib64:/usr/lib64:$LD_LIBRARY_PATH
+# 添加共享库路径 (libXm.so.4 for Multiwfn)
+export LD_LIBRARY_PATH=/public/software/libs:$Multiwfnpath:/lib64:/usr/lib64:$LD_LIBRARY_PATH
 ulimit -s unlimited
 
 # 验证 Multiwfn 路径
