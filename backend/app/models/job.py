@@ -121,6 +121,7 @@ class MDJob(Base):
     rdf_results = relationship("RDFResult", back_populates="md_job", cascade="all, delete-orphan")
     msd_results = relationship("MSDResult", back_populates="md_job", cascade="all, delete-orphan")
     solvation_structures = relationship("SolvationStructure", back_populates="md_job", cascade="all, delete-orphan")
+    system_structure = relationship("SystemStructure", back_populates="md_job", uselist=False, cascade="all, delete-orphan")
     qc_jobs = relationship("QCJob", back_populates="md_job", cascade="all, delete-orphan")
 
     # Indexes

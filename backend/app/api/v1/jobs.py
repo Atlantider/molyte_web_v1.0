@@ -3056,12 +3056,12 @@ def get_system_structure_endpoint(
 ):
     """
     获取整个体系的结构（用于3D可视化）
-    优先从数据库读取，其次从本地轨迹文件读取
+    优先从 SystemStructure 表读取，其次从 ResultSummary 读取，最后从本地轨迹文件读取
 
     Args:
         frame: 帧索引，-1 表示最后一帧
     """
-    from app.models.result import ResultSummary
+    from app.models.result import ResultSummary, SystemStructure
     from app.dependencies import check_job_permission
 
     # 获取任务
@@ -3072,7 +3072,18 @@ def get_system_structure_endpoint(
     # 数据隔离：检查权限（支持公开数据访问）
     check_job_permission(job, current_user)
 
-    # 优先从数据库读取
+    # 优先从 SystemStructure 表读取（后处理生成的最后一帧）
+    system_structure = db.query(SystemStructure).filter(SystemStructure.md_job_id == job_id).first()
+    if system_structure and system_structure.xyz_content:
+        return {
+            'frame_index': system_structure.frame_index,
+            'total_frames': system_structure.total_frames,
+            'atom_count': system_structure.atom_count,
+            'box': system_structure.box or [0, 0, 0],
+            'xyz_content': system_structure.xyz_content,
+        }
+
+    # 其次从 ResultSummary 读取（兼容旧数据）
     summary = db.query(ResultSummary).filter(ResultSummary.md_job_id == job_id).first()
     if summary and summary.system_xyz_content:
         # 从 XYZ 内容解析原子数和盒子
@@ -3093,7 +3104,7 @@ def get_system_structure_endpoint(
             'xyz_content': summary.system_xyz_content,
         }
 
-    # 从本地轨迹文件读取
+    # 最后从本地轨迹文件读取（如果前两种都没有）
     if not job.work_dir:
         raise HTTPException(status_code=400, detail="Job work directory not found")
 

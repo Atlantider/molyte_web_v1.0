@@ -206,3 +206,35 @@ class DesolvationEnergyResult(Base):
     def __repr__(self):
         return f"<DesolvationEnergyResult(id={self.id}, method={self.method_level}, e_cluster={self.e_cluster})>"
 
+
+class SystemStructure(Base):
+    """System structure model - 系统结构模型（用于3D可视化）"""
+    __tablename__ = "system_structures"
+
+    id = Column(Integer, primary_key=True, index=True)
+    md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+
+    # 帧信息
+    frame_index = Column(Integer)  # 帧索引
+    total_frames = Column(Integer)  # 总帧数
+    atom_count = Column(Integer)  # 原子数
+
+    # 盒子信息
+    box = Column(JSONB)  # [lx, ly, lz]
+
+    # XYZ 内容
+    xyz_content = Column(String)  # XYZ 格式的系统结构（用于3D显示）
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    md_job = relationship("MDJob", back_populates="system_structure", uselist=False)
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_system_structure_md_job_id', 'md_job_id'),
+    )
+
+    def __repr__(self):
+        return f"<SystemStructure(id={self.id}, md_job_id={self.md_job_id}, atoms={self.atom_count})>"
+

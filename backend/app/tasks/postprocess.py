@@ -109,6 +109,16 @@ def postprocess_md_job_task(self, job_id: int) -> Dict[str, Any]:
             }
             logger.info(f"[Task {self.request.id}] Using composition from system: {composition}")
 
+        # 5.5 生成系统结构 XYZ 文件（用于前端显示）
+        try:
+            generate_system_structure_xyz(db, job_id, work_dir)
+            logger.info(f"[Task {self.request.id}] Generated system structure XYZ file")
+        except Exception as e:
+            logger.error(f"[Task {self.request.id}] Failed to generate system structure XYZ: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # 不影响整体流程，继续执行
+
         # 6. 执行 RDF 计算
         rdf_results = []
         try:
@@ -134,7 +144,7 @@ def postprocess_md_job_task(self, job_id: int) -> Dict[str, Any]:
             logger.error(traceback.format_exc())
             # RDF 失败不影响整体流程，继续执行
 
-        # 6. 执行 MSD 计算
+        # 8. 执行 MSD 计算
         msd_results = []
         try:
             from app.tasks.msd_processor import process_msd_data
@@ -146,7 +156,7 @@ def postprocess_md_job_task(self, job_id: int) -> Dict[str, Any]:
             logger.error(traceback.format_exc())
             # MSD 失败不影响整体流程，继续执行
 
-        # 7. 更新任务配置，记录后处理结果
+        # 9. 更新任务配置，记录后处理结果
         if "postprocess" not in job.config:
             job.config["postprocess"] = {}
 
@@ -159,8 +169,8 @@ def postprocess_md_job_task(self, job_id: int) -> Dict[str, Any]:
         job.config["postprocess"]["msd_species"] = [
             r.species for r in msd_results
         ]
-        
-        # 8. 恢复状态为 COMPLETED
+
+        # 10. 恢复状态为 COMPLETED
         job.status = JobStatus.COMPLETED
         db.commit()
 
@@ -405,4 +415,58 @@ def save_rdf_results_to_db(db: Session, job_id: int, rdf_results: List[Dict[str,
 
     db.commit()
     logger.info(f"Saved {len(rdf_results)} RDF results to database for job {job_id}")
+
+
+def generate_system_structure_xyz(db: Session, job_id: int, work_dir: Path) -> None:
+    """
+    生成系统结构的 XYZ 文件（最后一帧）并保存到数据库
+
+    这个函数在后处理阶段调用，生成最后一帧的系统结构，
+    避免前端需要读取大的轨迹文件。
+
+    Args:
+        db: 数据库会话
+        job_id: MD 任务 ID
+        work_dir: 工作目录
+    """
+    from app.services.solvation import get_system_structure
+    from app.models.result import SystemStructure
+
+    try:
+        # 获取最后一帧的系统结构
+        structure_data = get_system_structure(str(work_dir), frame_idx=-1)
+
+        if 'error' in structure_data:
+            logger.warning(f"Failed to get system structure: {structure_data['error']}")
+            return
+
+        # 检查是否已存在记录，如果存在则删除
+        existing = db.query(SystemStructure).filter(
+            SystemStructure.md_job_id == job_id
+        ).first()
+
+        if existing:
+            db.delete(existing)
+            logger.info(f"Deleted existing system structure record for job {job_id}")
+
+        # 创建新的系统结构记录
+        system_structure = SystemStructure(
+            md_job_id=job_id,
+            frame_index=structure_data.get('frame_index', -1),
+            total_frames=structure_data.get('total_frames', 0),
+            atom_count=structure_data.get('atom_count', 0),
+            box=structure_data.get('box', [0, 0, 0]),
+            xyz_content=structure_data.get('xyz_content', ''),
+        )
+
+        db.add(system_structure)
+        db.commit()
+
+        logger.info(f"Saved system structure for job {job_id}: {structure_data.get('atom_count', 0)} atoms, frame {structure_data.get('frame_index', -1)}")
+
+    except Exception as e:
+        logger.error(f"Error generating system structure XYZ: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
 
