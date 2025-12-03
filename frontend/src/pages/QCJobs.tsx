@@ -34,6 +34,7 @@ import {
   Result,
   DatePicker,
   Statistic,
+  theme,
 } from 'antd';
 import {
   PlusOutlined,
@@ -80,6 +81,7 @@ import {
 import { getPartitions, getSlurmSuggestion, PartitionInfo } from '../api/slurm';
 import { downloadTemplate, batchImportUpload, BatchImportResult } from '../api/batchImport';
 import type { QCJob, QCJobCreate, SolventConfig } from '../types/qc';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -146,6 +148,9 @@ interface MoleculeCategory {
 
 export default function QCJobs() {
   const navigate = useNavigate();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [jobs, setJobs] = useState<QCJob[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -1161,7 +1166,7 @@ export default function QCJobs() {
   ];
 
   return (
-    <div style={{ padding: 24, position: 'relative', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: 24, position: 'relative', background: token.colorBgLayout, minHeight: 'calc(100vh - 64px)', transition: 'background 0.3s' }}>
       {/* 浮动批量操作栏 */}
       {selectedRowKeys.length > 0 && (
         <div style={{
@@ -1170,7 +1175,7 @@ export default function QCJobs() {
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 1000,
-          background: '#fff',
+          background: token.colorBgContainer,
           padding: '16px 24px',
           borderRadius: 16,
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08)',
@@ -1275,8 +1280,8 @@ export default function QCJobs() {
         <Card
           style={{
             marginBottom: 16,
-            background: '#fafafa',
-            border: '1px solid #f0f0f0',
+            background: token.colorBgContainer,
+            border: `1px solid ${token.colorBorder}`,
           }}
           size="small"
         >

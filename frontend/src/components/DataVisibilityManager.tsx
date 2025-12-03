@@ -21,6 +21,7 @@ import {
   Space,
   Alert,
   Progress,
+  theme,
 } from 'antd';
 import {
   EyeOutlined,
@@ -37,6 +38,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import * as visibilityApi from '../api/visibility';
 import { DataVisibility, JobVisibility, VisibilityStats, ExchangeRateInfo } from '../api/visibility';
+import { useThemeStore } from '../stores/themeStore';
 
 // 可见性标签配置
 const visibilityConfig = {
@@ -47,6 +49,8 @@ const visibilityConfig = {
 };
 
 export default function DataVisibilityManager() {
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<JobVisibility[]>([]);
   const [stats, setStats] = useState<VisibilityStats | null>(null);
@@ -233,7 +237,7 @@ export default function DataVisibilityManager() {
   ];
 
   return (
-    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: '24px', background: token.colorBgLayout, minHeight: 'calc(100vh - 64px)', transition: 'background 0.3s' }}>
       {/* 统计卡片 */}
       {stats && (
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>

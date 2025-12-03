@@ -21,6 +21,7 @@ import {
   Popconfirm,
   Timeline,
   Tabs,
+  theme,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -41,6 +42,7 @@ import {
 import { getQCJob, getQCJobStatus, submitQCJob, deleteQCJob, getQCResults } from '../api/qc';
 import type { QCJob, QCResult } from '../types/qc';
 import QCResultsPanel from '../components/QCResultsPanel';
+import { useThemeStore } from '../stores/themeStore';
 import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
 
@@ -104,6 +106,8 @@ export default function QCJobDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [job, setJob] = useState<QCJob | null>(null);
   const [results, setResults] = useState<QCResult[]>([]);
   const [loading, setLoading] = useState(true);
@@ -311,7 +315,7 @@ export default function QCJobDetail() {
   };
 
   return (
-    <div style={{ padding: '16px 24px', background: DASHBOARD_STYLES.pageBackground, minHeight: '100vh' }}>
+    <div style={{ padding: '16px 24px', background: token.colorBgLayout, minHeight: '100vh', transition: 'background 0.3s' }}>
       <style>{RESPONSIVE_STYLES}</style>
       {/* 顶部导航栏 */}
       <div style={{
@@ -319,10 +323,10 @@ export default function QCJobDetail() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        background: '#fff',
+        background: token.colorBgContainer,
         padding: '12px 20px',
         borderRadius: 8,
-        boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+        boxShadow: mode === 'dark' ? '0 1px 2px rgba(0,0,0,0.2)' : '0 1px 2px rgba(0,0,0,0.03)'
       }}>
         <Space size="middle">
           <Button icon={<ArrowLeftOutlined />} onClick={handleGoBack}>
@@ -601,7 +605,7 @@ export default function QCJobDetail() {
               <div style={{
                 textAlign: 'center',
                 padding: '80px 40px',
-                background: '#fafafa',
+                background: token.colorBgContainer,
                 borderRadius: 8
               }}>
                 {job.status === 'COMPLETED' ? (

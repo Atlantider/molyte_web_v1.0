@@ -3,11 +3,12 @@
  */
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Button, Input, Space, message, Modal, Form, Row, Col, Spin, Empty, Typography, Card } from 'antd';
+import { Button, Input, Space, message, Modal, Form, Row, Col, Spin, Empty, Typography, Card, theme } from 'antd';
 import { PlusOutlined, SearchOutlined, ProjectOutlined, FolderOpenOutlined, FolderAddOutlined } from '@ant-design/icons';
 import ProjectCard from '../components/ProjectCard';
 import { getProjects, createProject, updateProject, deleteProject } from '../api/projects';
 import type { Project, ProjectCreate } from '../types';
+import { useThemeStore } from '../stores/themeStore';
 
 const { TextArea } = Input;
 const { Title, Text } = Typography;
@@ -15,6 +16,9 @@ const { Title, Text } = Typography;
 export default function Projects() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [projects, setProjects] = useState<Project[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
@@ -133,15 +137,16 @@ export default function Projects() {
   return (
     <div style={{
       padding: '24px',
-      background: '#f5f7fb',
-      minHeight: 'calc(100vh - 64px)'
+      background: token.colorBgLayout,
+      minHeight: 'calc(100vh - 64px)',
+      transition: 'background 0.3s',
     }}>
       {/* 页面标题区域 */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
-              <ProjectOutlined style={{ marginRight: 12, color: '#1677ff' }} />
+              <ProjectOutlined style={{ marginRight: 12, color: token.colorPrimary }} />
               项目管理
             </Title>
             <Text type="secondary">管理您的研究项目，组织电解质配方和计算任务</Text>
@@ -153,7 +158,7 @@ export default function Projects() {
             size="large"
             style={{
               borderRadius: 8,
-              boxShadow: '0 2px 8px rgba(22, 119, 255, 0.3)',
+              boxShadow: isDark ? '0 2px 8px rgba(107, 154, 255, 0.3)' : '0 2px 8px rgba(91, 141, 239, 0.3)',
             }}
           >
             创建新项目

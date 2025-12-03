@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card, Row, Col, Statistic, Button, InputNumber, Radio, Space, Table, Tag, Modal,
-  message, Spin, Alert, Divider, Typography, Progress, Tabs
+  message, Spin, Alert, Divider, Typography, Progress, Tabs, theme
 } from 'antd';
 import {
   WalletOutlined, ThunderboltOutlined, WarningOutlined, CheckCircleOutlined,
@@ -15,6 +15,7 @@ import {
   getBalance, createOrder, getOrders, getTransactions, simulatePayment,
   BalanceInfo, RechargeOrder, Transaction
 } from '../api/billing';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -24,6 +25,8 @@ const PRESET_AMOUNTS = [10, 50, 100, 200, 500, 1000];
 
 const Recharge: React.FC = () => {
   const navigate = useNavigate();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [loading, setLoading] = useState(true);
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
   const [orders, setOrders] = useState<RechargeOrder[]>([]);
@@ -164,7 +167,7 @@ const Recharge: React.FC = () => {
         justifyContent: 'center',
         alignItems: 'center',
         height: 'calc(100vh - 64px)',
-        background: '#f5f7fb',
+        background: token.colorBgLayout,
       }}>
         <Spin size="large" />
       </div>
@@ -174,8 +177,9 @@ const Recharge: React.FC = () => {
   return (
     <div style={{
       padding: 24,
-      background: '#f5f7fb',
-      minHeight: 'calc(100vh - 64px)'
+      background: token.colorBgLayout,
+      minHeight: 'calc(100vh - 64px)',
+      transition: 'background 0.3s',
     }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 24 }}>

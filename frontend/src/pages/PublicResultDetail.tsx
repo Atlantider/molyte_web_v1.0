@@ -15,6 +15,7 @@ import {
   Col,
   Tag,
   Descriptions,
+  theme,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -32,6 +33,7 @@ import SolvationStructureNature from '../components/SolvationStructureNature';
 import { getMDJob } from '../api/jobs';
 import { getElectrolyte } from '../api/electrolytes';
 import { useAuthStore } from '../stores/authStore';
+import { useThemeStore } from '../stores/themeStore';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -41,7 +43,9 @@ export default function PublicResultDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated } = useAuthStore();
-  
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+
   const [loading, setLoading] = useState(true);
   const [job, setJob] = useState<MDJob | null>(null);
   const [electrolyte, setElectrolyte] = useState<ElectrolyteSystem | null>(null);
@@ -85,7 +89,7 @@ export default function PublicResultDetail() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f7fb' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}>
         <Spin size="large" />
       </div>
     );
@@ -93,7 +97,7 @@ export default function PublicResultDetail() {
 
   if (!job) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f7fb' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}>
         <Text>任务不存在</Text>
       </div>
     );
@@ -105,7 +109,7 @@ export default function PublicResultDetail() {
   const solvents = electrolyte?.solvents || [];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f7fb' }}>
+    <div style={{ minHeight: '100vh', background: token.colorBgLayout, transition: 'background 0.3s' }}>
       {/* 顶部导航 */}
       <div style={{
         background: 'linear-gradient(135deg, #1a1f36 0%, #0d1025 100%)',

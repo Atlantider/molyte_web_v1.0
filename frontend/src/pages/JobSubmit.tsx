@@ -21,6 +21,7 @@ import {
   Switch,
   Row,
   Col,
+  theme,
 } from 'antd';
 import { ArrowLeftOutlined, ThunderboltOutlined, EditOutlined, WalletOutlined, ExperimentOutlined, BulbOutlined, CheckCircleOutlined, SyncOutlined } from '@ant-design/icons';
 import type { ElectrolyteSystem, MDJob, MDJobCreate } from '../types';
@@ -28,12 +29,15 @@ import { getElectrolyte } from '../api/electrolytes';
 import { getMDJob, updateMDJobConfig, submitJobToCluster, createMDJob } from '../api/jobs';
 import { checkCanSubmit } from '../api/billing';
 import { checkDuplicateCalculations, MoleculeCheckResult, DuplicateCheckResponse } from '../api/qc';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Title, Text } = Typography;
 
 export default function JobSubmit() {
   const navigate = useNavigate();
   const { jobId } = useParams<{ jobId: string }>();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -368,7 +372,7 @@ export default function JobSubmit() {
         justifyContent: 'center',
         alignItems: 'center',
         height: 'calc(100vh - 64px)',
-        background: '#f5f7fb',
+        background: token.colorBgLayout,
       }}>
         加载中...
       </div>
@@ -376,7 +380,7 @@ export default function JobSubmit() {
   }
 
   return (
-    <div style={{ padding: 24, background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: 24, background: token.colorBgLayout, minHeight: 'calc(100vh - 64px)', transition: 'background 0.3s' }}>
       {/* 页面头部 */}
       <div style={{ marginBottom: 24 }}>
         <Space style={{ marginBottom: 16 }}>
@@ -982,9 +986,9 @@ export default function JobSubmit() {
                     <div key={mol.key} style={{
                       padding: '12px 16px',
                       marginBottom: 10,
-                      background: editingMolecule === mol.key ? '#f6f0ff' : '#fafafa',
+                      background: editingMolecule === mol.key ? (mode === 'dark' ? '#2a1f3d' : '#f6f0ff') : token.colorBgContainer,
                       borderRadius: 8,
-                      border: editingMolecule === mol.key ? '1px solid #722ed1' : '1px solid #f0f0f0',
+                      border: editingMolecule === mol.key ? '1px solid #722ed1' : `1px solid ${token.colorBorder}`,
                       transition: 'all 0.3s'
                     }}>
                       {/* 分子标题行 */}

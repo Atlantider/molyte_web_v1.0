@@ -782,7 +782,7 @@ export default function Jobs() {
           borderRadius: 12,
           boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
           border: `1px solid ${token.colorBorder}`,
-          background: isDark ? token.colorBgContainer : '#fafafa',
+          background: token.colorBgContainer,
         }}
       >
         <Row gutter={[16, 16]}>

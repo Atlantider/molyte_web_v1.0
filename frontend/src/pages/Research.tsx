@@ -18,6 +18,7 @@ import {
   Empty,
   Tabs,
   Statistic,
+  theme,
 } from 'antd';
 import {
   SearchOutlined,
@@ -33,12 +34,16 @@ import {
 import { searchMyElectrolytes, ElectrolyteSearchResult, getAvailableSearchOptions } from '../api/research';
 import { getQCJobs } from '../api/qc';
 import QCDataTab from '../components/QCDataTab';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Title, Text } = Typography;
 
 export default function Research() {
   const [form] = Form.useForm();
   const navigate = useNavigate();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<ElectrolyteSearchResult[]>([]);
   const [total, setTotal] = useState(0);
@@ -306,13 +311,14 @@ export default function Research() {
   return (
     <div style={{
       padding: '24px',
-      background: '#f5f7fb',
-      minHeight: 'calc(100vh - 64px)'
+      background: token.colorBgLayout,
+      minHeight: 'calc(100vh - 64px)',
+      transition: 'background 0.3s',
     }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 24 }}>
         <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
-          <DatabaseOutlined style={{ marginRight: 12, color: '#1677ff' }} />
+          <DatabaseOutlined style={{ marginRight: 12, color: token.colorPrimary }} />
           数据管理
         </Title>
         <Text type="secondary">
@@ -325,8 +331,8 @@ export default function Research() {
         style={{
           marginBottom: 24,
           borderRadius: 12,
-          border: 'none',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          border: `1px solid ${token.colorBorder}`,
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
         }}
         styles={{ body: { padding: '24px' } }}
       >

@@ -18,6 +18,7 @@ import {
   Empty,
   Tabs,
   Statistic,
+  theme,
 } from 'antd';
 import {
   SearchOutlined,
@@ -37,6 +38,7 @@ import { searchElectrolytes, ElectrolyteSearchResult } from '../api/research';
 import { getQCJobs } from '../api/qc';
 import { useAuthStore } from '../stores/authStore';
 import QCDataTab from '../components/QCDataTab';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Title, Text } = Typography;
 
@@ -45,6 +47,8 @@ export default function PublicResearch() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated } = useAuthStore();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<ElectrolyteSearchResult[]>([]);
   const [total, setTotal] = useState(0);
@@ -251,7 +255,7 @@ export default function PublicResearch() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f7fb' }}>
+    <div style={{ minHeight: '100vh', background: token.colorBgLayout, transition: 'background 0.3s' }}>
       {/* 顶部导航 */}
       <div style={{
         background: 'linear-gradient(135deg, #1a1f36 0%, #0d1025 100%)',

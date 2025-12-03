@@ -18,6 +18,7 @@ import {
   Modal,
   Form,
   Input,
+  theme,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -31,6 +32,7 @@ import { getMDJobs } from '../api/jobs';
 import type { Project, ElectrolyteSystem, MDJob } from '../types';
 import ElectrolyteCard from '../components/ElectrolyteCard';
 import JobCard from '../components/JobCard';
+import { useThemeStore } from '../stores/themeStore';
 import dayjs from 'dayjs';
 
 const { TextArea } = Input;
@@ -38,6 +40,8 @@ const { TextArea } = Input;
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<Project | null>(null);
   const [electrolytes, setElectrolytes] = useState<ElectrolyteSystem[]>([]);
@@ -127,7 +131,7 @@ export default function ProjectDetail() {
         justifyContent: 'center',
         alignItems: 'center',
         height: 'calc(100vh - 64px)',
-        background: '#f5f7fb',
+        background: token.colorBgLayout,
       }}>
         <Spin size="large" />
       </div>
@@ -138,7 +142,7 @@ export default function ProjectDetail() {
     return (
       <div style={{
         padding: 24,
-        background: '#f5f7fb',
+        background: token.colorBgLayout,
         minHeight: 'calc(100vh - 64px)'
       }}>
         <Empty description="项目不存在" />
@@ -147,7 +151,7 @@ export default function ProjectDetail() {
   }
 
   return (
-    <div style={{ padding: 24, background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: 24, background: token.colorBgLayout, minHeight: 'calc(100vh - 64px)', transition: 'background 0.3s' }}>
       {/* 返回按钮和操作栏 */}
       <div style={{ marginBottom: 24 }}>
         <Space style={{ width: '100%', justifyContent: 'space-between' }}>

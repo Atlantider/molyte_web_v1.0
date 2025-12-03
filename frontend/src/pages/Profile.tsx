@@ -19,6 +19,7 @@ import {
   Table,
   Tabs,
   Progress,
+  theme,
 } from 'antd';
 import {
   UserOutlined,
@@ -36,6 +37,7 @@ import {
 } from '@ant-design/icons';
 import { getUserProfile, type UserProfile } from '../api/auth';
 import { getTransactions, getOrders, type Transaction, type RechargeOrder } from '../api/billing';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Title, Text } = Typography;
 
@@ -53,6 +55,9 @@ const RoleTag = ({ role }: { role: string }) => {
 
 export default function Profile() {
   const navigate = useNavigate();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -106,11 +111,11 @@ export default function Profile() {
   };
 
   return (
-    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: '24px', background: token.colorBgLayout, minHeight: 'calc(100vh - 64px)', transition: 'background 0.3s' }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 24 }}>
         <Title level={2} style={{ margin: 0, marginBottom: 8 }}>
-          <UserOutlined style={{ marginRight: 12, color: '#1677ff' }} />
+          <UserOutlined style={{ marginRight: 12, color: token.colorPrimary }} />
           个人信息
         </Title>
         <Text type="secondary">查看您的账户信息和资源使用情况</Text>

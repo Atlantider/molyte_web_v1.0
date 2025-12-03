@@ -19,10 +19,12 @@ import {
   Spin,
   Alert,
   AutoComplete,
+  theme,
 } from 'antd';
 import { PlusOutlined, MinusCircleOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import type { IonInfo, Project } from '../types';
 import { getAvailableIons } from '../api/electrolytes';
+import { useThemeStore } from '../stores/themeStore';
 
 // 按分类的常用溶剂列表
 const SOLVENT_CATEGORIES = [
@@ -172,6 +174,8 @@ export default function ElectrolyteFormNew({
   initialCations = [],
   initialAnions = []
 }: ElectrolyteFormNewProps) {
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [availableCations, setAvailableCations] = useState<IonInfo[]>([]);
   const [availableAnions, setAvailableAnions] = useState<IonInfo[]>([]);
   const [selectedCations, setSelectedCations] = useState<SelectedIon[]>(initialCations);
@@ -567,7 +571,7 @@ export default function ElectrolyteFormNew({
           {(fields, { add, remove }) => (
             <>
               {/* 分类选择器 - 快速从常用溶剂中选择 */}
-              <Card size="small" style={{ marginBottom: 16, background: '#fafafa' }}>
+              <Card size="small" style={{ marginBottom: 16, background: token.colorBgContainer }}>
                 <div style={{ marginBottom: 12 }}>
                   <span style={{ fontWeight: 500, marginRight: 8 }}>从常用溶剂库选择:</span>
                   <span style={{ fontSize: 12, color: '#666' }}>点击溶剂名称即可添加</span>

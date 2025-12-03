@@ -18,6 +18,7 @@ import {
   Alert,
   Tooltip,
   Modal,
+  theme,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -43,6 +44,7 @@ import QCTasksPanel from '../components/QCTasksPanel';
 import { getMDJob, resubmitMDJob, getJobSlurmStatus, syncJobStatus, type SlurmJobStatus } from '../api/jobs';
 import { getElectrolyte } from '../api/electrolytes';
 import { translateError } from '../utils/errorTranslator';
+import { useThemeStore } from '../stores/themeStore';
 import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
 
@@ -53,6 +55,9 @@ const { Title, Text } = Typography;
 export default function JobDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [loading, setLoading] = useState(false);
   const [job, setJob] = useState<MDJob | null>(null);
   const [electrolyte, setElectrolyte] = useState<ElectrolyteSystem | null>(null);
@@ -232,7 +237,7 @@ export default function JobDetail() {
         justifyContent: 'center',
         alignItems: 'center',
         height: 'calc(100vh - 64px)',
-        background: '#f5f7fb',
+        background: token.colorBgLayout,
       }}>
         <Spin size="large" />
       </div>
@@ -243,7 +248,7 @@ export default function JobDetail() {
     return (
       <div style={{
         padding: '100px 24px',
-        background: '#f5f7fb',
+        background: token.colorBgLayout,
         minHeight: 'calc(100vh - 64px)',
       }}>
         <Alert message="任务不存在" type="error" style={{ borderRadius: 8 }} />
@@ -256,14 +261,14 @@ export default function JobDetail() {
   }
 
   return (
-    <div style={{ padding: '24px', background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: '24px', background: token.colorBgLayout, minHeight: 'calc(100vh - 64px)', transition: 'background 0.3s' }}>
       {/* 页面头部 - 优化布局 */}
       <Card
         style={{
           marginBottom: 16,
           borderRadius: 12,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-          border: 'none',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+          border: `1px solid ${token.colorBorder}`,
         }}
       >
         <Row justify="space-between" align="middle">
@@ -527,8 +532,8 @@ export default function JobDetail() {
           tabBarStyle={{
             margin: 0,
             padding: '0 24px',
-            background: '#fafafa',
-            borderBottom: '2px solid #f0f0f0'
+            background: token.colorBgContainer,
+            borderBottom: `2px solid ${token.colorBorder}`
           }}
           style={{ minHeight: '500px' }}
           items={[

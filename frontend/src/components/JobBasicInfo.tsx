@@ -1,7 +1,7 @@
 /**
  * 任务基本信息组件 - 统一设计风格
  */
-import { Card, Descriptions, Row, Col, Tag, Space, Typography, Spin, Alert } from 'antd';
+import { Card, Descriptions, Row, Col, Tag, Space, Typography, Spin, Alert, theme } from 'antd';
 import {
   ExperimentOutlined,
   DatabaseOutlined,
@@ -12,6 +12,7 @@ import {
 import type { MDJob, ElectrolyteSystem } from '../types';
 import { JobStatus } from '../types';
 import { getStructureInfo, type StructureInfo } from '../api/jobs';
+import { useThemeStore } from '../stores/themeStore';
 import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
 import { useEffect, useState } from 'react';
@@ -41,6 +42,8 @@ interface JobBasicInfoProps {
 }
 
 export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasicInfoProps) {
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [structureInfo, setStructureInfo] = useState<StructureInfo | null>(null);
   const [loadingStructure, setLoadingStructure] = useState(false);
 
@@ -250,9 +253,9 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
               <Col xs={24} style={{ marginTop: 16 }}>
                 <div style={{
                   padding: '12px 16px',
-                  background: '#fafafa',
+                  background: token.colorBgContainer,
                   borderRadius: 8,
-                  border: '1px solid #e8e8e8'
+                  border: `1px solid ${token.colorBorder}`
                 }}>
                   <Space direction="vertical" size={4} style={{ width: '100%' }}>
                     <Text type="secondary" style={{ fontSize: 12 }}>工作目录</Text>

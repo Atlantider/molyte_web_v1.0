@@ -24,6 +24,7 @@ import {
   Modal,
   Divider,
   Popconfirm,
+  theme,
 } from 'antd';
 import {
   PlusOutlined,
@@ -38,6 +39,7 @@ import {
   FolderAddOutlined,
 } from '@ant-design/icons';
 import type { IonInfo, Project } from '../types';
+import { useThemeStore } from '../stores/themeStore';
 import { getAvailableIons } from '../api/electrolytes';
 import {
   getUserSolventCombinations,
@@ -152,6 +154,8 @@ export default function ElectrolyteFormOptimized({
   onCreateProject
 }: ElectrolyteFormOptimizedProps) {
   const navigate = useNavigate();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [availableCations, setAvailableCations] = useState<IonInfo[]>([]);
   const [availableAnions, setAvailableAnions] = useState<IonInfo[]>([]);
   const [selectedCations, setSelectedCations] = useState<SelectedIon[]>(initialCations);
@@ -934,7 +938,7 @@ export default function ElectrolyteFormOptimized({
           style={{
             position: 'sticky',
             top: 24,
-            background: '#fafafa',
+            background: token.colorBgContainer,
           }}
         >
           <Space direction="vertical" style={{ width: '100%' }} size="middle">

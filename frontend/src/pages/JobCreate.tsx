@@ -19,6 +19,7 @@ import {
   Col,
   Select,
   Checkbox,
+  theme,
 } from 'antd';
 import { ArrowLeftOutlined, ThunderboltOutlined, SaveOutlined, WarningOutlined, ExperimentOutlined } from '@ant-design/icons';
 import type { ElectrolyteSystem, MDJobCreate } from '../types';
@@ -26,6 +27,7 @@ import { getElectrolyte } from '../api/electrolytes';
 import { createMDJob, checkJobQuota } from '../api/jobs';
 import { getPartitions, type PartitionInfo } from '../api/slurm';
 import AccuracyLevelSelector from '../components/AccuracyLevelSelector';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Title, Text } = Typography;
 
@@ -33,6 +35,9 @@ export default function JobCreate() {
   const navigate = useNavigate();
   const location = useLocation();
   const { systemId } = useParams<{ systemId: string }>();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [electrolyte, setElectrolyte] = useState<ElectrolyteSystem | null>(null);
@@ -296,7 +301,7 @@ export default function JobCreate() {
         justifyContent: 'center',
         alignItems: 'center',
         height: 'calc(100vh - 64px)',
-        background: '#f5f7fb',
+        background: token.colorBgLayout,
       }}>
         加载中...
       </div>
@@ -304,7 +309,7 @@ export default function JobCreate() {
   }
 
   return (
-    <div style={{ padding: 24, background: '#f5f7fb', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: 24, background: token.colorBgLayout, minHeight: 'calc(100vh - 64px)', transition: 'background 0.3s' }}>
       {/* 页面头部 */}
       <div style={{ marginBottom: 24 }}>
         <Space style={{ marginBottom: 16 }}>

@@ -2,7 +2,7 @@
  * 修改密码页面
  */
 import { useState, useMemo } from 'react';
-import { Form, Input, Button, Card, message, Typography, Progress, Alert } from 'antd';
+import { Form, Input, Button, Card, message, Typography, Progress, Alert, theme } from 'antd';
 import {
   LockOutlined,
   SafetyCertificateOutlined,
@@ -14,6 +14,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import * as authApi from '../api/auth';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Title, Text } = Typography;
 
@@ -64,6 +65,8 @@ export default function ChangePassword() {
   const [newPassword, setNewPassword] = useState('');
   const [form] = Form.useForm();
   const navigate = useNavigate();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
 
   // 密码强度
   const passwordStrength = useMemo(() => checkPasswordStrength(newPassword), [newPassword]);
@@ -90,8 +93,9 @@ export default function ChangePassword() {
   return (
     <div style={{
       padding: '24px',
-      background: '#f5f7fb',
-      minHeight: 'calc(100vh - 64px)'
+      background: token.colorBgLayout,
+      minHeight: 'calc(100vh - 64px)',
+      transition: 'background 0.3s',
     }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 24 }}>

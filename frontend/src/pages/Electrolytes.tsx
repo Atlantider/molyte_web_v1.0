@@ -31,6 +31,7 @@ import {
   DatePicker,
   Statistic,
   Switch,
+  theme,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import {
@@ -69,6 +70,7 @@ import { getProjects, createProject } from '../api/projects';
 import { downloadTemplate, batchImportUpload, BatchImportResult } from '../api/batchImport';
 import type { ElectrolyteSystem, Project, MDJob, ProjectCreate } from '../types';
 import { JobStatus } from '../types';
+import { useThemeStore } from '../stores/themeStore';
 import dayjs, { Dayjs } from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -78,6 +80,9 @@ const { RangePicker } = DatePicker;
 export default function Electrolytes() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [electrolytes, setElectrolytes] = useState<ElectrolyteSystem[]>([]);
   const [filteredElectrolytes, setFilteredElectrolytes] = useState<ElectrolyteSystem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -715,9 +720,10 @@ export default function Electrolytes() {
   return (
     <div style={{
       padding: '24px',
-      background: '#f5f7fb',
+      background: token.colorBgLayout,
       minHeight: 'calc(100vh - 64px)',
-      position: 'relative'
+      position: 'relative',
+      transition: 'background 0.3s',
     }}>
       {/* 浮动批量操作栏 */}
       {selectMode && selectedIds.length > 0 && (
@@ -727,11 +733,11 @@ export default function Electrolytes() {
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 1000,
-          background: '#fff',
+          background: token.colorBgContainer,
           padding: '16px 24px',
           borderRadius: 16,
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08)',
-          border: '1px solid #e8e8e8',
+          boxShadow: isDark ? '0 8px 32px rgba(0, 0, 0, 0.4)' : '0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08)',
+          border: `1px solid ${token.colorBorder}`,
           display: 'flex',
           alignItems: 'center',
           gap: 16,
@@ -960,9 +966,9 @@ export default function Electrolytes() {
         style={{
           marginBottom: 24,
           borderRadius: 12,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-          border: 'none',
-          background: '#fafafa',
+          boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+          border: `1px solid ${token.colorBorder}`,
+          background: token.colorBgContainer,
         }}
       >
         <Row gutter={[16, 16]}>
