@@ -428,9 +428,13 @@ export default function ElectrolyteFormNew({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: selected ? '8px 12px' : '4px 0',
-                    background: selected ? (isFirstCation ? '#e6f7ff' : '#f6ffed') : 'transparent',
+                    background: selected
+                      ? (isFirstCation
+                          ? (mode === 'dark' ? 'rgba(24, 144, 255, 0.15)' : '#e6f7ff')
+                          : (mode === 'dark' ? 'rgba(82, 196, 26, 0.15)' : '#f6ffed'))
+                      : 'transparent',
                     borderRadius: 6,
-                    border: selected ? (isFirstCation ? '2px solid #1890ff' : '1px solid #b7eb8f') : 'none',
+                    border: selected ? (isFirstCation ? `2px solid ${token.colorPrimary}` : `1px solid ${token.colorSuccess}`) : 'none',
                   }}>
                     <Checkbox
                       checked={!!selected}
@@ -483,16 +487,16 @@ export default function ElectrolyteFormNew({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: selected ? '8px 12px' : '4px 0',
-                    background: selected ? '#fff7e6' : 'transparent',
+                    background: selected ? (mode === 'dark' ? 'rgba(250, 140, 22, 0.15)' : '#fff7e6') : 'transparent',
                     borderRadius: 6,
-                    border: selected ? '1px solid #ffd591' : 'none',
+                    border: selected ? `1px solid ${token.colorWarning}` : 'none',
                   }}>
                     <Checkbox
                       checked={!!selected}
                       onChange={(e) => handleAnionCheck(e.target.checked, ion)}
                     >
                       <strong style={{ fontSize: 14 }}>{ion.name}</strong>
-                      <span style={{ marginLeft: 8, color: '#999' }}>
+                      <span style={{ marginLeft: 8, color: token.colorTextSecondary }}>
                         (电荷: {ion.charge})
                       </span>
                     </Checkbox>

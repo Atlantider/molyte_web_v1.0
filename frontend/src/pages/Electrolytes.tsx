@@ -1140,8 +1140,8 @@ export default function Electrolytes() {
                       width: 24,
                       height: 24,
                       borderRadius: 4,
-                      backgroundColor: selectedIds.includes(electrolyte.id) ? '#1677ff' : '#fff',
-                      border: selectedIds.includes(electrolyte.id) ? '2px solid #1677ff' : '2px solid #d9d9d9',
+                      backgroundColor: selectedIds.includes(electrolyte.id) ? token.colorPrimary : token.colorBgContainer,
+                      border: selectedIds.includes(electrolyte.id) ? `2px solid ${token.colorPrimary}` : `2px solid ${token.colorBorder}`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -1153,7 +1153,7 @@ export default function Electrolytes() {
                   )}
                   <div style={{
                     opacity: selectMode && !selectedIds.includes(electrolyte.id) ? 0.7 : 1,
-                    border: selectedIds.includes(electrolyte.id) ? '2px solid #1677ff' : '2px solid transparent',
+                    border: selectedIds.includes(electrolyte.id) ? `2px solid ${token.colorPrimary}` : '2px solid transparent',
                     borderRadius: 14,
                     transition: 'all 0.2s',
                   }}>

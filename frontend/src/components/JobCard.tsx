@@ -373,7 +373,9 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
           <div style={{
             marginTop: 12,
             padding: 12,
-            background: translatedError.severity === 'error' ? '#fff2f0' : '#fffbe6',
+            background: translatedError.severity === 'error'
+              ? (isDark ? 'rgba(255, 77, 79, 0.15)' : '#fff2f0')
+              : (isDark ? 'rgba(250, 173, 20, 0.15)' : '#fffbe6'),
             borderRadius: 8,
             border: `1px solid ${translatedError.severity === 'error' ? '#ffccc7' : '#ffe58f'}`
           }}>
@@ -385,13 +387,13 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
               }} />
               <div style={{ flex: 1 }}>
                 <Text strong style={{
-                  color: translatedError.severity === 'error' ? '#cf1322' : '#d48806',
+                  color: translatedError.severity === 'error' ? '#ff4d4f' : '#faad14',
                   fontSize: 13
                 }}>
                   {translatedError.title}
                 </Text>
                 <div style={{ marginTop: 4 }}>
-                  <Text style={{ fontSize: 12, color: '#666' }}>
+                  <Text style={{ fontSize: 12, color: token.colorTextSecondary }}>
                     {translatedError.description}
                   </Text>
                 </div>

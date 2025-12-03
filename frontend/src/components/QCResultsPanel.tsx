@@ -507,7 +507,7 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
         textAlign: 'center',
         marginTop: 12,
         padding: '8px 16px',
-        background: '#f5f5f5',
+        background: mode === 'dark' ? 'rgba(255,255,255,0.04)' : '#f5f5f5',
         borderRadius: 4
       }}>
         <Space split={<Divider type="vertical" />}>
@@ -524,23 +524,23 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
       </div>
       <Row gutter={16} style={{ marginTop: 16 }}>
         <Col span={12}>
-          <Card size="small" style={{ background: '#e6f7ff', border: '1px solid #91d5ff' }}>
+          <Card size="small" style={{ background: mode === 'dark' ? 'rgba(24, 144, 255, 0.15)' : '#e6f7ff', border: `1px solid ${token.colorPrimary}` }}>
             <Statistic
               title="ESP 最小值"
               value={result.esp_min_kcal?.toFixed(2) || '-'}
               suffix="kcal/mol"
-              valueStyle={{ color: '#1890ff' }}
+              valueStyle={{ color: token.colorPrimary }}
               prefix={<FireOutlined />}
             />
           </Card>
         </Col>
         <Col span={12}>
-          <Card size="small" style={{ background: '#fff1f0', border: '1px solid #ffa39e' }}>
+          <Card size="small" style={{ background: mode === 'dark' ? 'rgba(255, 77, 79, 0.15)' : '#fff1f0', border: `1px solid ${token.colorError}` }}>
             <Statistic
               title="ESP 最大值"
               value={result.esp_max_kcal?.toFixed(2) || '-'}
               suffix="kcal/mol"
-              valueStyle={{ color: '#ff4d4f' }}
+              valueStyle={{ color: token.colorError }}
               prefix={<FireOutlined />}
             />
           </Card>

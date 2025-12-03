@@ -826,7 +826,7 @@ export default function JobSubmit() {
                 </Row>
                 {/* 自定义溶剂参数 */}
                 {globalQCParams.solvent_model === 'custom' && (
-                  <div style={{ marginTop: 12, padding: 12, background: '#fffbe6', borderRadius: 6, border: '1px solid #ffe58f' }}>
+                  <div style={{ marginTop: 12, padding: 12, background: mode === 'dark' ? 'rgba(250, 173, 20, 0.15)' : '#fffbe6', borderRadius: 6, border: `1px solid ${token.colorWarning}` }}>
                     <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 500, color: '#d48806' }}>
                       🔧 自定义溶剂参数（SMD模型）
                     </div>

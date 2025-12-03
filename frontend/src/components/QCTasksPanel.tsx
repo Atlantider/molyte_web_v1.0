@@ -460,7 +460,7 @@ export default function QCTasksPanel({ mdJobId, refreshInterval = 10000 }: QCTas
 
                   {/* 错误信息 */}
                   {job.error_message && (
-                    <div style={{ marginTop: 6, padding: '4px 8px', background: '#fff2f0', borderRadius: 4, border: '1px solid #ffccc7' }}>
+                    <div style={{ marginTop: 6, padding: '4px 8px', background: mode === 'dark' ? 'rgba(255, 77, 79, 0.15)' : '#fff2f0', borderRadius: 4, border: `1px solid ${token.colorError}` }}>
                       <Text type="danger" style={{ fontSize: 11 }}>
                         ⚠️ {job.error_message}
                       </Text>

@@ -325,7 +325,7 @@ export default function QCRecalculateModal({
 
             {/* 自定义溶剂参数 */}
             {selectedSolventModel === 'custom' && (
-              <Card size="small" style={{ marginBottom: 16, background: '#fffbe6', borderColor: '#ffe58f' }}>
+              <Card size="small" style={{ marginBottom: 16, background: mode === 'dark' ? 'rgba(250, 173, 20, 0.15)' : '#fffbe6', borderColor: token.colorWarning }}>
                 <div style={{ marginBottom: 8, fontWeight: 500 }}>🔧 自定义溶剂参数（SMD模型）</div>
                 <Row gutter={[8, 8]}>
                   <Col span={8}>

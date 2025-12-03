@@ -1477,8 +1477,10 @@ export default function QCJobs() {
             size="small"
             style={{
               marginBottom: 16,
-              borderColor: '#d3adf7',
-              background: 'linear-gradient(135deg, #f9f0ff 0%, #fff 100%)'
+              borderColor: isDark ? 'rgba(114, 46, 209, 0.5)' : '#d3adf7',
+              background: isDark
+                ? 'linear-gradient(135deg, rgba(114, 46, 209, 0.15) 0%, rgba(114, 46, 209, 0.05) 100%)'
+                : 'linear-gradient(135deg, #f9f0ff 0%, #fff 100%)'
             }}
           >
             <Collapse
@@ -1611,9 +1613,11 @@ export default function QCJobs() {
             size="small"
             style={{
               marginBottom: 16,
-              borderColor: '#ffd591',
-              background: 'linear-gradient(135deg, #fff7e6 0%, #fff 100%)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+              borderColor: isDark ? 'rgba(250, 173, 20, 0.5)' : '#ffd591',
+              background: isDark
+                ? 'linear-gradient(135deg, rgba(250, 173, 20, 0.15) 0%, rgba(250, 173, 20, 0.05) 100%)'
+                : 'linear-gradient(135deg, #fff7e6 0%, #fff 100%)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.08)'
             }}
           >
             <Form.Item label="精度等级" style={{ marginBottom: 16 }}>
@@ -1637,7 +1641,7 @@ export default function QCJobs() {
 
             {/* 精度等级信息卡片 */}
             {selectedAccuracy !== 'custom' && (
-              <div style={{ padding: '12px', background: '#fff', borderRadius: 6, border: '1px solid #ffe7ba', marginBottom: 12 }}>
+              <div style={{ padding: '12px', background: token.colorBgContainer, borderRadius: 6, border: `1px solid ${token.colorWarning}`, marginBottom: 12 }}>
                 <Row gutter={16}>
                   <Col span={8}>
                     <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>预计耗时</div>
@@ -1663,8 +1667,8 @@ export default function QCJobs() {
 
             {/* 自定义精度等级 */}
             {selectedAccuracy === 'custom' && (
-              <div style={{ padding: '12px', background: '#fff', borderRadius: 6, border: '1px solid #ffe7ba' }}>
-                <div style={{ fontSize: 12, color: '#666', marginBottom: 12, fontWeight: 500 }}>自定义计算参数</div>
+              <div style={{ padding: '12px', background: token.colorBgContainer, borderRadius: 6, border: `1px solid ${token.colorWarning}` }}>
+                <div style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 12, fontWeight: 500 }}>自定义计算参数</div>
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item name="functional" label="泛函" rules={[{ required: true, message: '请选择泛函' }]} style={{ marginBottom: 0 }}>
@@ -1704,9 +1708,11 @@ export default function QCJobs() {
             size="small"
             style={{
               marginBottom: 16,
-              borderColor: '#87e8de',
-              background: 'linear-gradient(135deg, #e6fffb 0%, #fff 100%)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+              borderColor: isDark ? 'rgba(19, 194, 194, 0.5)' : '#87e8de',
+              background: isDark
+                ? 'linear-gradient(135deg, rgba(19, 194, 194, 0.15) 0%, rgba(19, 194, 194, 0.05) 100%)'
+                : 'linear-gradient(135deg, #e6fffb 0%, #fff 100%)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.08)'
             }}
           >
             <Form.Item
@@ -1798,7 +1804,7 @@ export default function QCJobs() {
               >
                 {({ getFieldValue }) =>
                   getFieldValue('solvent_name') === 'custom' ? (
-                    <Card size="small" style={{ background: '#fff', marginBottom: 0 }}>
+                    <Card size="small" style={{ background: token.colorBgContainer, marginBottom: 0 }}>
                       <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
                         自定义溶剂参数
                       </Text>
@@ -1842,7 +1848,7 @@ export default function QCJobs() {
             )}
 
             {selectedSolventModel === 'custom' && (
-              <Card size="small" style={{ background: '#fff' }}>
+              <Card size="small" style={{ background: token.colorBgContainer }}>
                 <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
                   自定义溶剂参数
                 </Text>
@@ -1892,9 +1898,11 @@ export default function QCJobs() {
             size="small"
             style={{
               marginBottom: 16,
-              borderColor: '#b7eb8f',
-              background: 'linear-gradient(135deg, #f6ffed 0%, #fff 100%)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+              borderColor: isDark ? 'rgba(82, 196, 26, 0.5)' : '#b7eb8f',
+              background: isDark
+                ? 'linear-gradient(135deg, rgba(82, 196, 26, 0.15) 0%, rgba(82, 196, 26, 0.05) 100%)'
+                : 'linear-gradient(135deg, #f6ffed 0%, #fff 100%)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.08)'
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -1992,16 +2000,16 @@ export default function QCJobs() {
                 return (
                   <div>
                     {/* 分子类型和状态 */}
-                    <div style={{ marginBottom: 16, padding: '12px', background: '#fff', borderRadius: 6, border: '1px solid #e8f5e9' }}>
+                    <div style={{ marginBottom: 16, padding: '12px', background: token.colorBgContainer, borderRadius: 6, border: `1px solid ${token.colorSuccess}` }}>
                       <Row gutter={16}>
                         <Col span={12}>
-                          <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>分子类型</div>
+                          <div style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 4 }}>分子类型</div>
                           <Tag color={moleculeTypeColor} style={{ fontSize: 12, padding: '4px 12px' }}>
                             {moleculeTypeLabel}
                           </Tag>
                         </Col>
                         <Col span={12}>
-                          <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>推荐状态</div>
+                          <div style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 4 }}>推荐状态</div>
                           {useRecommendedParams ? (
                             <Tag color={hasChanges ? 'green' : 'default'} icon={<BulbOutlined />} style={{ fontSize: 12, padding: '4px 12px' }}>
                               {hasChanges ? '已优化' : '无需调整'}
@@ -2085,9 +2093,11 @@ export default function QCJobs() {
             size="small"
             style={{
               marginBottom: 16,
-              borderColor: '#ffadd2',
-              background: 'linear-gradient(135deg, #fff0f6 0%, #fff 100%)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+              borderColor: isDark ? 'rgba(235, 47, 150, 0.5)' : '#ffadd2',
+              background: isDark
+                ? 'linear-gradient(135deg, rgba(235, 47, 150, 0.15) 0%, rgba(235, 47, 150, 0.05) 100%)'
+                : 'linear-gradient(135deg, #fff0f6 0%, #fff 100%)',
+              boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.08)'
             }}
           >
             <Row gutter={16}>
@@ -2147,8 +2157,10 @@ export default function QCJobs() {
             size="small"
             style={{
               marginBottom: 16,
-              borderColor: '#91caff',
-              background: 'linear-gradient(135deg, #e6f4ff 0%, #fff 100%)'
+              borderColor: isDark ? 'rgba(24, 144, 255, 0.5)' : '#91caff',
+              background: isDark
+                ? 'linear-gradient(135deg, rgba(24, 144, 255, 0.15) 0%, rgba(24, 144, 255, 0.05) 100%)'
+                : 'linear-gradient(135deg, #e6f4ff 0%, #fff 100%)'
             }}
           >
             <Row gutter={16}>
