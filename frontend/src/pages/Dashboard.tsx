@@ -451,7 +451,7 @@ export default function Dashboard() {
                   key={job.id}
                   style={{
                     padding: 16,
-                    background: isDark ? '#2a2a2a' : '#fafafa',
+                    background: token.colorBgContainer,
                     borderRadius: 8,
                     border: `1px solid ${token.colorBorder}`,
                     cursor: 'pointer',

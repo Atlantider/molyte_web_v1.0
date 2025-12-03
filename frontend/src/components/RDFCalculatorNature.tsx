@@ -16,10 +16,12 @@ import {
   Col,
   Statistic,
   Slider,
+  theme,
 } from 'antd';
 import { ReloadOutlined, DownloadOutlined, BarChartOutlined, PieChartOutlined, SettingOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import type { EChartsOption } from 'echarts';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Text } = Typography;
 
@@ -55,14 +57,9 @@ const NATURE_COLORS = [
 
 // Dashboard 样式常量（与 Solvation 和 MSD 保持一致）
 const DASHBOARD_STYLES = {
-  pageBackground: '#F5F7FB',
-  cardBackground: '#FFFFFF',
   cardBorderRadius: 12,
-  cardShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
-  cardShadowHover: '0 8px 24px rgba(15, 23, 42, 0.12)',
   cardPadding: 24,
   gutter: 24,
-  titleColor: '#111827',
   titleFontSize: 16,
   titleFontWeight: 600,
   chartHeight: 420,
@@ -133,6 +130,9 @@ const RESPONSIVE_STYLES = `
 `;
 
 export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [savedResults, setSavedResults] = useState<SavedRDFResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRdfIds, setSelectedRdfIds] = useState<number[]>([]);
@@ -327,17 +327,17 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
 
   // 卡片样式
   const dashboardCardStyle: React.CSSProperties = {
-    background: DASHBOARD_STYLES.cardBackground,
+    background: token.colorBgContainer,
     borderRadius: DASHBOARD_STYLES.cardBorderRadius,
-    boxShadow: DASHBOARD_STYLES.cardShadow,
-    border: 'none',
+    boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(15, 23, 42, 0.08)',
+    border: `1px solid ${token.colorBorder}`,
     transition: 'all 0.3s ease',
   };
 
   if (loading) {
     return (
       <div style={{
-        background: DASHBOARD_STYLES.pageBackground,
+        background: token.colorBgLayout,
         padding: DASHBOARD_STYLES.gutter,
         minHeight: '100%',
         borderRadius: 8,
@@ -354,7 +354,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
   if (savedResults.length === 0) {
     return (
       <div style={{
-        background: DASHBOARD_STYLES.pageBackground,
+        background: token.colorBgLayout,
         padding: DASHBOARD_STYLES.gutter,
         minHeight: '100%',
         borderRadius: 8,
@@ -861,7 +861,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
 
   return (
     <div style={{
-      background: DASHBOARD_STYLES.pageBackground,
+      background: token.colorBgLayout,
       padding: DASHBOARD_STYLES.gutter,
       minHeight: '100%',
       borderRadius: 8,
@@ -882,11 +882,11 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
                 <BarChartOutlined style={{ fontSize: 24, color: '#fff' }} />
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>RDF 对数量</div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: '#1890ff' }}>
+                <div style={{ fontSize: 12, color: token.colorTextSecondary }}>RDF 对数量</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: token.colorPrimary }}>
                   {savedResults.length}
                 </div>
-                <div style={{ fontSize: 11, color: '#94a3b8' }}>已选中 {selectedRdfIds.length} 个</div>
+                <div style={{ fontSize: 11, color: token.colorTextSecondary }}>已选中 {selectedRdfIds.length} 个</div>
               </div>
             </div>
           </div>
@@ -985,8 +985,8 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
         style={{ ...dashboardCardStyle, marginBottom: DASHBOARD_STYLES.gutter }}
         title={
           <Space size={8}>
-            <BarChartOutlined style={{ color: DASHBOARD_STYLES.titleColor }} />
-            <span style={{ fontSize: 14, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+            <BarChartOutlined style={{ color: token.colorText }} />
+            <span style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
               选择要显示的 RDF 曲线 (Select RDF Pairs)
             </span>
           </Space>
@@ -1070,7 +1070,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
               title={
                 <Space size={8}>
                   <BarChartOutlined style={{ color: '#1f77b4', fontSize: 16 }} />
-                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: token.colorText }}>
                     径向分布函数 g(r)
                   </span>
                 </Space>
@@ -1092,6 +1092,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
                   style={{ height: `${DASHBOARD_STYLES.chartHeight}px`, width: '100%' }}
                   notMerge={true}
                   lazyUpdate={true}
+                  theme={isDark ? 'dark' : undefined}
                   onEvents={{
                     mouseover: (params: any) => {
                       if (params.componentType === 'series') {
@@ -1114,7 +1115,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
               title={
                 <Space size={8}>
                   <BarChartOutlined style={{ color: '#52c41a', fontSize: 16 }} />
-                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: token.colorText }}>
                     配位数 N(r)
                   </span>
                 </Space>
@@ -1136,6 +1137,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
                   style={{ height: `${DASHBOARD_STYLES.chartHeight}px`, width: '100%' }}
                   notMerge={true}
                   lazyUpdate={true}
+                  theme={isDark ? 'dark' : undefined}
                   onEvents={{
                     mouseover: (params: any) => {
                       if (params.componentType === 'series') {
@@ -1161,7 +1163,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
               title={
                 <Space size={8}>
                   <PieChartOutlined style={{ color: '#722ed1', fontSize: 16 }} />
-                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: token.colorText }}>
                     配位数分布 @ {cnCutoff.toFixed(1)} Å (CN Distribution)
                   </span>
                 </Space>
@@ -1183,6 +1185,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
                   style={{ height: '320px', width: '100%' }}
                   notMerge={true}
                   lazyUpdate={true}
+                  theme={isDark ? 'dark' : undefined}
                 />
               </div>
             </Card>
@@ -1194,7 +1197,7 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
               title={
                 <Space size={8}>
                   <BarChartOutlined style={{ color: '#fa8c16', fontSize: 16 }} />
-                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+                  <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: token.colorText }}>
                     详细数据 (Detailed Statistics)
                   </span>
                 </Space>

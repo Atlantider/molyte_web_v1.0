@@ -3,11 +3,12 @@
  * 使用 ECharts 实现专业的科学论文级别图表
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, Spin, Alert, Button, Space, message, Row, Col, Empty, Typography } from 'antd';
+import { Card, Spin, Alert, Button, Space, message, Row, Col, Empty, Typography, theme } from 'antd';
 import { ReloadOutlined, DownloadOutlined, CalculatorOutlined, LineChartOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import type { EChartsOption } from 'echarts';
 import axios from 'axios';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Text } = Typography;
 
@@ -52,14 +53,9 @@ const NATURE_COLORS = [
 
 // Dashboard 样式常量（与 Solvation 保持一致）
 const DASHBOARD_STYLES = {
-  pageBackground: '#F5F7FB',
-  cardBackground: '#FFFFFF',
   cardBorderRadius: 12,
-  cardShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
-  cardShadowHover: '0 8px 24px rgba(15, 23, 42, 0.12)',
   cardPadding: 24,
   gutter: 24,
-  titleColor: '#111827',
   titleFontSize: 16,
   titleFontWeight: 600,
   chartHeight: 360,
@@ -143,6 +139,9 @@ const RESPONSIVE_STYLES = `
 `;
 
 const MSDCalculatorNature: React.FC<MSDCalculatorNatureProps> = ({ jobId }) => {
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [msdData, setMsdData] = useState<MSDData[]>([]);
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
@@ -534,10 +533,10 @@ const MSDCalculatorNature: React.FC<MSDCalculatorNatureProps> = ({ jobId }) => {
 
   // 卡片样式（与 Solvation 保持一致）
   const dashboardCardStyle: React.CSSProperties = {
-    background: DASHBOARD_STYLES.cardBackground,
+    background: token.colorBgContainer,
     borderRadius: DASHBOARD_STYLES.cardBorderRadius,
-    boxShadow: DASHBOARD_STYLES.cardShadow,
-    border: 'none',
+    boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(15, 23, 42, 0.08)',
+    border: `1px solid ${token.colorBorder}`,
     transition: 'all 0.3s ease',
   };
 
@@ -558,7 +557,7 @@ const MSDCalculatorNature: React.FC<MSDCalculatorNatureProps> = ({ jobId }) => {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 8, height: 24, backgroundColor: color, borderRadius: 4 }} />
-            <Text strong style={{ fontSize: DASHBOARD_STYLES.titleFontSize, color: DASHBOARD_STYLES.titleColor, fontWeight: DASHBOARD_STYLES.titleFontWeight }}>
+            <Text strong style={{ fontSize: DASHBOARD_STYLES.titleFontSize, color: token.colorText, fontWeight: DASHBOARD_STYLES.titleFontWeight }}>
               {data.species}
             </Text>
           </div>
@@ -566,7 +565,7 @@ const MSDCalculatorNature: React.FC<MSDCalculatorNatureProps> = ({ jobId }) => {
 
         {/* 扩散系数 */}
         <div style={{
-          backgroundColor: '#f8fafc',
+          backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#f8fafc',
           padding: 16,
           borderRadius: 8,
           border: '1px solid #e8e8e8',
@@ -727,15 +726,15 @@ const MSDCalculatorNature: React.FC<MSDCalculatorNatureProps> = ({ jobId }) => {
       >
         <Row>
           {/* 左侧：MSD 图表 */}
-          <Col xs={24} lg={16} style={{ borderRight: '1px solid #f0f0f0' }}>
+          <Col xs={24} lg={16} style={{ borderRight: `1px solid ${token.colorBorder}` }}>
             <div style={{ padding: DASHBOARD_STYLES.cardPadding }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <LineChartOutlined style={{ fontSize: 20, color: color }} />
-                  <Text strong style={{ fontSize: DASHBOARD_STYLES.titleFontSize, color: DASHBOARD_STYLES.titleColor, fontWeight: DASHBOARD_STYLES.titleFontWeight }}>
+                  <Text strong style={{ fontSize: DASHBOARD_STYLES.titleFontSize, color: token.colorText, fontWeight: DASHBOARD_STYLES.titleFontWeight }}>
                     {isCat ? '阳离子 (Cation)' : '阴离子 (Anion)'}: {data.species}
                   </Text>
-                  <Text style={{ fontSize: 12, color: '#64748b', marginLeft: 8 }}>
+                  <Text style={{ fontSize: 12, color: token.colorTextSecondary, marginLeft: 8 }}>
                     Mean Square Displacement
                   </Text>
                 </div>
@@ -750,8 +749,8 @@ const MSDCalculatorNature: React.FC<MSDCalculatorNatureProps> = ({ jobId }) => {
                 </Button>
               </div>
               <div style={{
-                background: 'linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%)',
-                border: '1px solid #e8e8e8',
+                background: isDark ? 'rgba(255,255,255,0.02)' : 'linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%)',
+                border: `1px solid ${token.colorBorder}`,
                 borderRadius: 8,
                 padding: 8,
               }}>
@@ -760,6 +759,7 @@ const MSDCalculatorNature: React.FC<MSDCalculatorNatureProps> = ({ jobId }) => {
                   option={generateMSDOption(data, colorIndex)}
                   style={{ width: '100%', height: chartHeight }}
                   opts={{ renderer: 'canvas' }}
+                  theme={isDark ? 'dark' : undefined}
                 />
               </div>
             </div>
@@ -778,7 +778,7 @@ const MSDCalculatorNature: React.FC<MSDCalculatorNatureProps> = ({ jobId }) => {
 
   return (
     <div style={{
-      background: DASHBOARD_STYLES.pageBackground,
+      background: token.colorBgLayout,
       padding: DASHBOARD_STYLES.gutter,
       minHeight: '100%',
       borderRadius: 8,
@@ -790,13 +790,13 @@ const MSDCalculatorNature: React.FC<MSDCalculatorNatureProps> = ({ jobId }) => {
         <Row justify="space-between" align="middle">
           <Col>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <LineChartOutlined style={{ fontSize: 24, color: '#1890ff' }} />
+              <LineChartOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
               <div>
-                <Text strong style={{ fontSize: DASHBOARD_STYLES.titleFontSize + 2, color: DASHBOARD_STYLES.titleColor, fontWeight: DASHBOARD_STYLES.titleFontWeight }}>
+                <Text strong style={{ fontSize: DASHBOARD_STYLES.titleFontSize + 2, color: token.colorText, fontWeight: DASHBOARD_STYLES.titleFontWeight }}>
                   MSD 分析 (MSD Analysis)
                 </Text>
                 <div style={{ marginTop: 4 }}>
-                  <Text style={{ fontSize: 12, color: '#64748b' }}>
+                  <Text style={{ fontSize: 12, color: token.colorTextSecondary }}>
                     共 {msdData.length} 个物种：{cationData.length} 阳离子，{anionData.length} 阴离子
                   </Text>
                 </div>
@@ -958,7 +958,7 @@ const MSDCalculatorNature: React.FC<MSDCalculatorNatureProps> = ({ jobId }) => {
                   title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <LineChartOutlined style={{ color: color, fontSize: 16 }} />
-                      <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+                      <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: token.colorText }}>
                         {data.species} - {isCat ? '阳离子 (Cation)' : '阴离子 (Anion)'}
                       </span>
                     </div>

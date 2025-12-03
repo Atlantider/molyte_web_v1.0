@@ -20,10 +20,12 @@ import {
   Descriptions,
   Divider,
   Image,
+  theme,
 } from 'antd';
 import { ExperimentOutlined, ReloadOutlined, EyeOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { MoleculeQCCache } from '../types/qc';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Text } = Typography;
 
@@ -60,14 +62,9 @@ interface MoleculeViewerProps {
 
 // Dashboard 样式常量（与其他页面保持一致）
 const DASHBOARD_STYLES = {
-  pageBackground: '#F5F7FB',
-  cardBackground: '#FFFFFF',
   cardBorderRadius: 12,
-  cardShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
-  cardShadowHover: '0 8px 24px rgba(15, 23, 42, 0.12)',
   cardPadding: 24,
   gutter: 24,
-  titleColor: '#111827',
   titleFontSize: 16,
   titleFontWeight: 600,
 };
@@ -138,6 +135,8 @@ const RESPONSIVE_STYLES = `
 `;
 
 export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [loading, setLoading] = useState(false);
   const [molecules, setMolecules] = useState<Molecule[]>([]);
   const [selectedMolecule, setSelectedMolecule] = useState<string | null>(null);
@@ -145,13 +144,14 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
   const viewerInstance = useRef<any>(null);
   const [qcCache, setQcCache] = useState<Record<string, MoleculeQCCache>>({});
   const [loadingQC, setLoadingQC] = useState(false);
+  const isDark = mode === 'dark';
 
   // 卡片样式
   const dashboardCardStyle: React.CSSProperties = {
-    background: DASHBOARD_STYLES.cardBackground,
+    background: token.colorBgContainer,
     borderRadius: DASHBOARD_STYLES.cardBorderRadius,
-    boxShadow: DASHBOARD_STYLES.cardShadow,
-    border: 'none',
+    boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(15, 23, 42, 0.08)',
+    border: `1px solid ${token.colorBorder}`,
     transition: 'all 0.3s ease',
   };
 
@@ -354,7 +354,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
   if (loading) {
     return (
       <div style={{
-        background: DASHBOARD_STYLES.pageBackground,
+        background: token.colorBgLayout,
         padding: DASHBOARD_STYLES.gutter,
         minHeight: '100%',
         borderRadius: 8,
@@ -371,7 +371,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
   if (molecules.length === 0) {
     return (
       <div style={{
-        background: DASHBOARD_STYLES.pageBackground,
+        background: token.colorBgLayout,
         padding: DASHBOARD_STYLES.gutter,
         minHeight: '100%',
         borderRadius: 8,
@@ -486,7 +486,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
           <div style={{
             fontSize: 15,
             fontWeight: 600,
-            color: DASHBOARD_STYLES.titleColor,
+            color: token.colorText,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
@@ -512,7 +512,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
           </Space>
           <div style={{
             fontSize: 11,
-            color: '#64748b',
+            color: token.colorTextSecondary,
             display: 'flex',
             justifyContent: 'space-between',
           }}>
@@ -526,7 +526,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
 
   return (
     <div style={{
-      background: DASHBOARD_STYLES.pageBackground,
+      background: token.colorBgLayout,
       padding: DASHBOARD_STYLES.gutter,
       minHeight: '100%',
       borderRadius: 8,
@@ -638,8 +638,8 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
             style={dashboardCardStyle}
             title={
               <Space size={8}>
-                <ExperimentOutlined style={{ color: DASHBOARD_STYLES.titleColor }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+                <ExperimentOutlined style={{ color: token.colorText }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
                   阴阳离子 (Ion Species)
                 </span>
                 <Tag color="red" style={{ marginLeft: 8, borderRadius: 4, fontSize: 11 }}>{cations.length} 阳</Tag>
@@ -661,8 +661,8 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
             style={dashboardCardStyle}
             title={
               <Space size={8}>
-                <ExperimentOutlined style={{ color: DASHBOARD_STYLES.titleColor }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+                <ExperimentOutlined style={{ color: token.colorText }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
                   溶剂分子 (Solvent Molecules)
                 </span>
                 <Tag color="green" style={{ marginLeft: 8, borderRadius: 4, fontSize: 11 }}>{solvents.length} 种</Tag>
@@ -682,8 +682,8 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
             style={dashboardCardStyle}
             title={
               <Space size={8}>
-                <EyeOutlined style={{ color: DASHBOARD_STYLES.titleColor }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+                <EyeOutlined style={{ color: token.colorText }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
                   {currentMolecule.name} 详细信息
                 </span>
               </Space>
@@ -694,7 +694,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
               <Col xs={24} lg={12}>
                 <Card
                   title={
-                    <span style={{ fontSize: 13, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: token.colorText }}>
                       3D 结构
                     </span>
                   }
@@ -757,19 +757,19 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
               <Col xs={24} lg={12}>
                 <Card
                   title={
-                    <span style={{ fontSize: 13, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: token.colorText }}>
                       原子信息
                     </span>
                   }
                   size="small"
                   style={{
                     borderRadius: 8,
-                    border: '1px solid #e8e8e8',
+                    border: `1px solid ${token.colorBorder}`,
                   }}
                 >
                   <div style={{
-                    background: 'linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%)',
-                    border: '1px solid #e8e8e8',
+                    background: isDark ? 'rgba(255,255,255,0.02)' : 'linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%)',
+                    border: `1px solid ${token.colorBorder}`,
                     borderRadius: 8,
                     padding: 8,
                   }}>
@@ -782,20 +782,20 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
                       scroll={{ y: 320 }}
                       style={{
                         borderRadius: 6,
-                        background: 'white',
+                        background: token.colorBgContainer,
                       }}
                     />
                   </div>
                   <div style={{
                     marginTop: 12,
                     padding: 12,
-                    background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                    background: isDark ? 'rgba(24, 144, 255, 0.1)' : 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
                     borderRadius: 6,
-                    border: '1px solid #bae6fd',
+                    border: `1px solid ${isDark ? 'rgba(24, 144, 255, 0.3)' : '#bae6fd'}`,
                   }}>
                     <Row gutter={16}>
                       <Col span={12}>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>总电荷</div>
+                        <div style={{ fontSize: 11, color: token.colorTextSecondary }}>总电荷</div>
                         <div style={{
                           fontSize: 16,
                           fontWeight: 700,
@@ -807,8 +807,8 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
                         </div>
                       </Col>
                       <Col span={12}>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>原子数量</div>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: '#334155', marginTop: 4 }}>
+                        <div style={{ fontSize: 11, color: token.colorTextSecondary }}>原子数量</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: token.colorText, marginTop: 4 }}>
                           {currentMolecule.atoms.length}
                         </div>
                       </Col>
@@ -826,7 +826,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
                   title={
                     <Space size={8}>
                       <ThunderboltOutlined style={{ color: '#722ed1' }} />
-                      <span style={{ fontSize: 13, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: token.colorText }}>
                         量子化学性质
                       </span>
                     </Space>

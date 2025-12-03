@@ -21,6 +21,7 @@ import {
   Tooltip,
   Slider,
   Dropdown,
+  theme,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -53,19 +54,15 @@ import {
   type SolvationStructureContent,
 } from '../api/jobs';
 import DesolvationAnalysisPanel from './DesolvationAnalysisPanel';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Text } = Typography;
 
 // Dashboard 样式常量
 const DASHBOARD_STYLES = {
-  pageBackground: '#F5F7FB',
-  cardBackground: '#FFFFFF',
   cardBorderRadius: 12,
-  cardShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
-  cardShadowHover: '0 8px 24px rgba(15, 23, 42, 0.12)',
   cardPadding: 24,
   gutter: 24,
-  titleColor: '#111827',
   titleFontSize: 16,
   titleFontWeight: 600,
   chartHeight: 280,
@@ -307,6 +304,9 @@ const NATURE_COLORS = [
 ];
 
 export default function SolvationStructureNature({ jobId }: SolvationStructureProps) {
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const [structures, setStructures] = useState<SolvationStructure[]>([]);
   const [statistics, setStatistics] = useState<SolvationStatistics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -983,16 +983,16 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
 
   // Dashboard 卡片样式
   const dashboardCardStyle: React.CSSProperties = {
-    background: DASHBOARD_STYLES.cardBackground,
+    background: token.colorBgContainer,
     borderRadius: DASHBOARD_STYLES.cardBorderRadius,
-    boxShadow: DASHBOARD_STYLES.cardShadow,
-    border: 'none',
+    boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(15, 23, 42, 0.08)',
+    border: `1px solid ${token.colorBorder}`,
     transition: 'all 0.3s ease',
   };
 
   return (
     <div style={{
-      background: DASHBOARD_STYLES.pageBackground,
+      background: token.colorBgLayout,
       padding: DASHBOARD_STYLES.gutter,
       minHeight: '100%',
       borderRadius: 8,
@@ -1112,7 +1112,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
           title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <PieChartOutlined style={{ color: '#1f77b4', fontSize: 16 }} />
-              <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+              <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: token.colorText }}>
                 配位数分布 (CN Distribution)
               </span>
             </div>
@@ -1133,6 +1133,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
               option={cnPieOption}
               style={{ height: DASHBOARD_STYLES.chartHeight }}
               notMerge={true}
+              theme={isDark ? 'dark' : undefined}
             />
           </div>
         </Card>
@@ -1144,7 +1145,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
           title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <PieChartOutlined style={{ color: '#9467bd', fontSize: 16 }} />
-              <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+              <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: token.colorText }}>
                 阴离子配位分布 (Anion CN)
               </span>
             </div>
@@ -1165,6 +1166,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
               option={anionCnPieOption}
               style={{ height: DASHBOARD_STYLES.chartHeight }}
               notMerge={true}
+              theme={isDark ? 'dark' : undefined}
             />
           </div>
         </Card>
@@ -1176,7 +1178,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
           title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <PieChartOutlined style={{ color: '#2ca02c', fontSize: 16 }} />
-              <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+              <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: token.colorText }}>
                 溶剂化壳层组成 (Shell Composition)
               </span>
             </div>
@@ -1197,6 +1199,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
               option={pieOption}
               style={{ height: DASHBOARD_STYLES.chartHeight }}
               notMerge={true}
+              theme={isDark ? 'dark' : undefined}
             />
           </div>
         </Card>
@@ -1208,7 +1211,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
           title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <PieChartOutlined style={{ color: '#fa8c16', fontSize: 16 }} />
-              <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: DASHBOARD_STYLES.titleColor }}>
+              <span style={{ fontSize: DASHBOARD_STYLES.titleFontSize, fontWeight: DASHBOARD_STYLES.titleFontWeight, color: token.colorText }}>
                 离子对分类 (Ion Pair Classification)
               </span>
             </div>
@@ -1229,6 +1232,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
               option={ionPairPieOption}
               style={{ height: DASHBOARD_STYLES.chartHeight }}
               notMerge={true}
+              theme={isDark ? 'dark' : undefined}
             />
           </div>
         </Card>
@@ -1242,12 +1246,12 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
           style={{ ...dashboardCardStyle, maxWidth: 360, overflow: 'hidden' }}
           title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <FullscreenOutlined style={{ color: '#1890ff', fontSize: 16 }} />
+              <FullscreenOutlined style={{ color: token.colorPrimary, fontSize: 16 }} />
               <span
                 style={{
                   fontSize: 14,
                   fontWeight: 600,
-                  color: DASHBOARD_STYLES.titleColor,
+                  color: token.colorText,
                 }}
               >
                 整体溶液结构 (System)
@@ -1263,7 +1267,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: '#f5f5f5',
+                background: isDark ? 'rgba(255,255,255,0.04)' : '#f5f5f5',
                 borderRadius: 8,
               }}
             >
@@ -1356,7 +1360,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                 style={{
                   fontSize: 14,
                   fontWeight: 600,
-                  color: DASHBOARD_STYLES.titleColor,
+                  color: token.colorText,
                 }}
               >
                 溶剂化结构列表 (Structures)
@@ -1413,7 +1417,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                   style={{
                     fontSize: 14,
                     fontWeight: 600,
-                    color: DASHBOARD_STYLES.titleColor,
+                    color: token.colorText,
                   }}
                 >
                   典型溶剂化结构 (Solvation)
