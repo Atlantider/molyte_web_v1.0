@@ -277,6 +277,63 @@ async def get_pending_jobs(
         )
 
 
+class RunningJobResponse(BaseModel):
+    """运行中任务响应"""
+    id: int
+    type: str  # MD or QC
+    slurm_job_id: Optional[str] = None
+    work_dir: Optional[str] = None
+
+
+@router.get("/jobs/running", response_model=List[RunningJobResponse])
+async def get_running_jobs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    获取运行中的任务
+
+    Worker 重启后通过此接口恢复追踪运行中的任务
+    """
+    # 验证是否是 Worker 用户（ADMIN 角色）
+    if not is_worker_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only worker users can fetch running jobs"
+        )
+
+    result = []
+
+    # 获取 RUNNING 状态的 MD 任务
+    md_jobs = db.query(MDJob).filter(
+        MDJob.status == JobStatus.RUNNING
+    ).all()
+
+    for job in md_jobs:
+        result.append(RunningJobResponse(
+            id=job.id,
+            type="MD",
+            slurm_job_id=job.slurm_job_id,
+            work_dir=job.work_dir
+        ))
+
+    # 获取 RUNNING 状态的 QC 任务
+    qc_jobs = db.query(QCJob).filter(
+        QCJob.status == QCJobStatus.RUNNING
+    ).all()
+
+    for job in qc_jobs:
+        result.append(RunningJobResponse(
+            id=job.id,
+            type="QC",
+            slurm_job_id=job.slurm_job_id,
+            work_dir=job.work_dir
+        ))
+
+    logger.info(f"返回 {len(result)} 个运行中的任务")
+    return result
+
+
 @router.put("/jobs/{job_id}/status")
 async def update_job_status(
     job_id: int,

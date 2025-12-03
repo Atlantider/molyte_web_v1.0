@@ -126,32 +126,141 @@ class PollingWorker:
     def run(self):
         """主循环"""
         self.logger.info("开始轮询...")
-        
+
+        # 恢复运行中的任务
+        self._recover_running_jobs()
+
         last_heartbeat = time.time()
-        
+
         while True:
             try:
                 # 发送心跳
                 if time.time() - last_heartbeat > self.config['worker']['heartbeat_interval']:
                     self._send_heartbeat()
                     last_heartbeat = time.time()
-                
+
                 # 检查运行中的任务
                 self._check_running_jobs()
-                
+
                 # 获取新任务
                 if len(self.running_jobs) < self.config['worker']['max_concurrent_jobs']:
                     self._fetch_and_process_new_jobs()
-                
+
                 # 等待下一次轮询
                 time.sleep(self.config['api']['poll_interval'])
-                
+
             except KeyboardInterrupt:
                 self.logger.info("收到中断信号，正在退出...")
                 break
             except Exception as e:
                 self.logger.error(f"主循环错误: {e}", exc_info=True)
                 time.sleep(10)
+
+    def _recover_running_jobs(self):
+        """恢复运行中的任务（Worker 重启后恢复追踪）"""
+        self.logger.info("正在恢复运行中的任务...")
+
+        try:
+            # 获取当前 Slurm 中运行的任务
+            result = subprocess.run(
+                ['squeue', '-u', os.environ.get('USER', 'xiaoji'),
+                 '-o', '%i %j', '-h'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if result.returncode != 0:
+                self.logger.error(f"获取 Slurm 队列失败: {result.stderr}")
+                return
+
+            running_slurm_jobs = {}
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        slurm_job_id = parts[0]
+                        job_name = parts[1]
+                        running_slurm_jobs[job_name] = slurm_job_id
+
+            self.logger.info(f"Slurm 中运行的任务: {running_slurm_jobs}")
+
+            # 从 API 获取状态为 RUNNING 的 MD 任务
+            response = requests.get(
+                f"{self.api_base_url}/workers/jobs/running",
+                headers=self.api_headers,
+                timeout=self.config['api']['timeout']
+            )
+
+            if response.status_code != 200:
+                self.logger.warning(f"获取运行中任务失败: {response.status_code}")
+                # 尝试从本地工作目录恢复
+                self._recover_from_local_dirs(running_slurm_jobs)
+                return
+
+            running_jobs = response.json()
+            self.logger.info(f"API 返回运行中的任务: {len(running_jobs)} 个")
+
+            for job in running_jobs:
+                job_id = job['id']
+                job_type = job.get('type', 'MD').lower()
+                slurm_job_id = job.get('slurm_job_id')
+                work_dir = job.get('work_dir')
+
+                if not slurm_job_id or not work_dir:
+                    continue
+
+                # 检查 Slurm 任务是否仍在运行
+                if slurm_job_id in running_slurm_jobs.values():
+                    self.running_jobs[job_id] = {
+                        'type': job_type,
+                        'slurm_job_id': slurm_job_id,
+                        'work_dir': work_dir,
+                        'start_time': time.time(),
+                        'resp_cpu_hours': 0.0
+                    }
+                    self.logger.info(f"恢复追踪任务 {job_id} (Slurm: {slurm_job_id})")
+
+            self.logger.info(f"恢复了 {len(self.running_jobs)} 个运行中的任务")
+
+        except Exception as e:
+            self.logger.error(f"恢复运行中任务失败: {e}", exc_info=True)
+
+    def _recover_from_local_dirs(self, running_slurm_jobs: Dict[str, str]):
+        """从本地工作目录恢复任务追踪"""
+        md_work_dir = Path(self.config['paths']['md_work_dir'])
+
+        for job_name, slurm_job_id in running_slurm_jobs.items():
+            # 尝试从任务名解析任务 ID
+            # 任务名格式: MD-{job_id}-{system_name}
+            if job_name.startswith('MD-'):
+                parts = job_name.split('-')
+                if len(parts) >= 2:
+                    try:
+                        # 从工作目录名中提取任务 ID
+                        for work_dir in md_work_dir.iterdir():
+                            if work_dir.is_dir() and job_name in work_dir.name:
+                                # 尝试从 slurm 脚本中获取任务 ID
+                                slurm_script = work_dir / "run_md.slurm"
+                                if slurm_script.exists():
+                                    # 从目录名解析任务 ID
+                                    # 格式: MD-{date}-{job_id}-EL-...
+                                    dir_parts = work_dir.name.split('-')
+                                    if len(dir_parts) >= 3:
+                                        job_id_str = dir_parts[2]  # 第三部分是任务 ID
+                                        job_id = int(job_id_str)
+
+                                        self.running_jobs[job_id] = {
+                                            'type': 'md',
+                                            'slurm_job_id': slurm_job_id,
+                                            'work_dir': str(work_dir),
+                                            'start_time': time.time(),
+                                            'resp_cpu_hours': 0.0
+                                        }
+                                        self.logger.info(f"从本地目录恢复任务 {job_id} (Slurm: {slurm_job_id})")
+                                        break
+                    except (ValueError, IndexError):
+                        continue
     
     def _get_slurm_partitions(self) -> List[Dict]:
         """获取 Slurm 分区信息"""
