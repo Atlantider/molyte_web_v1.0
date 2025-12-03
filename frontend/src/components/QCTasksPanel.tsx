@@ -19,6 +19,7 @@ import {
   Statistic,
   List,
   message,
+  theme,
 } from 'antd';
 import {
   ExperimentOutlined,
@@ -34,6 +35,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { getMDJobQCJobs } from '../api/jobs';
 import type { QCJobSummary, QCJobsStatusSummary } from '../types';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Text, Title } = Typography;
 
@@ -148,6 +150,8 @@ const getAccuracyLevelText = (level?: string): string => {
 
 export default function QCTasksPanel({ mdJobId, refreshInterval = 10000 }: QCTasksPanelProps) {
   const navigate = useNavigate();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [loading, setLoading] = useState(true);
   const [qcJobs, setQcJobs] = useState<QCJobSummary[]>([]);
   const [statusSummary, setStatusSummary] = useState<QCJobsStatusSummary | null>(null);
@@ -300,9 +304,9 @@ export default function QCTasksPanel({ mdJobId, refreshInterval = 10000 }: QCTas
                 style={{
                   padding: '12px 16px',
                   marginBottom: 8,
-                  background: job.is_reused ? '#f6ffed' : '#fafafa',
+                  background: job.is_reused ? (mode === 'dark' ? 'rgba(82, 196, 26, 0.1)' : '#f6ffed') : token.colorBgContainer,
                   borderRadius: 8,
-                  border: job.is_reused ? '1px solid #b7eb8f' : '1px solid #f0f0f0'
+                  border: job.is_reused ? `1px solid ${token.colorSuccess}` : `1px solid ${token.colorBorder}`
                 }}
               >
                 <div style={{ width: '100%' }}>
@@ -393,8 +397,8 @@ export default function QCTasksPanel({ mdJobId, refreshInterval = 10000 }: QCTas
 
                   {/* 计算结果（仅已完成任务显示） */}
                   {job.status === 'COMPLETED' && job.result && (
-                    <div style={{ marginTop: 8, padding: '8px 12px', background: '#f6ffed', borderRadius: 4, border: '1px solid #b7eb8f' }}>
-                      <div style={{ fontSize: 12, color: '#389e0d', marginBottom: 4, fontWeight: 500 }}>
+                    <div style={{ marginTop: 8, padding: '8px 12px', background: mode === 'dark' ? 'rgba(82, 196, 26, 0.1)' : '#f6ffed', borderRadius: 4, border: `1px solid ${token.colorSuccess}` }}>
+                      <div style={{ fontSize: 12, color: token.colorSuccess, marginBottom: 4, fontWeight: 500 }}>
                         📊 计算结果
                       </div>
                       <Row gutter={[16, 4]}>

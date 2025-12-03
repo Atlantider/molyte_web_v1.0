@@ -14,11 +14,13 @@ import {
   Row,
   Col,
   InputNumber,
+  theme,
 } from 'antd';
 import { ExperimentOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { QCJob } from '../types/qc';
 import { recalculateQCJob } from '../api/qc';
 import { getSolventModelText } from '../utils/qc';
+import { useThemeStore } from '../stores/themeStore';
 
 interface QCRecalculateModalProps {
   visible: boolean;
@@ -33,6 +35,8 @@ export default function QCRecalculateModal({
   onClose,
   onSuccess,
 }: QCRecalculateModalProps) {
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [selectedSolventModel, setSelectedSolventModel] = useState<string>('gas');
@@ -188,7 +192,7 @@ export default function QCRecalculateModal({
         <Card
           size="small"
           title="原任务信息"
-          style={{ background: '#fafafa' }}
+          style={{ background: token.colorBgContainer }}
         >
           <Descriptions size="small" column={2}>
             <Descriptions.Item label="任务ID">{job.id}</Descriptions.Item>

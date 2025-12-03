@@ -26,6 +26,7 @@ import {
   Spin,
   Tabs,
   Typography,
+  theme,
 } from 'antd';
 
 const { Text } = Typography;
@@ -46,6 +47,7 @@ import type { QCJob } from '../types/qc';
 import { getQCJobs, getESPImage, getHOMOImage, getLUMOImage } from '../api/qc';
 import { renderSolventModel } from '../utils/qc';
 import QCRecalculateModal from './QCRecalculateModal';
+import { useThemeStore } from '../stores/themeStore';
 
 interface QCDataTabProps {
   isPublic?: boolean; // 是否为公开搜索
@@ -54,6 +56,8 @@ interface QCDataTabProps {
 export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
   const [form] = Form.useForm();
   const navigate = useNavigate();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<QCJob[]>([]);
   const [total, setTotal] = useState(0);
@@ -1041,7 +1045,7 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
             key: 'structure',
             label: '分子结构',
             children: (
-              <div style={{ textAlign: 'center', padding: 12, background: '#fafafa', borderRadius: 8 }}>
+              <div style={{ textAlign: 'center', padding: 12, background: token.colorBgContainer, borderRadius: 8 }}>
                 {job.smiles ? (
                   <img
                     src={`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(job.smiles)}/PNG?image_size=200x200`}
@@ -1066,7 +1070,7 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
             key: 'homo',
             label: 'HOMO',
             children: homoImageUrl ? (
-              <div style={{ textAlign: 'center', padding: 12, background: '#fafafa', borderRadius: 8 }}>
+              <div style={{ textAlign: 'center', padding: 12, background: token.colorBgContainer, borderRadius: 8 }}>
                 <Image
                   src={homoImageUrl}
                   alt="HOMO Orbital"
@@ -1075,7 +1079,7 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
                 />
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: 40, color: '#999', background: '#fafafa', borderRadius: 8 }}>
+              <div style={{ textAlign: 'center', padding: 40, color: token.colorTextSecondary, background: token.colorBgContainer, borderRadius: 8 }}>
                 HOMO 图片暂未生成
               </div>
             ),
@@ -1084,7 +1088,7 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
             key: 'lumo',
             label: 'LUMO',
             children: lumoImageUrl ? (
-              <div style={{ textAlign: 'center', padding: 12, background: '#fafafa', borderRadius: 8 }}>
+              <div style={{ textAlign: 'center', padding: 12, background: token.colorBgContainer, borderRadius: 8 }}>
                 <Image
                   src={lumoImageUrl}
                   alt="LUMO Orbital"
@@ -1093,7 +1097,7 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
                 />
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: 40, color: '#999', background: '#fafafa', borderRadius: 8 }}>
+              <div style={{ textAlign: 'center', padding: 40, color: token.colorTextSecondary, background: token.colorBgContainer, borderRadius: 8 }}>
                 LUMO 图片暂未生成
               </div>
             ),
@@ -1102,7 +1106,7 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
             key: 'esp',
             label: 'ESP',
             children: espImageUrl ? (
-              <div style={{ textAlign: 'center', padding: 12, background: '#fafafa', borderRadius: 8 }}>
+              <div style={{ textAlign: 'center', padding: 12, background: token.colorBgContainer, borderRadius: 8 }}>
                 <Image
                   src={espImageUrl}
                   alt="ESP Surface"
@@ -1111,7 +1115,7 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
                 />
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: 40, color: '#999', background: '#fafafa', borderRadius: 8 }}>
+              <div style={{ textAlign: 'center', padding: 40, color: token.colorTextSecondary, background: token.colorBgContainer, borderRadius: 8 }}>
                 ESP 图片暂未生成
               </div>
             ),
@@ -1825,11 +1829,11 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
                         </div>
                         <div style={{
                           padding: 12,
-                          background: '#fafafa',
+                          background: token.colorBgContainer,
                           borderRadius: 4,
-                          borderLeft: '3px solid #1890ff'
+                          borderLeft: `3px solid ${token.colorPrimary}`
                         }}>
-                          <Text style={{ fontSize: 12, color: '#666' }}>
+                          <Text style={{ fontSize: 12, color: token.colorTextSecondary }}>
                             {type.example}
                           </Text>
                         </div>

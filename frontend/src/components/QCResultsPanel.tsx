@@ -18,6 +18,7 @@ import {
   message,
   Spin,
   Tabs,
+  theme,
 } from 'antd';
 import {
   ThunderboltOutlined,
@@ -34,6 +35,7 @@ import {
   getLUMOImage, downloadLUMOImage
 } from '../api/qc';
 import type { QCResult, QCJob } from '../types/qc';
+import { useThemeStore } from '../stores/themeStore';
 
 const { Text, Title } = Typography;
 
@@ -47,6 +49,8 @@ interface QCResultsPanelProps {
 }
 
 export default function QCResultsPanel({ results, compact = false, job }: QCResultsPanelProps) {
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
   const [espImageUrl, setEspImageUrl] = useState<string | null>(null);
   const [homoImageUrl, setHomoImageUrl] = useState<string | null>(null);
   const [lumoImageUrl, setLumoImageUrl] = useState<string | null>(null);
@@ -337,7 +341,7 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
             ) : homoImageUrl ? (
               <div style={{
                 textAlign: 'center',
-                background: '#fafafa',
+                background: token.colorBgContainer,
                 borderRadius: 8,
                 padding: 8
               }}>
@@ -352,8 +356,8 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
               <div style={{
                 textAlign: 'center',
                 padding: 60,
-                color: '#999',
-                background: '#fafafa',
+                color: token.colorTextSecondary,
+                background: token.colorBgContainer,
                 borderRadius: 8
               }}>
                 HOMO图片暂未生成
@@ -398,7 +402,7 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
             ) : lumoImageUrl ? (
               <div style={{
                 textAlign: 'center',
-                background: '#fafafa',
+                background: token.colorBgContainer,
                 borderRadius: 8,
                 padding: 8
               }}>
@@ -413,8 +417,8 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
               <div style={{
                 textAlign: 'center',
                 padding: 60,
-                color: '#999',
-                background: '#fafafa',
+                color: token.colorTextSecondary,
+                background: token.colorBgContainer,
                 borderRadius: 8
               }}>
                 LUMO图片暂未生成
@@ -453,11 +457,11 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
         alignItems: 'center',
         marginBottom: 12,
         padding: '8px 12px',
-        background: '#fafafa',
+        background: token.colorBgContainer,
         borderRadius: 8
       }}>
         <Space>
-          <BgColorsOutlined style={{ color: '#1890ff' }} />
+          <BgColorsOutlined style={{ color: token.colorPrimary }} />
           <Text>静电势表面映射</Text>
         </Space>
         <Button
@@ -477,7 +481,7 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
       ) : espImageUrl ? (
         <div style={{
           textAlign: 'center',
-          background: '#fafafa',
+          background: token.colorBgContainer,
           borderRadius: 8,
           padding: 16
         }}>
@@ -492,8 +496,8 @@ export default function QCResultsPanel({ results, compact = false, job }: QCResu
         <div style={{
           textAlign: 'center',
           padding: 80,
-          color: '#999',
-          background: '#fafafa',
+          color: token.colorTextSecondary,
+          background: token.colorBgContainer,
           borderRadius: 8
         }}>
           ESP图片加载失败，请刷新页面重试

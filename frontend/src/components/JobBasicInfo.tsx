@@ -21,16 +21,11 @@ dayjs.extend(duration);
 
 const { Text } = Typography;
 
-// 统一的设计风格常量
+// 统一的设计风格常量（非颜色相关）
 const DASHBOARD_STYLES = {
-  pageBackground: '#F5F7FB',
-  cardBackground: '#FFFFFF',
   cardBorderRadius: 12,
-  cardShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
-  cardShadowHover: '0 8px 24px rgba(15, 23, 42, 0.12)',
   cardPadding: 24,
   gutter: 24,
-  titleColor: '#111827',
   titleFontSize: 16,
   titleFontWeight: 600,
 };
@@ -167,15 +162,16 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
     return coreHours.toFixed(1);
   };
 
+  const isDark = mode === 'dark';
   const dashboardCardStyle = {
-    background: DASHBOARD_STYLES.cardBackground,
+    background: token.colorBgContainer,
     borderRadius: DASHBOARD_STYLES.cardBorderRadius,
-    boxShadow: DASHBOARD_STYLES.cardShadow,
-    border: '1px solid #e8e8e8',
+    boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(15, 23, 42, 0.08)',
+    border: `1px solid ${token.colorBorder}`,
   };
 
   return (
-    <div style={{ background: DASHBOARD_STYLES.pageBackground, padding: DASHBOARD_STYLES.gutter }}>
+    <div style={{ background: token.colorBgLayout, padding: DASHBOARD_STYLES.gutter, transition: 'background 0.3s' }}>
       <Row gutter={[DASHBOARD_STYLES.gutter, DASHBOARD_STYLES.gutter]}>
         {/* 1. 任务信息（100%宽度） */}
         <Col xs={24}>
@@ -184,8 +180,8 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
             style={dashboardCardStyle}
             title={
               <Space size={8}>
-                <DatabaseOutlined style={{ color: DASHBOARD_STYLES.titleColor }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+                <DatabaseOutlined style={{ color: token.colorText }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
                   任务信息
                 </span>
               </Space>
@@ -276,8 +272,8 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
             style={dashboardCardStyle}
             title={
               <Space size={8}>
-                <ExperimentOutlined style={{ color: DASHBOARD_STYLES.titleColor }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+                <ExperimentOutlined style={{ color: token.colorText }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
                   溶液配方
                 </span>
               </Space>
@@ -336,8 +332,8 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
             style={dashboardCardStyle}
             title={
               <Space size={8}>
-                <FundOutlined style={{ color: DASHBOARD_STYLES.titleColor }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+                <FundOutlined style={{ color: token.colorText }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
                   计算结果对比
                 </span>
               </Space>
@@ -440,8 +436,8 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
             style={dashboardCardStyle}
             title={
               <Space size={8}>
-                <SettingOutlined style={{ color: DASHBOARD_STYLES.titleColor }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+                <SettingOutlined style={{ color: token.colorText }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
                   计算参数
                 </span>
               </Space>
@@ -499,7 +495,7 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
               title={
                 <Space size={8}>
                   <ThunderboltOutlined style={{ color: '#722ed1' }} />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: DASHBOARD_STYLES.titleColor }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
                     量子化学计算配置
                   </span>
                   <Tag color="purple">QC</Tag>
