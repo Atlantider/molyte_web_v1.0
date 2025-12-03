@@ -42,6 +42,7 @@ import JobBasicInfo from '../components/JobBasicInfo';
 import QCTasksPanel from '../components/QCTasksPanel';
 import { getMDJob, resubmitMDJob, getJobSlurmStatus, syncJobStatus, type SlurmJobStatus } from '../api/jobs';
 import { getElectrolyte } from '../api/electrolytes';
+import { translateError } from '../utils/errorTranslator';
 import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
 
@@ -415,15 +416,50 @@ export default function JobDetail() {
       </Card>
 
       {/* 错误信息 */}
-      {job.error_message && (
-        <Alert
-          message="任务执行错误"
-          description={job.error_message}
-          type="error"
-          showIcon
-          style={{ marginBottom: 16, borderRadius: 8 }}
-        />
-      )}
+      {job.error_message && (() => {
+        const translatedError = translateError(job.error_message);
+        return translatedError ? (
+          <Alert
+            message={translatedError.title}
+            description={
+              <div>
+                <p style={{ marginBottom: 8 }}>{translatedError.description}</p>
+                <div style={{
+                  padding: '8px 12px',
+                  background: 'rgba(82, 196, 26, 0.1)',
+                  borderRadius: 6,
+                  marginBottom: 8
+                }}>
+                  <Text style={{ color: '#52c41a' }}>
+                    💡 <strong>建议：</strong>{translatedError.suggestion}
+                  </Text>
+                </div>
+                {translatedError.originalError && (
+                  <details style={{ marginTop: 8 }}>
+                    <summary style={{ cursor: 'pointer', color: '#999', fontSize: 12 }}>
+                      查看技术详情
+                    </summary>
+                    <pre style={{
+                      marginTop: 8,
+                      padding: 8,
+                      background: '#f5f5f5',
+                      borderRadius: 4,
+                      fontSize: 11,
+                      overflow: 'auto',
+                      maxHeight: 100
+                    }}>
+                      {translatedError.originalError}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            }
+            type={translatedError.severity}
+            showIcon
+            style={{ marginBottom: 16, borderRadius: 8 }}
+          />
+        ) : null;
+      })()}
 
       {/* 结果锁定警告 */}
       {job.result_locked && (

@@ -12,6 +12,8 @@ import {
   CalendarOutlined,
   ExperimentOutlined,
   DeleteOutlined,
+  WarningOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import type { MDJob, ElectrolyteSystem, MDJobCreate } from '../types';
@@ -20,6 +22,7 @@ import StatusTag from './StatusTag';
 import dayjs from 'dayjs';
 import { createMDJob } from '../api/jobs';
 import { useAuthStore } from '../stores/authStore';
+import { translateError } from '../utils/errorTranslator';
 
 const { Text } = Typography;
 
@@ -237,7 +240,16 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
           </div>
 
           <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <Text type="secondary" style={{ fontSize: 12 }}>任务 ID: #{job.id}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {job.config?.job_name || `#${job.id}`}
+            </Text>
+            {job.config?.user_note && (
+              <Tooltip title={`备注: ${job.config.user_note}`}>
+                <Text type="secondary" style={{ fontSize: 12, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  ({job.config.user_note})
+                </Text>
+              </Tooltip>
+            )}
             {job.slurm_job_id && (
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Slurm: {job.slurm_job_id}
@@ -315,19 +327,54 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
         </div>
       </div>
 
-      {job.error_message && (
-        <div style={{
-          marginTop: 12,
-          padding: 8,
-          background: '#fff2f0',
-          borderRadius: 8,
-          border: '1px solid #ffccc7'
-        }}>
-          <Text type="danger" style={{ fontSize: 12 }}>
-            错误: {job.error_message}
-          </Text>
-        </div>
-      )}
+      {job.error_message && (() => {
+        const translatedError = translateError(job.error_message);
+        return translatedError ? (
+          <div style={{
+            marginTop: 12,
+            padding: 12,
+            background: translatedError.severity === 'error' ? '#fff2f0' : '#fffbe6',
+            borderRadius: 8,
+            border: `1px solid ${translatedError.severity === 'error' ? '#ffccc7' : '#ffe58f'}`
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <WarningOutlined style={{
+                color: translatedError.severity === 'error' ? '#ff4d4f' : '#faad14',
+                fontSize: 16,
+                marginTop: 2
+              }} />
+              <div style={{ flex: 1 }}>
+                <Text strong style={{
+                  color: translatedError.severity === 'error' ? '#cf1322' : '#d48806',
+                  fontSize: 13
+                }}>
+                  {translatedError.title}
+                </Text>
+                <div style={{ marginTop: 4 }}>
+                  <Text style={{ fontSize: 12, color: '#666' }}>
+                    {translatedError.description}
+                  </Text>
+                </div>
+                <div style={{ marginTop: 6, padding: '6px 8px', background: 'rgba(0,0,0,0.02)', borderRadius: 4 }}>
+                  <Text style={{ fontSize: 12, color: '#52c41a' }}>
+                    💡 {translatedError.suggestion}
+                  </Text>
+                </div>
+                {translatedError.originalError && (
+                  <Tooltip title={translatedError.originalError}>
+                    <div style={{ marginTop: 6, cursor: 'pointer' }}>
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        <QuestionCircleOutlined style={{ marginRight: 4 }} />
+                        查看技术详情
+                      </Text>
+                    </div>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null;
+      })()}
     </Card>
   );
 }

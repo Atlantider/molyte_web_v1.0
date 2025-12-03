@@ -220,6 +220,7 @@ export interface MDJob {
   error_message?: string;
   config?: {
     job_name?: string;
+    user_note?: string;  // 用户备注信息
     nsteps_npt?: number;
     nsteps_nvt?: number;
     timestep?: number;
@@ -250,6 +251,17 @@ export interface MDJob {
     qc_custom_eps?: number;
     qc_custom_eps_inf?: number;
     qc_custom_solvent_name?: string;
+    // 配方快照（创建任务时保存的配方数据）
+    system_snapshot?: {
+      name?: string;
+      cations?: Array<{ name: string; smiles?: string; number: number }>;
+      anions?: Array<{ name: string; smiles?: string; number: number }>;
+      solvents?: Array<{ name: string; smiles: string; number: number; ratio?: number }>;
+      box_size?: number;
+      temperature?: number;
+      pressure?: number;
+      force_field?: string;
+    };
   };
   created_at: string;
   updated_at: string;

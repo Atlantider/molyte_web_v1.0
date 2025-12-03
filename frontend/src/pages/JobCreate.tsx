@@ -380,12 +380,12 @@ export default function JobCreate() {
       >
         <Form form={form} layout="vertical">
           <Form.Item
-            label="自定义名称（可选）"
+            label="备注信息（可选）"
             name="job_name"
-            tooltip="可选的自定义名称后缀，将添加到自动生成的任务名称后面"
-            extra="留空：MD-20251119-0001-配方名 | 填写：MD-20251119-0001-配方名-自定义名称"
+            tooltip="可选的备注信息，用于记录任务目的或特殊说明，不影响任务名称"
+            extra="任务名称自动生成：MD-日期-序号（如：MD-20251203-0001）"
           >
-            <Input placeholder="留空或输入自定义名称后缀（如：高温测试）" allowClear />
+            <Input placeholder="可选备注（如：高温测试、对照组等）" allowClear />
           </Form.Item>
 
           <Divider />

@@ -207,30 +207,48 @@ async def get_pending_jobs(
 
         result = []
         for job in jobs:
-            # 获取电解质系统数据
-            electrolyte = db.query(ElectrolyteSystem).filter(
-                ElectrolyteSystem.id == job.system_id
-            ).first()
+            # 优先使用 job.config 中保存的 system_snapshot（创建任务时的配方快照）
+            # 这样可以确保计算使用的是创建任务时的配方，而不是后续修改后的配方
+            snapshot = job.config.get("system_snapshot") if job.config else None
 
-            if electrolyte:
-                # 合并 config 和电解质数据
-                job_name = f"MD-{job.id}"
-                if job.config and job.config.get("job_name"):
-                    job_name = job.config.get("job_name")
-
+            if snapshot:
+                # 使用快照数据
+                job_name = job.config.get("job_name", f"MD-{job.id}")
                 job_config = {
                     **(job.config or {}),
                     "name": job_name,
-                    "cations": electrolyte.cations,
-                    "anions": electrolyte.anions,
-                    "solvents": electrolyte.solvents,
-                    "additives": getattr(electrolyte, 'additives', None),
-                    "box_size": electrolyte.box_size,
-                    "temperature": electrolyte.temperature,
-                    "pressure": electrolyte.pressure,
+                    "cations": snapshot.get("cations"),
+                    "anions": snapshot.get("anions"),
+                    "solvents": snapshot.get("solvents"),
+                    "additives": snapshot.get("additives"),
+                    "box_size": snapshot.get("box_size"),
+                    "temperature": snapshot.get("temperature"),
+                    "pressure": snapshot.get("pressure"),
                 }
             else:
-                job_config = job.config or {"name": f"MD-{job.id}"}
+                # 兼容旧任务（没有快照的情况），从 ElectrolyteSystem 表读取
+                electrolyte = db.query(ElectrolyteSystem).filter(
+                    ElectrolyteSystem.id == job.system_id
+                ).first()
+
+                if electrolyte:
+                    job_name = f"MD-{job.id}"
+                    if job.config and job.config.get("job_name"):
+                        job_name = job.config.get("job_name")
+
+                    job_config = {
+                        **(job.config or {}),
+                        "name": job_name,
+                        "cations": electrolyte.cations,
+                        "anions": electrolyte.anions,
+                        "solvents": electrolyte.solvents,
+                        "additives": getattr(electrolyte, 'additives', None),
+                        "box_size": electrolyte.box_size,
+                        "temperature": electrolyte.temperature,
+                        "pressure": electrolyte.pressure,
+                    }
+                else:
+                    job_config = job.config or {"name": f"MD-{job.id}"}
 
             result.append(PendingJobResponse(
                 id=job.id,
@@ -592,30 +610,47 @@ async def get_job_input_data(
                 detail=f"MD Job {job_id} not found"
             )
 
-        # 获取电解质系统数据
-        from app.models.electrolyte import ElectrolyteSystem
-        electrolyte = db.query(ElectrolyteSystem).filter(
-            ElectrolyteSystem.id == job.system_id
-        ).first()
+        # 优先使用 job.config 中保存的 system_snapshot（创建任务时的配方快照）
+        # 这样可以确保计算使用的是创建任务时的配方，而不是后续修改后的配方
+        snapshot = job.config.get("system_snapshot") if job.config else None
 
-        if not electrolyte:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Electrolyte system {job.system_id} not found"
-            )
+        if snapshot:
+            # 使用快照数据
+            job_data = {
+                **(job.config or {}),
+                "name": job.config.get("job_name") if job.config else f"MD-{job_id}",
+                "cations": snapshot.get("cations"),
+                "anions": snapshot.get("anions"),
+                "solvents": snapshot.get("solvents"),
+                "additives": snapshot.get("additives"),
+                "box_size": snapshot.get("box_size"),
+                "temperature": snapshot.get("temperature"),
+                "pressure": snapshot.get("pressure"),
+            }
+        else:
+            # 兼容旧任务（没有快照的情况），从 ElectrolyteSystem 表读取
+            from app.models.electrolyte import ElectrolyteSystem
+            electrolyte = db.query(ElectrolyteSystem).filter(
+                ElectrolyteSystem.id == job.system_id
+            ).first()
 
-        # 合并 config 和电解质数据
-        job_data = {
-            **(job.config or {}),
-            "name": job.config.get("job_name") if job.config else f"MD-{job_id}",
-            "cations": electrolyte.cations,
-            "anions": electrolyte.anions,
-            "solvents": electrolyte.solvents,
-            "additives": getattr(electrolyte, 'additives', None),
-            "box_size": electrolyte.box_size,
-            "temperature": electrolyte.temperature,
-            "pressure": electrolyte.pressure,
-        }
+            if not electrolyte:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Electrolyte system {job.system_id} not found"
+                )
+
+            job_data = {
+                **(job.config or {}),
+                "name": job.config.get("job_name") if job.config else f"MD-{job_id}",
+                "cations": electrolyte.cations,
+                "anions": electrolyte.anions,
+                "solvents": electrolyte.solvents,
+                "additives": getattr(electrolyte, 'additives', None),
+                "box_size": electrolyte.box_size,
+                "temperature": electrolyte.temperature,
+                "pressure": electrolyte.pressure,
+            }
 
         return {
             "job_id": job_id,

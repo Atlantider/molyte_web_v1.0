@@ -17,15 +17,19 @@ export interface ElectrolyteSearchParams {
 export interface ElectrolyteSearchResult {
   job_id: number;
   job_name?: string;
+  user_note?: string;  // 用户备注
   system_id: number;
   system_name: string;
-  cations: Array<{ name: string; number: number; smiles?: string }>;
-  anions: Array<{ name: string; number: number; smiles?: string }>;
-  solvents: Array<{ name: string; number: number; smiles: string }>;
+  cations: Array<{ name: string; number: number; smiles?: string; concentration?: number }>;
+  anions: Array<{ name: string; number: number; smiles?: string; concentration?: number }>;
+  solvents: Array<{ name: string; number: number; smiles: string; concentration?: number }>;
   temperature: number;
   pressure: number;
   density?: number;
   concentration?: number;
+  // 计算方式
+  charge_method?: 'ligpargen' | 'resp';  // 电荷计算方式
+  qc_enabled?: boolean;  // 是否有QC计算
   created_at: string;
   finished_at: string;
   has_rdf: boolean;

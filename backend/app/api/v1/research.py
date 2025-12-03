@@ -169,18 +169,48 @@ def _search_electrolytes_impl(
             # 确定是否显示用户信息
             show_user_info = is_own_data or is_admin or not is_anonymous
 
+            # 优先使用 job.config 中保存的 system_snapshot（创建任务时的配方快照）
+            # 这样可以避免后续修改配方影响历史任务的显示
+            snapshot = job.config.get("system_snapshot") if job.config else None
+
+            # 从快照或当前系统数据中获取配方信息
+            if snapshot:
+                system_name = snapshot.get("name", system.name)
+                cations = snapshot.get("cations", system.cations)
+                anions = snapshot.get("anions", system.anions)
+                solvents = snapshot.get("solvents", system.solvents)
+                temperature = snapshot.get("temperature", system.temperature)
+                pressure = snapshot.get("pressure", system.pressure)
+            else:
+                # 兼容旧任务（没有快照的情况）
+                system_name = system.name
+                cations = system.cations
+                anions = system.anions
+                solvents = system.solvents
+                temperature = system.temperature
+                pressure = system.pressure
+
+            # 获取任务配置中的额外信息
+            charge_method = job.config.get("charge_method") if job.config else None
+            qc_enabled = job.config.get("qc_enabled", False) if job.config else False
+            user_note = job.config.get("user_note") if job.config else None
+
             item = {
                 "job_id": job.id,
                 "job_name": job.config.get("job_name") if job.config else None,
+                "user_note": user_note,  # 用户备注
                 "system_id": system.id,
-                "system_name": system.name,
-                "cations": system.cations,
-                "anions": system.anions,
-                "solvents": system.solvents,
-                "temperature": system.temperature,
-                "pressure": system.pressure,
+                "system_name": system_name,
+                "cations": cations,
+                "anions": anions,
+                "solvents": solvents,
+                "temperature": temperature,
+                "pressure": pressure,
                 "density": system.density,
                 "concentration": system.concentration,
+                # 任务配置信息
+                "charge_method": charge_method,  # 电荷计算方式
+                "qc_enabled": qc_enabled,  # 是否有QC计算
                 "created_at": job.created_at.isoformat() if job.created_at else None,
                 "finished_at": job.finished_at.isoformat() if job.finished_at else None,
                 # 分析结果统计

@@ -160,28 +160,25 @@ def _submit_job_to_cluster(job: MDJob, electrolyte: ElectrolyteSystem, db: Sessi
     logger.info(f"  Status: {job.status}")
 
 
-def generate_job_name(db: Session, electrolyte_name: str, custom_name: str = None) -> str:
+def generate_job_name(db: Session, electrolyte_system: "ElectrolyteSystem" = None, custom_name: str = None) -> str:
     """
-    Generate job name with format: MD-YYYYMMDD-全局序号-配方名-自定义名称（可选）
+    Generate job name with format: MD-YYYYMMDD-序号-离子溶剂简称
 
     Examples:
-        - Without custom name: MD-20251119-0001-EL-20251119-0001-Li-PF6-EC-DMC
-        - With custom name: MD-20251119-0001-EL-20251119-0001-Li-PF6-EC-DMC-高温测试
+        - MD-20251203-0001-Li-PF6-EC-DMC
+        - MD-20251203-0002-Li-FSI-TTE-DME
+
+    注意：custom_name 参数不再用于生成任务名，会单独保存为备注信息
 
     Args:
         db: Database session
-        electrolyte_name: Electrolyte system name
-        custom_name: Optional custom name suffix
+        electrolyte_system: ElectrolyteSystem object (used to extract ion/solvent names)
+        custom_name: Optional note (saved separately, not in job name)
 
     Returns:
         Generated job name
     """
     import re
-
-    # 清理 electrolyte_name 中的特殊字符（空格、斜杠等）
-    # 将空格和斜杠替换为连字符，移除其他特殊字符
-    clean_electrolyte_name = re.sub(r'[\s/]+', '-', electrolyte_name)
-    clean_electrolyte_name = re.sub(r'[^\w\u4e00-\u9fff-]', '', clean_electrolyte_name)
 
     today = date.today()
     date_str = today.strftime('%Y%m%d')
@@ -198,14 +195,40 @@ def generate_job_name(db: Session, electrolyte_name: str, custom_name: str = Non
     # Next sequential number (starting from 1)
     seq_number = count + 1
 
-    # Format: MD-20251119-0001-electrolyte_name[-custom_name]
-    if custom_name and custom_name.strip():
-        # 清理 custom_name 中的特殊字符
-        clean_custom_name = re.sub(r'[\s/]+', '-', custom_name.strip())
-        clean_custom_name = re.sub(r'[^\w\u4e00-\u9fff-]', '', clean_custom_name)
-        job_name = f"MD-{date_str}-{seq_number:04d}-{clean_electrolyte_name}-{clean_custom_name}"
+    # 从配方中提取离子和溶剂简称
+    formula_parts = []
+
+    if electrolyte_system:
+        # 提取阳离子名称
+        if electrolyte_system.cations:
+            for cation in electrolyte_system.cations:
+                name = cation.get("name", "")
+                if name:
+                    formula_parts.append(name)
+
+        # 提取阴离子名称
+        if electrolyte_system.anions:
+            for anion in electrolyte_system.anions:
+                name = anion.get("name", "")
+                if name:
+                    formula_parts.append(name)
+
+        # 提取溶剂名称
+        if electrolyte_system.solvents:
+            for solvent in electrolyte_system.solvents:
+                name = solvent.get("name", "")
+                if name:
+                    formula_parts.append(name)
+
+    # 生成配方简称（用连字符连接）
+    if formula_parts:
+        formula_str = "-".join(formula_parts)
+        # 清理特殊字符
+        formula_str = re.sub(r'[\s/]+', '-', formula_str)
+        formula_str = re.sub(r'[^\w\u4e00-\u9fff+-]', '', formula_str)
+        job_name = f"MD-{date_str}-{seq_number:04d}-{formula_str}"
     else:
-        job_name = f"MD-{date_str}-{seq_number:04d}-{clean_electrolyte_name}"
+        job_name = f"MD-{date_str}-{seq_number:04d}"
 
     return job_name
 
@@ -318,14 +341,16 @@ def create_md_job(
             detail=quota_check["reason"]
         )
 
-    # 生成任务名称
-    # job_data.job_name 作为自定义名称后缀（可选）
-    custom_name = job_data.job_name if job_data.job_name and job_data.job_name.strip() else None
-    job_name = generate_job_name(db, system.name, custom_name)
+    # 生成任务名称（格式：MD-日期-序号-离子溶剂简称）
+    job_name = generate_job_name(db, electrolyte_system=system)
+
+    # 用户输入的自定义名称保存为备注信息
+    user_note = job_data.job_name.strip() if job_data.job_name and job_data.job_name.strip() else None
 
     # 构建配置参数
     config = {
         "job_name": job_name,
+        "user_note": user_note,  # 用户备注（不影响任务名）
         "nsteps_npt": job_data.nsteps_npt,
         "nsteps_nvt": job_data.nsteps_nvt,
         "timestep": job_data.timestep,
@@ -356,6 +381,17 @@ def create_md_job(
         "qc_solvent_model": job_data.qc_options.solvent_model if job_data.qc_options and job_data.qc_options.enabled else None,
         "qc_solvent_name": job_data.qc_options.solvent_name if job_data.qc_options and job_data.qc_options.enabled else None,
         "qc_use_recommended_params": job_data.qc_options.use_recommended_params if job_data.qc_options and job_data.qc_options.enabled else None,
+        # 配方快照数据（保存创建任务时的配方状态，避免后续修改配方影响历史任务显示）
+        "system_snapshot": {
+            "name": system.name,
+            "cations": system.cations,
+            "anions": system.anions,
+            "solvents": system.solvents,
+            "box_size": system.box_size,
+            "temperature": system.temperature,
+            "pressure": system.pressure,
+            "force_field": system.force_field,
+        }
     }
 
     # 应用精度等级配置
@@ -2749,19 +2785,30 @@ def refresh_solvation_structures(
     if not job.work_dir:
         raise HTTPException(status_code=400, detail="Job work directory not found")
 
-    # 获取电解液配置
-    electrolyte = db.query(ElectrolyteSystem).filter(
-        ElectrolyteSystem.id == job.system_id
-    ).first()
+    # 优先使用 job.config 中保存的 system_snapshot（创建任务时的配方快照）
+    # 这样可以确保分析使用的是创建任务时的配方，而不是后续修改后的配方
+    snapshot = job.config.get("system_snapshot") if job.config else None
 
-    if not electrolyte:
-        raise HTTPException(status_code=404, detail="Electrolyte system not found")
+    if snapshot:
+        electrolyte_data = {
+            "cations": snapshot.get("cations"),
+            "anions": snapshot.get("anions"),
+            "solvents": snapshot.get("solvents"),
+        }
+    else:
+        # 兼容旧任务（没有快照的情况），从 ElectrolyteSystem 表读取
+        electrolyte = db.query(ElectrolyteSystem).filter(
+            ElectrolyteSystem.id == job.system_id
+        ).first()
 
-    electrolyte_data = {
-        "cations": electrolyte.cations,
-        "anions": electrolyte.anions,
-        "solvents": electrolyte.solvents,
-    }
+        if not electrolyte:
+            raise HTTPException(status_code=404, detail="Electrolyte system not found")
+
+        electrolyte_data = {
+            "cations": electrolyte.cations,
+            "anions": electrolyte.anions,
+            "solvents": electrolyte.solvents,
+        }
 
     try:
         # 执行溶剂化分析

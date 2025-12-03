@@ -44,6 +44,21 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
   const [structureInfo, setStructureInfo] = useState<StructureInfo | null>(null);
   const [loadingStructure, setLoadingStructure] = useState(false);
 
+  // 优先使用任务创建时的配方快照，如果没有则使用当前配方数据
+  // 这样可以避免修改配方后影响历史任务的显示
+  const systemSnapshot = job.config?.system_snapshot;
+  const displayElectrolyte = systemSnapshot ? {
+    ...electrolyte,
+    name: systemSnapshot.name || electrolyte.name,
+    cations: systemSnapshot.cations || electrolyte.cations,
+    anions: systemSnapshot.anions || electrolyte.anions,
+    solvents: systemSnapshot.solvents || electrolyte.solvents,
+    box_size: systemSnapshot.box_size !== undefined ? systemSnapshot.box_size : electrolyte.box_size,
+    temperature: systemSnapshot.temperature || electrolyte.temperature,
+    pressure: systemSnapshot.pressure || electrolyte.pressure,
+    force_field: systemSnapshot.force_field || electrolyte.force_field,
+  } : electrolyte;
+
   // 调试信息
   useEffect(() => {
     console.log('=== JobBasicInfo Debug ===');
@@ -51,8 +66,10 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
     console.log('job.started_at:', job.started_at);
     console.log('job.finished_at:', job.finished_at);
     console.log('slurmStatus:', slurmStatus);
-    console.log('electrolyte:', electrolyte);
-  }, [job, slurmStatus, electrolyte]);
+    console.log('electrolyte (current):', electrolyte);
+    console.log('systemSnapshot:', systemSnapshot);
+    console.log('displayElectrolyte (used for display):', displayElectrolyte);
+  }, [job, slurmStatus, electrolyte, systemSnapshot, displayElectrolyte]);
 
   // 加载结构信息
   useEffect(() => {
@@ -181,6 +198,11 @@ export default function JobBasicInfo({ job, electrolyte, slurmStatus }: JobBasic
                   <Descriptions.Item label="任务名称">
                     <Text strong>{job.config?.job_name || '-'}</Text>
                   </Descriptions.Item>
+                  {job.config?.user_note && (
+                    <Descriptions.Item label="备注">
+                      <Text type="secondary">{job.config.user_note}</Text>
+                    </Descriptions.Item>
+                  )}
                   <Descriptions.Item label="Slurm Job ID">
                     <Text code>{job.slurm_job_id || job.config?.slurm_job_id || '-'}</Text>
                   </Descriptions.Item>

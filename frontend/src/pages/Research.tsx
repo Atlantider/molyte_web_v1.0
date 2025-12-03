@@ -60,10 +60,12 @@ export default function Research() {
   const [solventOptions, setSolventOptions] = useState<string[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(false);
 
-  // 加载统计数据和可用选项
+  // 加载统计数据、可用选项，并自动执行初始搜索
   useEffect(() => {
     loadStats();
     loadAvailableOptions();
+    // 页面加载时自动搜索显示所有数据
+    handleSearch({});
   }, []);
 
   const loadStats = async () => {
@@ -147,27 +149,42 @@ export default function Research() {
   // 表格列定义
   const columns = [
     {
-      title: '任务 ID',
-      dataIndex: 'job_id',
-      key: 'job_id',
-      width: 100,
-      render: (id: number) => <Text strong>#{id}</Text>,
+      title: '任务名称',
+      dataIndex: 'job_name',
+      key: 'job_name',
+      width: 220,
+      render: (name: string, record: ElectrolyteSearchResult) => (
+        <div>
+          <Text strong style={{ fontSize: 13 }}>{name || `#${record.job_id}`}</Text>
+          {record.user_note && (
+            <div>
+              <Text type="secondary" style={{ fontSize: 11 }}>备注: {record.user_note}</Text>
+            </div>
+          )}
+        </div>
+      ),
     },
     {
-      title: '配方名称',
+      title: '配方',
       dataIndex: 'system_name',
       key: 'system_name',
-      width: 200,
+      width: 180,
+      ellipsis: true,
+      render: (name: string) => (
+        <Tooltip title={name}>
+          <Text style={{ fontSize: 12 }}>{name}</Text>
+        </Tooltip>
+      ),
     },
     {
       title: '阳离子',
       dataIndex: 'cations',
       key: 'cations',
-      width: 150,
+      width: 120,
       render: (cations: any[]) => (
         <Space size={[0, 4]} wrap>
-          {cations.map((c, i) => (
-            <Tag key={i} color="red">
+          {cations?.map((c, i) => (
+            <Tag key={i} color="red" style={{ fontSize: 11, margin: 1 }}>
               {c.name} ({c.number})
             </Tag>
           ))}
@@ -178,11 +195,11 @@ export default function Research() {
       title: '阴离子',
       dataIndex: 'anions',
       key: 'anions',
-      width: 150,
+      width: 120,
       render: (anions: any[]) => (
         <Space size={[0, 4]} wrap>
-          {anions.map((a, i) => (
-            <Tag key={i} color="blue">
+          {anions?.map((a, i) => (
+            <Tag key={i} color="blue" style={{ fontSize: 11, margin: 1 }}>
               {a.name} ({a.number})
             </Tag>
           ))}
@@ -196,8 +213,8 @@ export default function Research() {
       width: 150,
       render: (solvents: any[]) => (
         <Space size={[0, 4]} wrap>
-          {solvents.map((s, i) => (
-            <Tag key={i} color="green">
+          {solvents?.map((s, i) => (
+            <Tag key={i} color="green" style={{ fontSize: 11, margin: 1 }}>
               {s.name} ({s.number})
             </Tag>
           ))}
@@ -205,21 +222,68 @@ export default function Research() {
       ),
     },
     {
-      title: '温度 (K)',
+      title: '浓度',
+      key: 'concentration',
+      width: 120,
+      render: (_: any, record: ElectrolyteSearchResult) => {
+        // 显示每种阳离子的浓度
+        const cationConcs = record.cations
+          ?.filter(c => c.concentration !== undefined && c.concentration !== null)
+          .map(c => `${c.name}: ${c.concentration} M`);
+
+        if (cationConcs && cationConcs.length > 0) {
+          return (
+            <Space direction="vertical" size={0}>
+              {cationConcs.map((text, i) => (
+                <Text key={i} style={{ fontSize: 12 }}>{text}</Text>
+              ))}
+            </Space>
+          );
+        }
+        return <Text type="secondary">-</Text>;
+      },
+    },
+    {
+      title: '计算方式',
+      key: 'calc_method',
+      width: 120,
+      render: (_: any, record: ElectrolyteSearchResult) => (
+        <Space size={[0, 4]} wrap>
+          {record.charge_method && (
+            <Tooltip title={record.charge_method === 'resp' ? 'RESP 高精度电荷' : 'LigParGen 快速电荷'}>
+              <Tag
+                color={record.charge_method === 'resp' ? 'gold' : 'blue'}
+                style={{ fontSize: 11, margin: 1 }}
+              >
+                {record.charge_method === 'resp' ? 'RESP' : 'LPG'}
+              </Tag>
+            </Tooltip>
+          )}
+          {record.qc_enabled && (
+            <Tooltip title="包含QC量子化学计算">
+              <Tag color="purple" style={{ fontSize: 11, margin: 1 }}>QC</Tag>
+            </Tooltip>
+          )}
+          {!record.charge_method && !record.qc_enabled && <Text type="secondary">-</Text>}
+        </Space>
+      ),
+    },
+    {
+      title: '温度',
       dataIndex: 'temperature',
       key: 'temperature',
-      width: 100,
-      render: (temp: number) => temp?.toFixed(1) || '-',
+      width: 70,
+      render: (temp: number) => temp ? `${temp.toFixed(0)} K` : '-',
     },
     {
       title: '分析结果',
       key: 'analysis',
-      width: 150,
+      width: 140,
       render: (_: any, record: ElectrolyteSearchResult) => (
         <Space size={[0, 4]} wrap>
-          {record.has_rdf && <Tag color="success">RDF</Tag>}
-          {record.has_msd && <Tag color="processing">MSD</Tag>}
-          {record.has_solvation && <Tag color="warning">溶剂化</Tag>}
+          {record.has_rdf && <Tag color="success" style={{ fontSize: 11, margin: 1 }}>RDF</Tag>}
+          {record.has_msd && <Tag color="processing" style={{ fontSize: 11, margin: 1 }}>MSD</Tag>}
+          {record.has_solvation && <Tag color="warning" style={{ fontSize: 11, margin: 1 }}>溶剂化</Tag>}
         </Space>
       ),
     },
