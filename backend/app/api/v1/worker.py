@@ -178,14 +178,14 @@ async def get_worker_partitions(
 
 @router.get("/jobs/pending", response_model=List[PendingJobResponse])
 async def get_pending_jobs(
-    job_type: str = "MD",  # MD or QC
+    job_type: str = "MD",  # MD, QC, or POSTPROCESS
     limit: int = 10,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     获取待处理的任务
-    
+
     Worker 轮询此接口获取新任务
     """
     # 验证是否是 Worker 用户（ADMIN 角色）
@@ -194,7 +194,7 @@ async def get_pending_jobs(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only worker users can fetch pending jobs"
         )
-    
+
     job_type = job_type.upper()
     
     if job_type == "MD":
@@ -269,7 +269,29 @@ async def get_pending_jobs(
             )
             for job in jobs
         ]
-    
+
+    elif job_type == "POSTPROCESS":
+        # 获取 SUBMITTED 状态的后处理任务（包括去溶剂化能计算）
+        from app.models.job import PostprocessJob, PostprocessType
+
+        jobs = db.query(PostprocessJob).filter(
+            PostprocessJob.status == JobStatus.SUBMITTED
+        ).order_by(PostprocessJob.created_at).limit(limit).all()
+
+        return [
+            PendingJobResponse(
+                id=job.id,
+                type=f"POSTPROCESS_{job.job_type.value}",
+                config={
+                    "job_type": job.job_type.value,
+                    "md_job_id": job.md_job_id,
+                    **(job.config or {}),
+                },
+                created_at=job.created_at
+            )
+            for job in jobs
+        ]
+
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -168,3 +168,41 @@ class SolvationStructure(Base):
     def __repr__(self):
         return f"<SolvationStructure(id={self.id}, center_ion={self.center_ion}, cn={self.coordination_num})>"
 
+
+class DesolvationEnergyResult(Base):
+    """Desolvation energy calculation result model - 去溶剂化能计算结果模型"""
+    __tablename__ = "desolvation_energy_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    postprocess_job_id = Column(Integer, ForeignKey("postprocess_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    solvation_structure_id = Column(Integer, ForeignKey("solvation_structures.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # 计算参数
+    method_level = Column(String(50), default="fast_xtb")  # fast_xtb, standard, accurate
+    basis_set = Column(String(50))
+    functional = Column(String(50))
+
+    # 完整簇能量
+    e_cluster = Column(Float)  # A.U.
+
+    # 每个配体的结果 (JSON)
+    per_ligand_results = Column(JSONB)  # [{ligand_id, ligand_type, ligand_label, e_ligand, e_cluster_minus, delta_e}]
+
+    # 按类型汇总 (JSON)
+    per_type_summary = Column(JSONB)  # {ligand_type: {avg_delta_e, std_delta_e, count}}
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    postprocess_job = relationship("PostprocessJob", back_populates="desolvation_energy_result")
+    solvation_structure = relationship("SolvationStructure")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_desolvation_postprocess_job_id', 'postprocess_job_id'),
+        Index('idx_desolvation_solvation_structure_id', 'solvation_structure_id'),
+    )
+
+    def __repr__(self):
+        return f"<DesolvationEnergyResult(id={self.id}, method={self.method_level}, e_cluster={self.e_cluster})>"
+

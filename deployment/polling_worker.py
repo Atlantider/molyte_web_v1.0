@@ -356,14 +356,21 @@ class PollingWorker:
                 if len(self.running_jobs) >= self.config['worker']['max_concurrent_jobs']:
                     break
                 self._process_md_job(job)
-            
+
             # 获取待处理的 QC 任务
             qc_jobs = self._fetch_pending_jobs('qc')
             for job in qc_jobs:
                 if len(self.running_jobs) >= self.config['worker']['max_concurrent_jobs']:
                     break
                 self._process_qc_job(job)
-                
+
+            # 获取待处理的后处理任务（包括去溶剂化能计算）
+            postprocess_jobs = self._fetch_pending_jobs('postprocess')
+            for job in postprocess_jobs:
+                if len(self.running_jobs) >= self.config['worker']['max_concurrent_jobs']:
+                    break
+                self._process_postprocess_job(job)
+
         except Exception as e:
             self.logger.error(f"获取新任务失败: {e}", exc_info=True)
     
@@ -730,6 +737,57 @@ class PollingWorker:
         except Exception as e:
             self.logger.error(f"处理 QC 任务 {job_id} 失败: {e}", exc_info=True)
             self._update_job_status(job_id, 'FAILED', 'qc', error_message=str(e))
+
+    def _process_postprocess_job(self, job: Dict):
+        """处理后处理任务（包括去溶剂化能计算）"""
+        job_id = job['id']
+        config = job.get('config', {})
+        job_type = config.get('job_type', 'UNKNOWN')
+
+        self.logger.info(f"开始处理后处理任务 {job_id} (类型: {job_type})")
+
+        try:
+            # 1. 更新任务状态为 QUEUED
+            self._update_job_status(job_id, 'QUEUED', 'postprocess')
+
+            # 2. 根据任务类型分发处理
+            if job_type == 'DESOLVATION_ENERGY':
+                self._process_desolvation_energy_job(job_id, config)
+            else:
+                raise ValueError(f"Unknown postprocess job type: {job_type}")
+
+        except Exception as e:
+            self.logger.error(f"处理后处理任务 {job_id} 失败: {e}", exc_info=True)
+            self._update_job_status(job_id, 'FAILED', 'postprocess', error_message=str(e))
+
+    def _process_desolvation_energy_job(self, job_id: int, config: Dict):
+        """处理去溶剂化能计算任务"""
+        self.logger.info(f"开始去溶剂化能计算任务 {job_id}")
+
+        # 导入任务处理函数
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent / 'backend'))
+
+        from app.database import SessionLocal
+        from app.models.job import PostprocessJob
+        from app.tasks.desolvation import run_desolvation_job
+
+        # 执行任务
+        db = SessionLocal()
+        try:
+            job_obj = db.query(PostprocessJob).filter(PostprocessJob.id == job_id).first()
+
+            if not job_obj:
+                raise ValueError(f"Postprocess job {job_id} not found")
+
+            result = run_desolvation_job(job_obj, db)
+
+            if result['success']:
+                self.logger.info(f"去溶剂化能任务 {job_id} 完成")
+            else:
+                self.logger.error(f"去溶剂化能任务 {job_id} 失败: {result.get('error')}")
+        finally:
+            db.close()
 
     def _sanitize_filename(self, name: str) -> str:
         """清理文件名，去除不安全字符"""

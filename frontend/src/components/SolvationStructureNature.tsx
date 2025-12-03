@@ -52,6 +52,7 @@ import {
   type SystemStructure,
   type SolvationStructureContent,
 } from '../api/jobs';
+import DesolvationAnalysisPanel from './DesolvationAnalysisPanel';
 
 const { Text } = Typography;
 
@@ -1527,6 +1528,14 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
             </div>
           )}
         </Card>
+      </div>
+
+      {/* 去溶剂化能分析面板 */}
+      <div style={{ marginTop: DASHBOARD_STYLES.gutter }}>
+        <DesolvationAnalysisPanel
+          jobId={jobId}
+          clusterId={selectedStructureId || undefined}
+        />
       </div>
 
     </div>

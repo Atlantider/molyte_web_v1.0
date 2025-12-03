@@ -40,6 +40,7 @@ class PostprocessType(str, enum.Enum):
     RDF = "RDF"
     MSD = "MSD"
     SOLVATION = "SOLVATION"
+    DESOLVATION_ENERGY = "DESOLVATION_ENERGY"
 
 
 class RESPJobStatus(str, enum.Enum):
@@ -171,7 +172,8 @@ class PostprocessJob(Base):
     
     # Relationships
     md_job = relationship("MDJob", back_populates="postprocess_jobs")
-    
+    desolvation_energy_result = relationship("DesolvationEnergyResult", back_populates="postprocess_job", uselist=False)
+
     # Indexes
     __table_args__ = (
         Index('idx_postprocess_md_job_id', 'md_job_id'),
