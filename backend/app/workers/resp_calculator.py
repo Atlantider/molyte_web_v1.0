@@ -110,12 +110,17 @@ export g16root=/public/software
 export GAUSS_SCRDIR=/public/software/g16/scratch
 source /public/software/g16/bsd/g16.profile
 
-# 设置 Multiwfn 环境
+# 设置 Multiwfn 环境 - 确保使用正确的版本
+# 首先从 PATH 中移除可能存在的旧 Multiwfn 路径
+export PATH=$(echo $PATH | tr ':' '\\n' | grep -v -i multiwfn | tr '\\n' ':' | sed 's/:$//')
 export Multiwfnpath=/public/software/Multiwfn_3.8_dev_bin_Linux
 export PATH=$Multiwfnpath:$PATH
 export OMP_STACKSIZE=200M
 export LD_LIBRARY_PATH=/lib64:/usr/lib64:$LD_LIBRARY_PATH
 ulimit -s unlimited
+
+# 验证 Multiwfn 路径
+echo "Using Multiwfn: $(which Multiwfn)"
 
 # 运行 RESP2 计算
 echo "Running RESP2.sh..."
