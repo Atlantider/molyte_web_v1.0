@@ -143,8 +143,13 @@ class PollingWorker:
                 self._check_running_jobs()
 
                 # 获取新任务
-                if len(self.running_jobs) < self.config['worker']['max_concurrent_jobs']:
+                max_jobs = self.config['worker']['max_concurrent_jobs']
+                current_jobs = len(self.running_jobs)
+                if current_jobs < max_jobs:
                     self._fetch_and_process_new_jobs()
+                else:
+                    self.logger.info(f"当前运行任务数 ({current_jobs}) 已达到最大并发数 ({max_jobs})，跳过拉取新任务")
+                    self.logger.debug(f"运行中的任务: {list(self.running_jobs.keys())}")
 
                 # 等待下一次轮询
                 time.sleep(self.config['api']['poll_interval'])
@@ -1219,6 +1224,13 @@ echo "QC calculation completed"
                     completed_jobs.append(job_id)
                     continue
 
+                # 获取当前任务在 API 中的状态，防止已完成的任务被重新标记为 CANCELLED
+                current_api_status = self._get_job_api_status(job_id, actual_type)
+                if current_api_status in ['COMPLETED', 'FAILED']:
+                    self.logger.info(f"任务 {job_id} 已是 {current_api_status} 状态，跳过状态检查")
+                    completed_jobs.append(job_id)
+                    continue
+
                 status = self._check_slurm_status(slurm_job_id)
 
                 if status == 'QUEUED':
@@ -1307,6 +1319,29 @@ echo "QC calculation completed"
             self.logger.error(f"检查 RESP 状态失败: {e}", exc_info=True)
             self._update_job_status(job_id, 'FAILED', 'md', error_message=f"RESP check failed: {e}")
             completed_jobs.append(job_id)
+
+    def _get_job_api_status(self, job_id: int, job_type: str) -> str:
+        """获取任务在 API 中的当前状态"""
+        try:
+            endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/check_cancelled"
+            params = {'job_type': job_type.upper()}
+
+            response = requests.get(
+                endpoint,
+                headers=self.api_headers,
+                params=params,
+                timeout=self.config['api']['timeout']
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('status', 'UNKNOWN')
+
+            return 'UNKNOWN'
+
+        except Exception as e:
+            self.logger.warning(f"获取任务 {job_id} API 状态失败: {e}")
+            return 'UNKNOWN'
 
     def _check_if_cancelled(self, job_id: int, job_type: str) -> bool:
         """检查任务是否被用户取消或删除（通过 API 查询）"""

@@ -328,6 +328,11 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
                 case JobStatus.FAILED:
                   return { percent: 100, status: 'exception' as const, text: '失败' };
                 case JobStatus.CANCELLED:
+                  // 防止已完成的任务显示"已取消"
+                  // 如果进度是 100%，说明任务实际上已完成，不应该显示为取消
+                  if (job.progress === 100) {
+                    return { percent: 100, status: 'success' as const, text: '已完成' };
+                  }
                   return { percent: job.progress || 0, status: 'exception' as const, text: '已取消' };
                 default:
                   return { percent: 0, status: 'normal' as const, text: '' };
