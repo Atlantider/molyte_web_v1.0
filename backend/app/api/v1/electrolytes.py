@@ -337,7 +337,17 @@ def list_electrolytes(
     """
     from sqlalchemy import or_
 
-    query = db.query(ElectrolyteSystem)
+    # 管理员可以看到所有配方，普通用户只能看到自己的配方
+    if current_user.role == UserRole.ADMIN:
+        # 管理员：使用 join 查询，获取用户信息
+        query = db.query(ElectrolyteSystem, User).join(
+            Project, ElectrolyteSystem.project_id == Project.id
+        ).join(
+            User, Project.user_id == User.id
+        )
+    else:
+        # 普通用户：只查询自己的配方
+        query = db.query(ElectrolyteSystem)
 
     # Filter by project if specified
     if project_id:
@@ -354,7 +364,10 @@ def list_electrolytes(
                 detail="Not enough permissions"
             )
 
-        query = query.filter(ElectrolyteSystem.project_id == project_id)
+        if current_user.role == UserRole.ADMIN:
+            query = query.filter(ElectrolyteSystem.project_id == project_id)
+        else:
+            query = query.filter(ElectrolyteSystem.project_id == project_id)
     else:
         # Show only user's electrolytes unless admin
         if current_user.role != UserRole.ADMIN:
@@ -365,10 +378,42 @@ def list_electrolytes(
     # 已删除的配方会从数据库中移除
 
     # Order by created_at descending (newest first)
-    query = query.order_by(ElectrolyteSystem.created_at.desc())
+    if current_user.role == UserRole.ADMIN:
+        query = query.order_by(ElectrolyteSystem.created_at.desc())
+        results = query.offset(skip).limit(limit).all()
 
-    electrolytes = query.offset(skip).limit(limit).all()
-    return electrolytes
+        # 为管理员添加用户信息
+        electrolyte_list = []
+        for electrolyte, user in results:
+            electrolyte_dict = {
+                "id": electrolyte.id,
+                "project_id": electrolyte.project_id,
+                "name": electrolyte.name,
+                "cations": electrolyte.cations,
+                "anions": electrolyte.anions,
+                "solvents": electrolyte.solvents,
+                "temperature": electrolyte.temperature,
+                "pressure": electrolyte.pressure,
+                "density": electrolyte.density,
+                "concentration": electrolyte.concentration,
+                "box_size": electrolyte.box_size,
+                "nsteps_npt": electrolyte.nsteps_npt,
+                "nsteps_nvt": electrolyte.nsteps_nvt,
+                "timestep": electrolyte.timestep,
+                "force_field": electrolyte.force_field,
+                "hash_key": electrolyte.hash_key,
+                "created_at": electrolyte.created_at,
+                # 添加用户信息（仅管理员可见）
+                "username": user.username,
+                "user_email": user.email,
+            }
+            electrolyte_list.append(electrolyte_dict)
+        return electrolyte_list
+    else:
+        # 普通用户：直接返回配方列表
+        query = query.order_by(ElectrolyteSystem.created_at.desc())
+        electrolytes = query.offset(skip).limit(limit).all()
+        return electrolytes
 
 
 @router.get("/{electrolyte_id}", response_model=ElectrolyteSchema)

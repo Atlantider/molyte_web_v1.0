@@ -152,6 +152,9 @@ export interface ElectrolyteSystem {
     anions: MoleculeSpec[];
     solvents: MoleculeSpec[];
   };
+  // 用户信息（仅管理员可见）
+  username?: string;
+  user_email?: string;
 }
 
 // 创建电解质系统请求
@@ -225,6 +228,9 @@ export interface MDJob {
     freq_trj_npt?: number;
     freq_trj_nvt?: number;
     thermo_freq?: number;
+    // 精度和电荷计算配置
+    accuracy_level?: AccuracyLevel;
+    charge_method?: 'ligpargen' | 'resp';
     // Slurm 资源配置
     slurm_partition?: string;
     slurm_nodes?: number;

@@ -1,10 +1,12 @@
 /**
  * 电解质配方卡片组件
  */
-import { Card, Space, Button, Popconfirm, Typography, Tag, Descriptions } from 'antd';
+import { Card, Space, Button, Popconfirm, Typography, Tag, Descriptions, Tooltip } from 'antd';
 import { EditOutlined, DeleteOutlined, ExperimentOutlined, ThunderboltOutlined, CheckCircleOutlined, SyncOutlined, CloseCircleOutlined, CopyOutlined, CalendarOutlined } from '@ant-design/icons';
 import type { ElectrolyteSystem, MDJob, JobStatus } from '../types';
+import { UserRole } from '../types';
 import dayjs from 'dayjs';
+import { useAuthStore } from '../stores/authStore';
 
 const { Text } = Typography;
 
@@ -25,6 +27,8 @@ export default function ElectrolyteCard({
   onDelete,
   onCreateJob,
 }: ElectrolyteCardProps) {
+  const { user } = useAuthStore();
+
   // 解析组成信息（兼容新旧格式）
   const cations = electrolyte.cations || electrolyte.composition?.cations || [];
   const anions = electrolyte.anions || electrolyte.composition?.anions || [];
@@ -145,8 +149,16 @@ export default function ElectrolyteCard({
             {electrolyte.name}
           </Text>
 
-          <div style={{ marginBottom: 12 }}>
-            <Tag color="cyan" style={{ marginBottom: 4 }}>{electrolyte.temperature} K</Tag>
+          <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+            <Tag color="cyan" style={{ margin: 0 }}>{electrolyte.temperature} K</Tag>
+            {/* 管理员可见：提交用户 */}
+            {user?.role === UserRole.ADMIN && electrolyte.username && (
+              <Tooltip title={`提交用户: ${electrolyte.user_email || '未知邮箱'}`}>
+                <Tag color="purple" style={{ margin: 0 }}>
+                  👤 {electrolyte.username}
+                </Tag>
+              </Tooltip>
+            )}
           </div>
 
           <div style={{ marginBottom: 8 }}>

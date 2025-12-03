@@ -114,5 +114,6 @@ class ElectrolyteInDB(ElectrolyteBase):
 
 class Electrolyte(ElectrolyteInDB):
     """Electrolyte system response schema"""
-    pass
+    username: Optional[str] = None  # 用户名，用于管理端显示
+    user_email: Optional[str] = None  # 用户邮箱，用于管理端显示
 

@@ -15,10 +15,11 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import type { MDJob, ElectrolyteSystem, MDJobCreate } from '../types';
-import { JobStatus } from '../types';
+import { JobStatus, UserRole } from '../types';
 import StatusTag from './StatusTag';
 import dayjs from 'dayjs';
 import { createMDJob } from '../api/jobs';
+import { useAuthStore } from '../stores/authStore';
 
 const { Text } = Typography;
 
@@ -32,6 +33,7 @@ interface JobCardProps {
 
 export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDelete }: JobCardProps) {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
 
   // 判断是否可以取消（只有已提交到集群的任务才能取消）
   const canCancel = job.status === JobStatus.QUEUED || job.status === JobStatus.RUNNING;
@@ -234,21 +236,43 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
             <StatusTag status={job.status} />
           </div>
 
-          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Text type="secondary" style={{ fontSize: 12 }}>任务 ID: #{job.id}</Text>
             {job.slurm_job_id && (
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Slurm: {job.slurm_job_id}
               </Text>
             )}
+            {/* 显示电荷计算方式 */}
+            {job.config?.charge_method && (
+              <Tooltip title={job.config.charge_method === 'resp' ? 'RESP 高精度电荷计算' : 'LigParGen 快速电荷计算'}>
+                <Tag
+                  color={job.config.charge_method === 'resp' ? 'gold' : 'blue'}
+                  style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px', margin: 0 }}
+                >
+                  {job.config.charge_method === 'resp' ? 'RESP' : 'LigParGen'}
+                </Tag>
+              </Tooltip>
+            )}
             {job.config?.qc_enabled && (
               <Tooltip title={`QC计算: ${job.config.qc_functional || 'B3LYP'}/${job.config.qc_basis_set || '6-31++G(d,p)'}`}>
                 <Tag
                   color="purple"
-                  style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px', marginLeft: 4 }}
+                  style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px', margin: 0 }}
                   icon={<ExperimentOutlined />}
                 >
                   QC
+                </Tag>
+              </Tooltip>
+            )}
+            {/* 管理员可见：提交用户 */}
+            {user?.role === UserRole.ADMIN && job.username && (
+              <Tooltip title={`提交用户: ${job.user_email || '未知邮箱'}`}>
+                <Tag
+                  color="cyan"
+                  style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px', margin: 0 }}
+                >
+                  👤 {job.username}
                 </Tag>
               </Tooltip>
             )}
