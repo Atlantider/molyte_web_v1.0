@@ -152,13 +152,15 @@ export default function Research() {
       title: '任务名称',
       dataIndex: 'job_name',
       key: 'job_name',
-      width: 220,
+      width: 200,
       render: (name: string, record: ElectrolyteSearchResult) => (
-        <div>
-          <Text strong style={{ fontSize: 13 }}>{name || `#${record.job_id}`}</Text>
+        <div style={{ lineHeight: 1.4 }}>
+          <Text strong style={{ fontSize: 12, wordBreak: 'break-all' }}>
+            {name || `#${record.job_id}`}
+          </Text>
           {record.user_note && (
-            <div>
-              <Text type="secondary" style={{ fontSize: 11 }}>备注: {record.user_note}</Text>
+            <div style={{ marginTop: 2 }}>
+              <Text type="secondary" style={{ fontSize: 11 }}>📝 {record.user_note}</Text>
             </div>
           )}
         </div>
@@ -169,22 +171,21 @@ export default function Research() {
       dataIndex: 'system_name',
       key: 'system_name',
       width: 180,
-      ellipsis: true,
       render: (name: string) => (
-        <Tooltip title={name}>
-          <Text style={{ fontSize: 12 }}>{name}</Text>
-        </Tooltip>
+        <Text style={{ fontSize: 12, wordBreak: 'break-all', lineHeight: 1.4 }}>
+          {name}
+        </Text>
       ),
     },
     {
       title: '阳离子',
       dataIndex: 'cations',
       key: 'cations',
-      width: 120,
+      width: 100,
       render: (cations: any[]) => (
-        <Space size={[0, 4]} wrap>
+        <Space direction="vertical" size={2}>
           {cations?.map((c, i) => (
-            <Tag key={i} color="red" style={{ fontSize: 11, margin: 1 }}>
+            <Tag key={i} color="red" style={{ fontSize: 11, margin: 0 }}>
               {c.name} ({c.number})
             </Tag>
           ))}
@@ -195,11 +196,11 @@ export default function Research() {
       title: '阴离子',
       dataIndex: 'anions',
       key: 'anions',
-      width: 120,
+      width: 100,
       render: (anions: any[]) => (
-        <Space size={[0, 4]} wrap>
+        <Space direction="vertical" size={2}>
           {anions?.map((a, i) => (
-            <Tag key={i} color="blue" style={{ fontSize: 11, margin: 1 }}>
+            <Tag key={i} color="orange" style={{ fontSize: 11, margin: 0 }}>
               {a.name} ({a.number})
             </Tag>
           ))}
@@ -210,11 +211,11 @@ export default function Research() {
       title: '溶剂',
       dataIndex: 'solvents',
       key: 'solvents',
-      width: 150,
+      width: 100,
       render: (solvents: any[]) => (
-        <Space size={[0, 4]} wrap>
+        <Space direction="vertical" size={2}>
           {solvents?.map((s, i) => (
-            <Tag key={i} color="green" style={{ fontSize: 11, margin: 1 }}>
+            <Tag key={i} color="green" style={{ fontSize: 11, margin: 0 }}>
               {s.name} ({s.number})
             </Tag>
           ))}
@@ -224,18 +225,16 @@ export default function Research() {
     {
       title: '浓度',
       key: 'concentration',
-      width: 120,
+      width: 80,
       render: (_: any, record: ElectrolyteSearchResult) => {
-        // 显示每种阳离子的浓度
         const cationConcs = record.cations
           ?.filter(c => c.concentration !== undefined && c.concentration !== null)
-          .map(c => `${c.name}: ${c.concentration} M`);
-
+          .map(c => `${c.name}: ${c.concentration}M`);
         if (cationConcs && cationConcs.length > 0) {
           return (
             <Space direction="vertical" size={0}>
               {cationConcs.map((text, i) => (
-                <Text key={i} style={{ fontSize: 12 }}>{text}</Text>
+                <Text key={i} style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{text}</Text>
               ))}
             </Space>
           );
@@ -244,24 +243,21 @@ export default function Research() {
       },
     },
     {
-      title: '计算方式',
+      title: '计算',
       key: 'calc_method',
-      width: 120,
+      width: 70,
       render: (_: any, record: ElectrolyteSearchResult) => (
-        <Space size={[0, 4]} wrap>
+        <Space direction="vertical" size={2}>
           {record.charge_method && (
             <Tooltip title={record.charge_method === 'resp' ? 'RESP 高精度电荷' : 'LigParGen 快速电荷'}>
-              <Tag
-                color={record.charge_method === 'resp' ? 'gold' : 'blue'}
-                style={{ fontSize: 11, margin: 1 }}
-              >
+              <Tag color={record.charge_method === 'resp' ? 'gold' : 'cyan'} style={{ fontSize: 10, margin: 0 }}>
                 {record.charge_method === 'resp' ? 'RESP' : 'LPG'}
               </Tag>
             </Tooltip>
           )}
           {record.qc_enabled && (
             <Tooltip title="包含QC量子化学计算">
-              <Tag color="purple" style={{ fontSize: 11, margin: 1 }}>QC</Tag>
+              <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>QC</Tag>
             </Tooltip>
           )}
           {!record.charge_method && !record.qc_enabled && <Text type="secondary">-</Text>}
@@ -272,33 +268,36 @@ export default function Research() {
       title: '温度',
       dataIndex: 'temperature',
       key: 'temperature',
-      width: 70,
-      render: (temp: number) => temp ? `${temp.toFixed(0)} K` : '-',
+      width: 60,
+      render: (temp: number) => <Text style={{ fontSize: 11 }}>{temp ? `${temp.toFixed(0)}K` : '-'}</Text>,
     },
     {
-      title: '分析结果',
+      title: '分析',
       key: 'analysis',
-      width: 140,
+      width: 90,
       render: (_: any, record: ElectrolyteSearchResult) => (
-        <Space size={[0, 4]} wrap>
-          {record.has_rdf && <Tag color="success" style={{ fontSize: 11, margin: 1 }}>RDF</Tag>}
-          {record.has_msd && <Tag color="processing" style={{ fontSize: 11, margin: 1 }}>MSD</Tag>}
-          {record.has_solvation && <Tag color="warning" style={{ fontSize: 11, margin: 1 }}>溶剂化</Tag>}
+        <Space direction="vertical" size={2}>
+          <Space size={2}>
+            {record.has_rdf && <Tag color="success" style={{ fontSize: 10, margin: 0 }}>RDF</Tag>}
+            {record.has_msd && <Tag color="processing" style={{ fontSize: 10, margin: 0 }}>MSD</Tag>}
+          </Space>
+          {record.has_solvation && <Tag color="warning" style={{ fontSize: 10, margin: 0 }}>溶剂化</Tag>}
         </Space>
       ),
     },
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 90,
       fixed: 'right' as const,
       render: (_: any, record: ElectrolyteSearchResult) => (
         <Button
           type="link"
+          size="small"
           icon={<EyeOutlined />}
           onClick={() => handleViewDetail(record)}
         >
-          查看详情
+          详情
         </Button>
       ),
     },
