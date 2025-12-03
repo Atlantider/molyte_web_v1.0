@@ -472,11 +472,22 @@ export default function ElectrolyteFormOptimized({
                   </Select>
                   <div style={{ marginTop: 12 }}>
                     {selectedCations.filter(ion => ion && ion.name).map((ion, index) => (
-                      <Card key={ion.name} size="small" style={{ marginBottom: 8, borderColor: index === 0 ? '#1890ff' : undefined, borderWidth: index === 0 ? 2 : 1 }}>
+                      <Card
+                        key={ion.name}
+                        size="small"
+                        style={{
+                          marginBottom: 8,
+                          borderColor: index === 0 ? '#1890ff' : undefined,
+                          borderWidth: index === 0 ? 2 : 1
+                        }}
+                      >
                         <div style={{ marginBottom: 8 }}>
                           <Tag color="blue">{ion.name}</Tag>
                           <Text type="secondary" style={{ fontSize: 12 }}>+{ion.charge}</Text>
                           {index === 0 && <Tag color="gold" style={{ marginLeft: 4 }}>第一种</Tag>}
+                          {index === 1 && <Tag color="orange" style={{ marginLeft: 4 }}>第二种</Tag>}
+                          {index === 2 && <Tag color="volcano" style={{ marginLeft: 4 }}>第三种</Tag>}
+                          {index >= 3 && <Tag color="magenta" style={{ marginLeft: 4 }}>第{index + 1}种</Tag>}
                         </div>
                         <div style={{ marginBottom: 4 }}>
                           <Text strong style={{ color: '#1890ff', fontSize: 13 }}>浓度 (mol/L):</Text>
@@ -534,11 +545,23 @@ export default function ElectrolyteFormOptimized({
                       ))}
                   </Select>
                   <div style={{ marginTop: 12 }}>
-                    {selectedAnions.filter(ion => ion && ion.name).map(ion => (
-                      <Card key={ion.name} size="small" style={{ marginBottom: 8 }}>
+                    {selectedAnions.filter(ion => ion && ion.name).map((ion, index) => (
+                      <Card
+                        key={ion.name}
+                        size="small"
+                        style={{
+                          marginBottom: 8,
+                          borderColor: index === 0 ? '#f5222d' : undefined,
+                          borderWidth: index === 0 ? 2 : 1
+                        }}
+                      >
                         <div style={{ marginBottom: 8 }}>
                           <Tag color="red">{ion.name}</Tag>
                           <Text type="secondary" style={{ fontSize: 12 }}>{ion.charge}</Text>
+                          {index === 0 && <Tag color="gold" style={{ marginLeft: 4 }}>第一种</Tag>}
+                          {index === 1 && <Tag color="orange" style={{ marginLeft: 4 }}>第二种</Tag>}
+                          {index === 2 && <Tag color="volcano" style={{ marginLeft: 4 }}>第三种</Tag>}
+                          {index >= 3 && <Tag color="magenta" style={{ marginLeft: 4 }}>第{index + 1}种</Tag>}
                         </div>
                         <div style={{ marginBottom: 4 }}>
                           <Text strong style={{ color: '#f5222d', fontSize: 13 }}>浓度 (mol/L):</Text>
