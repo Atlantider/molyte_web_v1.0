@@ -18,8 +18,11 @@ import {
   BellOutlined,
   ThunderboltOutlined,
   EyeOutlined,
+  SunOutlined,
+  MoonOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
+import { useThemeStore, themeTokens } from '../stores/themeStore';
 import type { MenuProps } from 'antd';
 
 const { Header, Sider, Content } = AntLayout;
@@ -29,7 +32,12 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
+  const { mode, toggleTheme } = useThemeStore();
   const [collapsed, setCollapsed] = useState(false);
+
+  // 获取当前主题的颜色
+  const colors = themeTokens[mode];
+  const isDark = mode === 'dark';
 
   // 根据当前路径确定选中的菜单项
   const getSelectedKey = () => {
@@ -282,22 +290,23 @@ export default function Layout() {
         <Header
           style={{
             padding: '0 24px',
-            background: '#ffffff',
+            background: colors.colorBgContainer,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            boxShadow: '0 1px 4px rgba(0, 21, 41, 0.08)',
+            boxShadow: isDark ? '0 1px 4px rgba(0, 0, 0, 0.3)' : '0 1px 4px rgba(0, 21, 41, 0.08)',
             position: 'sticky',
             top: 0,
             zIndex: 100,
             height: 64,
+            transition: 'background 0.3s',
           }}
         >
           {/* 左侧：页面标识 */}
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <Text style={{
               fontSize: 15,
-              color: '#8c8c8c',
+              color: colors.colorTextSecondary,
               fontWeight: 400,
             }}>
               工作台
@@ -306,12 +315,30 @@ export default function Layout() {
 
           {/* 右侧：操作区 */}
           <Space size={12}>
+            {/* 主题切换按钮 */}
+            <Tooltip title={isDark ? '切换到浅色模式' : '切换到深色模式'}>
+              <Button
+                type="text"
+                icon={isDark ? <SunOutlined style={{ fontSize: 18, color: '#FFC53D' }} /> : <MoonOutlined style={{ fontSize: 18, color: '#5B8DEF' }} />}
+                onClick={toggleTheme}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'transparent',
+                }}
+              />
+            </Tooltip>
+
             {/* 通知按钮 */}
             <Tooltip title="通知">
               <Badge count={0} size="small">
                 <Button
                   type="text"
-                  icon={<BellOutlined style={{ fontSize: 18, color: '#595959' }} />}
+                  icon={<BellOutlined style={{ fontSize: 18, color: colors.colorTextSecondary }} />}
                   style={{
                     width: 36,
                     height: 36,
@@ -335,27 +362,27 @@ export default function Layout() {
                   gap: 10,
                   padding: '6px 12px 6px 6px',
                   borderRadius: 24,
-                  background: '#f5f7fa',
+                  background: isDark ? '#2a2a2a' : '#f5f7fa',
                   transition: 'all 0.2s',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#e8ecf3';
+                  e.currentTarget.style.background = isDark ? '#3a3a3a' : '#e8ecf3';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = '#f5f7fa';
+                  e.currentTarget.style.background = isDark ? '#2a2a2a' : '#f5f7fa';
                 }}
               >
                 <Avatar
                   size={32}
                   icon={<UserOutlined />}
                   style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    background: 'linear-gradient(135deg, #5B8DEF 0%, #7C6EAF 100%)',
                   }}
                 />
                 <Text style={{
                   fontWeight: 500,
                   fontSize: 14,
-                  color: '#262626',
+                  color: colors.colorText,
                   maxWidth: 100,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -371,9 +398,10 @@ export default function Layout() {
         <Content style={{
           margin: 0,
           padding: 0,
-          background: '#f5f7fb',
+          background: colors.colorBgLayout,
           minHeight: 'calc(100vh - 64px)',
           overflow: 'auto',
+          transition: 'background 0.3s',
         }}>
           <Outlet />
         </Content>

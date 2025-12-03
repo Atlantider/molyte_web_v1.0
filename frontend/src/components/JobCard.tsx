@@ -114,20 +114,20 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
     }
   };
 
-  // 获取状态对应的渐变色
+  // 获取状态对应的渐变色（使用柔和的颜色）
   const getStatusGradient = () => {
     switch (job.status) {
       case JobStatus.RUNNING:
       case JobStatus.QUEUED:
       case JobStatus.POSTPROCESSING:
-        return 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+        return 'linear-gradient(135deg, #5B8DEF 0%, #7C6EAF 100%)';  // 柔和的蓝紫色
       case JobStatus.COMPLETED:
-        return 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+        return 'linear-gradient(135deg, #52C41A 0%, #73D13D 100%)';  // 柔和的绿色
       case JobStatus.FAILED:
       case JobStatus.CANCELLED:
-        return 'linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%)';
+        return 'linear-gradient(135deg, #F5222D 0%, #FF7875 100%)';  // 柔和的红色
       default:
-        return 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)';
+        return 'linear-gradient(135deg, #5B8DEF 0%, #7BA5F5 100%)';  // 柔和的蓝色
     }
   };
 

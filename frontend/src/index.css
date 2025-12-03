@@ -4,12 +4,53 @@
   box-sizing: border-box;
 }
 
+/* 浅色主题变量 */
+:root {
+  --color-primary: #5B8DEF;
+  --color-primary-light: #7BA5F5;
+  --color-success: #52C41A;
+  --color-warning: #FAAD14;
+  --color-error: #F5222D;
+  --color-bg-container: #FFFFFF;
+  --color-bg-layout: #F5F7FA;
+  --color-bg-elevated: #FFFFFF;
+  --color-text: #333333;
+  --color-text-secondary: #666666;
+  --color-border: #E8E8E8;
+  --gradient-primary: linear-gradient(135deg, #5B8DEF 0%, #7C6EAF 100%);
+  --gradient-success: linear-gradient(135deg, #52C41A 0%, #73D13D 100%);
+  --gradient-error: linear-gradient(135deg, #F5222D 0%, #FF7875 100%);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* 深色主题变量 */
+[data-theme='dark'] {
+  --color-primary: #6B9AFF;
+  --color-primary-light: #8AAFFF;
+  --color-success: #73D13D;
+  --color-warning: #FFC53D;
+  --color-error: #FF4D4F;
+  --color-bg-container: #1F1F1F;
+  --color-bg-layout: #141414;
+  --color-bg-elevated: #262626;
+  --color-text: #E8E8E8;
+  --color-text-secondary: #A0A0A0;
+  --color-border: #303030;
+  --gradient-primary: linear-gradient(135deg, #6B9AFF 0%, #9C8DC8 100%);
+  --gradient-success: linear-gradient(135deg, #73D13D 0%, #95DE64 100%);
+  --gradient-error: linear-gradient(135deg, #FF4D4F 0%, #FF7875 100%);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease;
 }
 
 code {
