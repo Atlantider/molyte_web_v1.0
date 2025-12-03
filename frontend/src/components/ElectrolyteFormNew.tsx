@@ -407,36 +407,56 @@ export default function ElectrolyteFormNew({
         {/* 阳离子选择 */}
         <Divider>阳离子配置</Divider>
         <Card size="small" style={{ marginBottom: 16 }}>
+          <Alert
+            message="请设置各离子的浓度（mol/L），浓度决定了模拟体系中离子的数量"
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+          />
           <Row gutter={[16, 16]}>
-            {availableCations.map((ion) => {
+            {availableCations.map((ion, index) => {
               const selected = selectedCations.find((c) => c.name === ion.name);
+              const isFirstCation = index === 0 && selected;
               return (
                 <Col span={24} key={ion.name}>
-                  <Space align="start" style={{ width: '100%' }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: selected ? '8px 12px' : '4px 0',
+                    background: selected ? (isFirstCation ? '#e6f7ff' : '#f6ffed') : 'transparent',
+                    borderRadius: 6,
+                    border: selected ? (isFirstCation ? '2px solid #1890ff' : '1px solid #b7eb8f') : 'none',
+                  }}>
                     <Checkbox
                       checked={!!selected}
                       onChange={(e) => handleCationCheck(e.target.checked, ion)}
                     >
-                      <strong>{ion.name}</strong>
+                      <strong style={{ fontSize: 14 }}>{ion.name}</strong>
                       <span style={{ marginLeft: 8, color: '#999' }}>
                         (电荷: {ion.charge > 0 ? '+' : ''}{ion.charge})
                       </span>
+                      {isFirstCation && (
+                        <span style={{ marginLeft: 8, color: '#1890ff', fontWeight: 500, fontSize: 12 }}>
+                          ★ 溶剂比例参考此离子
+                        </span>
+                      )}
                     </Checkbox>
                     {selected && (
-                      <Space>
-                        <span>浓度:</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 600, color: '#fa541c' }}>浓度:</span>
                         <InputNumber
                           min={0.001}
                           max={10}
                           step={0.1}
                           value={selected.concentration}
                           onChange={(value) => updateCationConcentration(ion.name, value || 0)}
-                          style={{ width: 120 }}
+                          style={{ width: 130, fontWeight: 500 }}
                           addonAfter="mol/L"
                         />
-                      </Space>
+                      </div>
                     )}
-                  </Space>
+                  </div>
                 </Col>
               );
             })}
@@ -454,31 +474,39 @@ export default function ElectrolyteFormNew({
               const selected = selectedAnions.find((a) => a.name === ion.name);
               return (
                 <Col span={24} key={ion.name}>
-                  <Space align="start" style={{ width: '100%' }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: selected ? '8px 12px' : '4px 0',
+                    background: selected ? '#fff7e6' : 'transparent',
+                    borderRadius: 6,
+                    border: selected ? '1px solid #ffd591' : 'none',
+                  }}>
                     <Checkbox
                       checked={!!selected}
                       onChange={(e) => handleAnionCheck(e.target.checked, ion)}
                     >
-                      <strong>{ion.name}</strong>
+                      <strong style={{ fontSize: 14 }}>{ion.name}</strong>
                       <span style={{ marginLeft: 8, color: '#999' }}>
                         (电荷: {ion.charge})
                       </span>
                     </Checkbox>
                     {selected && (
-                      <Space>
-                        <span>浓度:</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 600, color: '#fa541c' }}>浓度:</span>
                         <InputNumber
                           min={0.001}
                           max={10}
                           step={0.1}
                           value={selected.concentration}
                           onChange={(value) => updateAnionConcentration(ion.name, value || 0)}
-                          style={{ width: 120 }}
+                          style={{ width: 130, fontWeight: 500 }}
                           addonAfter="mol/L"
                         />
-                      </Space>
+                      </div>
                     )}
-                  </Space>
+                  </div>
                 </Col>
               );
             })}
@@ -512,6 +540,29 @@ export default function ElectrolyteFormNew({
 
         {/* 溶剂配置 */}
         <Divider>溶剂配置</Divider>
+
+        {/* 重要提示 */}
+        <Alert
+          message={
+            <span style={{ fontWeight: 600 }}>
+              ⚠️ 重要提示：溶剂摩尔比是相对于第一种阳离子
+              {selectedCations.length > 0 && (
+                <span style={{ color: '#1890ff', marginLeft: 8 }}>
+                  （当前参考：{selectedCations[0]?.name}，浓度 {selectedCations[0]?.concentration} mol/L）
+                </span>
+              )}
+            </span>
+          }
+          description={
+            <div style={{ marginTop: 4 }}>
+              例如：若第一种阳离子浓度为 1 mol/L，溶剂摩尔比设为 3，则该溶剂浓度为 3 mol/L
+            </div>
+          }
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16, border: '2px solid #faad14' }}
+        />
+
         <Form.List name="solvents" initialValue={[]}>
           {(fields, { add, remove }) => (
             <>
@@ -624,11 +675,26 @@ export default function ElectrolyteFormNew({
                         <Form.Item
                           {...field}
                           name={[field.name, 'molar_ratio']}
-                          label="摩尔比（相对第一种阳离子）"
+                          label={
+                            <span style={{ color: '#fa541c', fontWeight: 600 }}>
+                              摩尔比
+                              {selectedCations.length > 0 && (
+                                <span style={{ fontWeight: 400, color: '#666', marginLeft: 4 }}>
+                                  (相对 {selectedCations[0]?.name})
+                                </span>
+                              )}
+                            </span>
+                          }
                           rules={[{ required: true, message: '请输入摩尔比' }]}
                           initialValue={1.0}
+                          tooltip={`摩尔比 = 该溶剂浓度 / 第一种阳离子浓度${selectedCations.length > 0 ? `（${selectedCations[0]?.name}: ${selectedCations[0]?.concentration} mol/L）` : ''}`}
                         >
-                          <InputNumber min={0.1} max={100} step={0.1} style={{ width: '100%' }} />
+                          <InputNumber
+                            min={0.1}
+                            max={100}
+                            step={0.1}
+                            style={{ width: '100%', fontWeight: 500 }}
+                          />
                         </Form.Item>
                       </Col>
                     </Row>
