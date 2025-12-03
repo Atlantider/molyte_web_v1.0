@@ -21,7 +21,7 @@ import requests
 import subprocess
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 
 # 添加项目路径
@@ -542,7 +542,7 @@ class PollingWorker:
             self.logger.error(f"启动 RESP 计算失败: {e}", exc_info=True)
             self._update_job_status(job_id, 'FAILED', 'md', error_message=f"RESP calculation failed: {e}")
 
-    def _check_resp_jobs(self, job_id: int, job_info: Dict) -> bool:
+    def _check_resp_jobs(self, job_id: int, job_info: Dict) -> Tuple[bool, bool]:
         """
         检查 RESP 任务状态
 
@@ -551,7 +551,7 @@ class PollingWorker:
             job_info: 任务信息
 
         Returns:
-            是否所有 RESP 任务都已完成
+            (是否所有 RESP 任务都已完成, 是否有任何 RESP 任务失败)
         """
         from app.workers.resp_calculator import RESPCalculator
 
@@ -566,6 +566,8 @@ class PollingWorker:
         for resp_job in job_info['resp_jobs']:
             if resp_job['status'] in ['COMPLETED', 'FAILED']:
                 total_cpu_hours += resp_job.get('cpu_hours', 0.0)
+                if resp_job['status'] == 'FAILED':
+                    any_failed = True
                 continue
 
             status = resp_calculator.check_job_status(resp_job['slurm_job_id'])
@@ -585,10 +587,10 @@ class PollingWorker:
         job_info['total_resp_cpu_hours'] = total_cpu_hours
 
         if any_failed:
-            # 有 RESP 任务失败，但仍然可以继续（使用 LigParGen 电荷）
-            self.logger.warning(f"Some RESP jobs failed for MD job {job_id}, using LigParGen for failed molecules")
+            # 有 RESP 任务失败，需要回退到 LigParGen 电荷
+            self.logger.warning(f"Some RESP jobs failed for MD job {job_id}, will use LigParGen for failed molecules")
 
-        return all_completed
+        return all_completed, any_failed
 
     def _continue_md_job(self, job_id: int, job: Dict, wrapper):
         """
@@ -1214,13 +1216,18 @@ echo "QC calculation completed"
                 return
 
             # 检查所有 RESP 任务状态
-            all_completed = self._check_resp_jobs(job_id, job_info)
+            all_completed, any_failed = self._check_resp_jobs(job_id, job_info)
 
             if all_completed:
                 self.logger.info(f"MD 任务 {job_id} 的所有 RESP 计算已完成，继续 MD 模拟")
 
                 # 从 job_info 恢复 wrapper 和 job
                 job = job_info['job']
+
+                # 如果有 RESP 任务失败，回退到 LigParGen 电荷
+                if any_failed:
+                    self.logger.warning(f"MD 任务 {job_id} 有 RESP 计算失败，回退到 LigParGen 电荷")
+                    job['config']['charge_method'] = 'ligpargen'
 
                 # 重新初始化 wrapper
                 from app.workers.molyte_wrapper import MolyteWrapper

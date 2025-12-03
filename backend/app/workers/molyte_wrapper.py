@@ -350,12 +350,12 @@ mpirun -n {mpi_processes} $EXEC <{job_name}.in > {job_name}.log
                         logger.error(f"LigParGen output file not found: {lammps_lmp}")
                         return False
                 else:
-                    # 没有保存的电荷文件，需要返回特殊标记让 worker 处理
-                    # 这种情况应该在 worker 层面提前处理
-                    logger.warning(f"No existing RESP charges for {name}, fallback to LigParGen")
-                    charge_method = "ligpargen"
-
-            if charge_method == "ligpargen":
+                    # RESP 电荷文件不存在，这是一个错误
+                    # 应该在 worker 层面提前检查并运行 RESP 计算
+                    logger.error(f"RESP charge file not found for {name}: {charge_file}")
+                    logger.error(f"This should have been computed before calling _process_solvents with charge_method='resp'")
+                    return False
+            elif charge_method == "ligpargen":
                 # 使用 LigParGen 生成的电荷
                 logger.info(f"Using LigParGen CM1A charges for {name}")
 
@@ -372,6 +372,9 @@ mpirun -n {mpi_processes} $EXEC <{job_name}.in > {job_name}.log
                 else:
                     logger.error(f"LigParGen output file not found: {lammps_lmp}")
                     return False
+            else:
+                logger.error(f"Unknown charge method: {charge_method}")
+                return False
 
         return True
 
