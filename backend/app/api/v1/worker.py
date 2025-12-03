@@ -71,12 +71,13 @@ class WorkerHeartbeat(BaseModel):
 class JobStatusUpdate(BaseModel):
     """任务状态更新"""
     status: str
-    job_type: str  # MD or QC
+    job_type: str  # MD, QC, or POSTPROCESS
     worker_name: str
     slurm_job_id: Optional[str] = None
     work_dir: Optional[str] = None
     error_message: Optional[str] = None
     result_files: Optional[List[str]] = None
+    output_file: Optional[str] = None  # 后处理任务的输出文件
     progress: Optional[float] = None  # 任务进度 0-100
     cpu_hours: Optional[float] = None  # MD/QC 计算消耗的 CPU 核时数
     resp_cpu_hours: Optional[float] = None  # RESP 电荷计算消耗的 CPU 核时数
@@ -402,7 +403,18 @@ async def update_job_status(
     mapped_status = status_mapping.get(status_update.status, status_update.status)
 
     # 验证状态值是否有效
-    valid_statuses = [s.value for s in JobStatus] if job_type == "MD" else [s.value for s in QCJobStatus]
+    if job_type == "MD":
+        valid_statuses = [s.value for s in JobStatus]
+    elif job_type == "QC":
+        valid_statuses = [s.value for s in QCJobStatus]
+    elif job_type == "POSTPROCESS":
+        valid_statuses = [s.value for s in JobStatus]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid job type: {job_type}. Valid types: MD, QC, POSTPROCESS"
+        )
+
     if mapped_status not in valid_statuses:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -505,6 +517,40 @@ async def update_job_status(
 
         logger.info(
             f"QC Job {job_id} status updated to {mapped_status} "
+            f"by worker {status_update.worker_name}"
+        )
+
+        return {"status": "ok", "job_id": job_id, "new_status": mapped_status}
+
+    elif job_type == "POSTPROCESS":
+        from app.models.job import PostprocessJob
+
+        job = db.query(PostprocessJob).filter(PostprocessJob.id == job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Postprocess Job {job_id} not found"
+            )
+
+        # 更新状态
+        job.status = JobStatus[mapped_status]
+
+        if status_update.error_message:
+            job.error_message = status_update.error_message
+
+        if status_update.output_file:
+            job.output_file = status_update.output_file
+
+        if mapped_status == "RUNNING" and not job.started_at:
+            job.started_at = datetime.now()
+
+        if mapped_status in ["COMPLETED", "FAILED"]:
+            job.finished_at = datetime.now()
+
+        db.commit()
+
+        logger.info(
+            f"Postprocess Job {job_id} status updated to {mapped_status} "
             f"by worker {status_update.worker_name}"
         )
 
