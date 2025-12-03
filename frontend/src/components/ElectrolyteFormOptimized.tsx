@@ -471,22 +471,30 @@ export default function ElectrolyteFormOptimized({
                       ))}
                   </Select>
                   <div style={{ marginTop: 12 }}>
-                    {selectedCations.filter(ion => ion && ion.name).map(ion => (
-                      <Card key={ion.name} size="small" style={{ marginBottom: 8 }}>
+                    {selectedCations.filter(ion => ion && ion.name).map((ion, index) => (
+                      <Card key={ion.name} size="small" style={{ marginBottom: 8, borderColor: index === 0 ? '#1890ff' : undefined, borderWidth: index === 0 ? 2 : 1 }}>
                         <div style={{ marginBottom: 8 }}>
                           <Tag color="blue">{ion.name}</Tag>
                           <Text type="secondary" style={{ fontSize: 12 }}>+{ion.charge}</Text>
+                          {index === 0 && <Tag color="gold" style={{ marginLeft: 4 }}>第一种</Tag>}
+                        </div>
+                        <div style={{ marginBottom: 4 }}>
+                          <Text strong style={{ color: '#1890ff', fontSize: 13 }}>浓度 (mol/L):</Text>
                         </div>
                         <Space.Compact style={{ width: '100%' }}>
                           <InputNumber
-                            size="small"
+                            size="middle"
                             min={0.001}
                             max={10}
                             step={0.1}
                             value={ion.concentration}
                             onChange={(value) => updateCationConcentration(ion.name, value || 0)}
-                            style={{ width: 'calc(100% - 32px)' }}
-                            addonAfter="M"
+                            style={{
+                              width: 'calc(100% - 32px)',
+                              fontWeight: 'bold',
+                              fontSize: 14
+                            }}
+                            addonAfter={<span style={{ fontWeight: 'bold' }}>M</span>}
                           />
                           <Button
                             type="text"
@@ -532,16 +540,23 @@ export default function ElectrolyteFormOptimized({
                           <Tag color="red">{ion.name}</Tag>
                           <Text type="secondary" style={{ fontSize: 12 }}>{ion.charge}</Text>
                         </div>
+                        <div style={{ marginBottom: 4 }}>
+                          <Text strong style={{ color: '#f5222d', fontSize: 13 }}>浓度 (mol/L):</Text>
+                        </div>
                         <Space.Compact style={{ width: '100%' }}>
                           <InputNumber
-                            size="small"
+                            size="middle"
                             min={0.001}
                             max={10}
                             step={0.1}
                             value={ion.concentration}
                             onChange={(value) => updateAnionConcentration(ion.name, value || 0)}
-                            style={{ width: 'calc(100% - 32px)' }}
-                            addonAfter="M"
+                            style={{
+                              width: 'calc(100% - 32px)',
+                              fontWeight: 'bold',
+                              fontSize: 14
+                            }}
+                            addonAfter={<span style={{ fontWeight: 'bold' }}>M</span>}
                           />
                           <Button
                             type="text"
@@ -564,6 +579,27 @@ export default function ElectrolyteFormOptimized({
 
           {/* 溶剂配置 - 使用折叠面板 */}
           <Card size="small" title={<><FireOutlined /> 溶剂配置</>} style={{ marginBottom: 16 }}>
+            {/* 醒目提示：摩尔比说明 */}
+            <Alert
+              message={
+                <span>
+                  <Text strong style={{ color: '#fa8c16' }}>⚠️ 重要提示：</Text>
+                  <Text style={{ marginLeft: 8 }}>
+                    溶剂的<Text strong style={{ color: '#fa8c16' }}>摩尔比</Text>是相对于
+                    <Text strong style={{ color: '#1890ff' }}>第一种阳离子</Text>的比例
+                  </Text>
+                </span>
+              }
+              description={
+                <div style={{ fontSize: 12 }}>
+                  例如：第一种阳离子浓度为 1.0 M，溶剂摩尔比为 5.0，则该溶剂的实际浓度为 5.0 M
+                </div>
+              }
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
             <Form.List name="solvents" initialValue={[]}>
               {(fields, { add, remove }) => (
                 <>
@@ -727,12 +763,29 @@ export default function ElectrolyteFormOptimized({
                               <Form.Item
                                 {...field}
                                 name={[field.name, 'molar_ratio']}
-                                label="摩尔比"
+                                label={
+                                  <span>
+                                    <Text strong style={{ color: '#fa8c16', fontSize: 13 }}>摩尔比</Text>
+                                    <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                                      (相对第一种阳离子)
+                                    </Text>
+                                  </span>
+                                }
                                 rules={[{ required: true, message: '请输入摩尔比' }]}
                                 initialValue={1.0}
                                 style={{ marginBottom: 0 }}
+                                tooltip={{
+                                  title: '溶剂的摩尔数量相对于第一种阳离子的比例。例如：第一种阳离子为 1M，摩尔比为 5，则该溶剂为 5M',
+                                  color: '#fa8c16'
+                                }}
                               >
-                                <InputNumber min={0.1} max={100} step={0.1} style={{ width: '100%' }} size="small" />
+                                <InputNumber
+                                  min={0.1}
+                                  max={100}
+                                  step={0.1}
+                                  style={{ width: '100%', fontWeight: 'bold' }}
+                                  size="middle"
+                                />
                               </Form.Item>
                             </Card>
                           </Col>
