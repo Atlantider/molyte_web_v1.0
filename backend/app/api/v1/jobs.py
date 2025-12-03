@@ -334,6 +334,8 @@ def create_md_job(
         "freq_trj_npt": job_data.freq_trj_npt,
         "freq_trj_nvt": job_data.freq_trj_nvt,
         "thermo_freq": job_data.thermo_freq,
+        # 电荷计算方法（仅自定义模式有效）
+        "charge_method": job_data.charge_method if job_data.charge_method else None,
         # Slurm 资源配置
         "slurm_partition": job_data.slurm_partition or "cpu",
         "slurm_nodes": job_data.slurm_nodes or 1,
@@ -485,6 +487,7 @@ def batch_create_md_jobs(
                 system_id=system_id,
                 job_name=batch_data.job_name,
                 accuracy_level=batch_data.accuracy_level,
+                charge_method=batch_data.charge_method,
                 nsteps_npt=batch_data.nsteps_npt,
                 nsteps_nvt=batch_data.nsteps_nvt,
                 timestep=batch_data.timestep,

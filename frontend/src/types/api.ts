@@ -281,6 +281,7 @@ export interface MDJobCreate {
   system_id: number;
   job_name?: string;
   accuracy_level?: AccuracyLevel;  // 精度等级
+  charge_method?: string;  // 电荷计算方法: ligpargen 或 resp（仅自定义模式有效）
   nsteps_npt?: number;
   nsteps_nvt?: number;
   timestep?: number;

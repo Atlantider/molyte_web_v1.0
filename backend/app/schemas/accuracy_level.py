@@ -168,7 +168,14 @@ def apply_accuracy_level(
 
     # 添加精度等级和电荷方法信息
     job_config["accuracy_level"] = accuracy_level.value
-    job_config["charge_method"] = config["charge_method"].value
+
+    # 电荷方法：自定义模式下使用用户指定的值，否则使用精度等级的默认值
+    if accuracy_level == AccuracyLevel.CUSTOM and "charge_method" in job_config and job_config["charge_method"]:
+        # 自定义模式：保留用户指定的 charge_method
+        pass
+    else:
+        # 非自定义模式：使用精度等级的默认 charge_method
+        job_config["charge_method"] = config["charge_method"].value
 
     return job_config
 

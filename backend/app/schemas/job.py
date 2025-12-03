@@ -122,6 +122,7 @@ class MDJobCreate(MDJobBase):
     """Schema for creating an MD job"""
     job_name: Optional[str] = None
     accuracy_level: Optional[AccuracyLevel] = AccuracyLevel.STANDARD  # 默认标准模式
+    charge_method: Optional[str] = None  # 电荷计算方法: ligpargen 或 resp（仅自定义模式有效）
     nsteps_npt: Optional[int] = None  # 如果为 None，使用 accuracy_level 的默认值
     nsteps_nvt: Optional[int] = None
     timestep: Optional[float] = 1.0
@@ -148,6 +149,7 @@ class BatchMDJobCreate(BaseModel):
     system_ids: List[int] = Field(..., description="配方系统ID列表")
     job_name: Optional[str] = None
     accuracy_level: Optional[AccuracyLevel] = AccuracyLevel.STANDARD
+    charge_method: Optional[str] = None  # 电荷计算方法: ligpargen 或 resp（仅自定义模式有效）
     nsteps_npt: Optional[int] = None
     nsteps_nvt: Optional[int] = None
     timestep: Optional[float] = 1.0

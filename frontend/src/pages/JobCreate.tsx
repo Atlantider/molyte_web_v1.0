@@ -216,6 +216,7 @@ export default function JobCreate() {
       system_id: electrolyte!.id,
       job_name: values.job_name || undefined,
       accuracy_level: values.accuracy_level || 'standard',
+      charge_method: values.charge_method || undefined,  // 电荷计算方法（仅自定义模式有效）
       nsteps_npt: values.nsteps_npt || undefined,
       nsteps_nvt: values.nsteps_nvt || undefined,
       timestep: values.timestep,
