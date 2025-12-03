@@ -556,6 +556,43 @@ async def update_job_status(
 
         return {"status": "ok", "job_id": job_id, "new_status": mapped_status}
 
+    elif job_type == "POSTPROCESS":
+        from app.models.job import PostprocessJob
+
+        job = db.query(PostprocessJob).filter(PostprocessJob.id == job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Postprocess Job {job_id} not found"
+            )
+
+        # 更新状态
+        job.status = JobStatus[mapped_status]
+
+        if status_update.error_message:
+            job.error_message = status_update.error_message
+
+        if status_update.progress is not None:
+            job.progress = status_update.progress
+
+        if mapped_status == "RUNNING" and not job.started_at:
+            job.started_at = datetime.now()
+
+        if mapped_status in ["COMPLETED", "FAILED"]:
+            job.finished_at = datetime.now()
+            # 完成时设置进度为 100%
+            if mapped_status == "COMPLETED":
+                job.progress = 100.0
+
+        db.commit()
+
+        logger.info(
+            f"Postprocess Job {job_id} status updated to {mapped_status} "
+            f"by worker {status_update.worker_name}"
+        )
+
+        return {"status": "ok", "job_id": job_id, "new_status": mapped_status}
+
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
