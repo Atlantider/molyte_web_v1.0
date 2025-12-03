@@ -2820,14 +2820,15 @@ echo "QC calculation completed"
                     result['box_y'] = round(final_box[1], 2)
                     result['box_z'] = round(final_box[2], 2)
 
-                # 提取能量和温度、压力（从最后一行）
-                if len(last_data_line) >= 6:
+                # 提取能量和温度（从最后一行）
+                # LAMMPS thermo 输出格式: Step CPU CPULeft Temp Density Lx Ly Lz TotEng KinEng PotEng ...
+                # 列索引:                  0    1   2       3    4       5  6  7  8      9       10
+                if len(last_data_line) >= 11:
                     try:
-                        result['final_temperature'] = float(last_data_line[1])
-                        result['final_pressure'] = float(last_data_line[2])
-                        result['total_energy'] = float(last_data_line[3])
-                        result['kinetic_energy'] = float(last_data_line[4])
-                        result['potential_energy'] = float(last_data_line[5])
+                        result['final_temperature'] = float(last_data_line[3])   # Temp
+                        result['total_energy'] = float(last_data_line[8])        # TotEng
+                        result['kinetic_energy'] = float(last_data_line[9])      # KinEng
+                        result['potential_energy'] = float(last_data_line[10])   # PotEng
                     except (ValueError, IndexError):
                         pass
 
