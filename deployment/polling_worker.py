@@ -1917,8 +1917,19 @@ echo "QC calculation completed"
                 self.logger.warning(f"无法导入后端 MSD 模块，使用简化解析: {e}")
                 # 降级到简化解析 - 正确的文件名模式
                 msd_files = list(work_dir.glob("out_*_msd.dat"))
+
+                # 尝试提取盒子体积和离子数量（用于电导率计算）
+                box_volume = None
+                ion_counts = None
+                try:
+                    from app.tasks.msd_processor import extract_box_volume_and_ion_counts
+                    box_volume, ion_counts = extract_box_volume_and_ion_counts(work_dir)
+                    self.logger.info(f"提取到 box_volume={box_volume}, ion_counts={ion_counts}")
+                except Exception as e:
+                    self.logger.warning(f"无法提取 box_volume 和 ion_counts: {e}")
+
                 for msd_file in msd_files:
-                    msd_data = self._parse_lammps_msd_simple(msd_file)
+                    msd_data = self._parse_lammps_msd_simple(msd_file, box_volume, ion_counts)
                     if msd_data:
                         results['msd_results'].append(msd_data)
 
@@ -2396,10 +2407,16 @@ echo "QC calculation completed"
             self.logger.error(f"简化解析 RDF 文件失败: {e}", exc_info=True)
             return []
 
-    def _parse_lammps_msd_simple(self, msd_file: Path) -> Optional[Dict[str, Any]]:
+    def _parse_lammps_msd_simple(self, msd_file: Path, box_volume: Optional[float] = None,
+                                  ion_counts: Optional[Dict[str, int]] = None) -> Optional[Dict[str, Any]]:
         """
         简化版 MSD 解析（当无法导入后端模块时使用）
         文件名格式: out_Li_msd.dat, out_FSI_msd.dat 等
+
+        Args:
+            msd_file: MSD 文件路径
+            box_volume: 模拟盒子体积 (Å³)，用于计算电导率
+            ion_counts: 各离子数量，用于计算电导率
         """
         import re
 
@@ -2465,7 +2482,9 @@ echo "QC calculation completed"
                     denom = n * sum_t2 - sum_t * sum_t
                     if abs(denom) > 1e-10:
                         slope = (n * sum_t_msd - sum_t * sum_msd) / denom
-                        diffusion_coeff = slope / 6.0 * 1e-4  # Å²/fs -> cm²/s
+                        # 单位转换：Å²/fs -> cm²/s
+                        # 1 Å²/fs = 1e-1 cm²/s
+                        diffusion_coeff = slope / 6.0 * 1e-1  # Å²/fs -> cm²/s
 
             # 计算离子电荷、迁移率、电导率
             ion_charge = self._get_ion_charge(species)
@@ -2479,8 +2498,36 @@ echo "QC calculation completed"
                 temperature = 298.15  # K，默认室温
 
                 # 迁移率 μ = qD / kT (cm²/V·s)
-                # D 单位是 cm²/s，需要转换
-                mobility = abs(ion_charge) * ELEMENTARY_CHARGE * diffusion_coeff / (BOLTZMANN * temperature)
+                # D 单位是 cm²/s，需要转换为 m²/s
+                D_m2s = diffusion_coeff * 1e-4
+                mu_m2Vs = abs(ion_charge) * ELEMENTARY_CHARGE * D_m2s / (BOLTZMANN * temperature)
+                # 转换为 cm²/(V·s)
+                mobility = mu_m2Vs * 1e4
+
+            # 计算电导率（需要盒子体积和离子数量）
+            ionic_conductivity = None
+            if box_volume and ion_counts and diffusion_coeff:
+                ion_count = ion_counts.get(species, 0)
+                # 模糊匹配
+                if ion_count == 0:
+                    for key, val in ion_counts.items():
+                        if key in species or species in key:
+                            ion_count = val
+                            break
+
+                if ion_count > 0:
+                    # 计算数密度 n (ions/cm³)
+                    n = ion_count / (box_volume * 1e-24)
+
+                    # 扩散系数单位转换: cm²/s -> m²/s
+                    D_m2s = diffusion_coeff * 1e-4
+
+                    # 计算电导率
+                    q = abs(ion_charge) * 1.602176634e-19
+                    sigma_Sm = n * 1e6 * q * q * D_m2s / (1.380649e-23 * 298.15)
+
+                    # 转换为 S/cm
+                    ionic_conductivity = sigma_Sm / 100
 
             return {
                 'species': species,
@@ -2491,6 +2538,7 @@ echo "QC calculation completed"
                 'msd_total_values': msd_total,
                 'diffusion_coefficient': diffusion_coeff,
                 'mobility': mobility,
+                'ionic_conductivity': ionic_conductivity,
                 'charge': ion_charge,
                 'labels': labels,
             }
