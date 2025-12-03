@@ -373,6 +373,17 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
     );
   }
 
+  // 提取环境信息的辅助函数
+  const extractEnvironment = (shellSpecies: string): string | null => {
+    const match = shellSpecies.match(/\(([^)]+)\)$/);
+    return match ? match[1] : null;
+  };
+
+  // 提取基础物种名称（去除环境信息）
+  const extractBaseSpecies = (shellSpecies: string): string => {
+    return shellSpecies.replace(/\([^)]+\)$/, '');
+  };
+
   // 准备数据
   const selectedData = savedResults.filter(r => selectedRdfIds.includes(r.id));
 
@@ -1003,37 +1014,47 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
           />
         ) : (
           <Space wrap size="small">
-            {savedResults.map((result, index) => (
-              <Tag.CheckableTag
-                key={result.id}
-                checked={selectedRdfIds.includes(result.id)}
-                onChange={() => toggleSelection(result.id)}
-                style={{
-                  padding: '6px 12px',
-                  fontSize: '13px',
-                  border: `2px solid ${NATURE_COLORS[index % NATURE_COLORS.length]}`,
-                  borderRadius: '6px',
-                  backgroundColor: selectedRdfIds.includes(result.id)
-                    ? NATURE_COLORS[index % NATURE_COLORS.length] + '20'
-                    : 'transparent',
-                  transition: 'all 0.3s ease',
-                }}
-              >
-                <Space size={4}>
-                  <div
-                    style={{
-                      width: 12,
-                      height: 12,
-                      borderRadius: '50%',
-                      backgroundColor: NATURE_COLORS[index % NATURE_COLORS.length]
-                    }}
-                  />
-                  <Text strong>{result.center_species}</Text>
-                  <Text>→</Text>
-                  <Text strong>{result.shell_species}</Text>
-                </Space>
-              </Tag.CheckableTag>
-            ))}
+            {savedResults.map((result, index) => {
+              const environment = extractEnvironment(result.shell_species);
+              const baseSpecies = extractBaseSpecies(result.shell_species);
+
+              return (
+                <Tag.CheckableTag
+                  key={result.id}
+                  checked={selectedRdfIds.includes(result.id)}
+                  onChange={() => toggleSelection(result.id)}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '13px',
+                    border: `2px solid ${NATURE_COLORS[index % NATURE_COLORS.length]}`,
+                    borderRadius: '6px',
+                    backgroundColor: selectedRdfIds.includes(result.id)
+                      ? NATURE_COLORS[index % NATURE_COLORS.length] + '20'
+                      : 'transparent',
+                    transition: 'all 0.3s ease',
+                  }}
+                >
+                  <Space size={4}>
+                    <div
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        backgroundColor: NATURE_COLORS[index % NATURE_COLORS.length]
+                      }}
+                    />
+                    <Text strong>{result.center_species}</Text>
+                    <Text>→</Text>
+                    <Text strong>{baseSpecies}</Text>
+                    {environment && (
+                      <Text type="secondary" style={{ fontSize: '11px' }}>
+                        ({environment})
+                      </Text>
+                    )}
+                  </Space>
+                </Tag.CheckableTag>
+              );
+            })}
           </Space>
         )}
       </Card>
