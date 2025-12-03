@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import {
   Card, Row, Col, Button, Space, Typography, Spin,
-  Progress, Table, Tag, Badge, Segmented, Empty
+  Progress, Table, Tag, Badge, Segmented, Empty, theme
 } from 'antd';
 import {
   ProjectOutlined,
@@ -20,6 +20,7 @@ import {
 import { Column, Pie } from '@ant-design/plots';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { useThemeStore } from '../stores/themeStore';
 import { getProjects } from '../api/projects';
 import { getElectrolytes } from '../api/electrolytes';
 import { getMDJobs } from '../api/jobs';
@@ -29,15 +30,6 @@ import StatusTag from '../components/StatusTag';
 import dayjs from 'dayjs';
 
 const { Text, Title } = Typography;
-
-// KPI 卡片样式
-const kpiCardStyle: React.CSSProperties = {
-  borderRadius: 12,
-  boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)',
-  border: '1px solid #edf0f7',
-  background: '#ffffff',
-  height: '100%',
-};
 
 // 计算 CPU 核时
 const calculateCPUHours = (job: MDJob): number => {
@@ -53,8 +45,20 @@ const calculateCPUHours = (job: MDJob): number => {
 
 export default function Dashboard() {
   const { user } = useAuthStore();
+  const { mode } = useThemeStore();
+  const { token } = theme.useToken();
+  const isDark = mode === 'dark';
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+
+  // 动态 KPI 卡片样式
+  const kpiCardStyle: React.CSSProperties = {
+    borderRadius: 12,
+    boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.06)',
+    border: `1px solid ${token.colorBorder}`,
+    background: token.colorBgContainer,
+    height: '100%',
+  };
   const [timeRange, setTimeRange] = useState<'today' | '7days' | '30days'>('7days');
   const [chartType, setChartType] = useState<'count' | 'hours'>('count');
   const [taskFilter, setTaskFilter] = useState<'all' | 'running' | 'completed' | 'failed'>('all');
@@ -243,17 +247,20 @@ export default function Dashboard() {
 
   return (
     <div style={{
-      background: '#f5f7fb',
-      minHeight: 'calc(100vh - 64px)'
+      background: token.colorBgLayout,
+      minHeight: 'calc(100vh - 64px)',
+      transition: 'background 0.3s',
     }}>
       {/* 顶部渐变背景条 */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(15, 101, 255, 0.05) 0%, rgba(0, 194, 255, 0.05) 50%, rgba(124, 92, 255, 0.05) 100%)',
+        background: isDark
+          ? 'linear-gradient(135deg, rgba(107, 154, 255, 0.08) 0%, rgba(124, 110, 175, 0.08) 100%)'
+          : 'linear-gradient(135deg, rgba(91, 141, 239, 0.05) 0%, rgba(124, 110, 175, 0.05) 100%)',
         padding: '32px 24px 24px',
         marginBottom: 24,
       }}>
         <div style={{ maxWidth: 1600, margin: '0 auto' }}>
-          <Title level={2} style={{ margin: 0, marginBottom: 8, color: '#1677ff' }}>
+          <Title level={2} style={{ margin: 0, marginBottom: 8, color: token.colorPrimary }}>
             欢迎回来，{user?.username}！
           </Title>
           <Space size={16}>
@@ -262,11 +269,11 @@ export default function Dashboard() {
             </Text>
             <Text type="secondary">|</Text>
             <Text type="secondary">
-              今日提交 <Text strong style={{ color: '#1677ff' }}>{stats.todayJobCount}</Text> 个任务
+              今日提交 <Text strong style={{ color: token.colorPrimary }}>{stats.todayJobCount}</Text> 个任务
             </Text>
             <Text type="secondary">|</Text>
             <Text type="secondary">
-              机时使用率 <Text strong style={{ color: stats.usedCPUHours / stats.totalCPUHours > 0.8 ? '#ff4d4f' : '#52c41a' }}>
+              机时使用率 <Text strong style={{ color: stats.usedCPUHours / stats.totalCPUHours > 0.8 ? token.colorError : token.colorSuccess }}>
                 {((stats.usedCPUHours / stats.totalCPUHours) * 100).toFixed(1)}%
               </Text>
             </Text>
@@ -290,7 +297,7 @@ export default function Dashboard() {
                   <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
                     Running Jobs
                   </Text>
-                  <div style={{ fontSize: 32, fontWeight: 700, color: '#1677ff', marginBottom: 8 }}>
+                  <div style={{ fontSize: 32, fontWeight: 700, color: token.colorPrimary, marginBottom: 8 }}>
                     {stats.runningJobCount}
                   </div>
                   <Space size={4} style={{ fontSize: 12 }}>
@@ -298,14 +305,14 @@ export default function Dashboard() {
                     <Text strong>{stats.queuedJobCount}</Text>
                     <Text type="secondary">|</Text>
                     <Text type="secondary">失败</Text>
-                    <Text strong style={{ color: '#ff4d4f' }}>{stats.failedJobCount}</Text>
+                    <Text strong style={{ color: token.colorError }}>{stats.failedJobCount}</Text>
                   </Space>
                 </div>
                 <div style={{
                   width: 48,
                   height: 48,
                   borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: 'linear-gradient(135deg, #5B8DEF 0%, #7C6EAF 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
@@ -333,7 +340,7 @@ export default function Dashboard() {
                   </div>
                   <Space size={4} style={{ fontSize: 12 }}>
                     <Text type="secondary">本周新增</Text>
-                    <Text strong style={{ color: '#52c41a' }}>+{stats.weekNewElectrolytes}</Text>
+                    <Text strong style={{ color: token.colorSuccess }}>+{stats.weekNewElectrolytes}</Text>
                   </Space>
                 </div>
                 <div style={{
@@ -431,12 +438,12 @@ export default function Dashboard() {
           <Card
             title={
               <Space>
-                <SyncOutlined spin style={{ color: '#1677ff' }} />
+                <SyncOutlined spin style={{ color: token.colorPrimary }} />
                 <Text strong>运行中的任务</Text>
-                <Badge count={runningJobs.length} style={{ backgroundColor: '#1677ff' }} />
+                <Badge count={runningJobs.length} style={{ backgroundColor: token.colorPrimary }} />
               </Space>
             }
-            style={{ marginBottom: 24, borderRadius: 12, boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)' }}
+            style={{ marginBottom: 24, borderRadius: 12, boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.06)' }}
           >
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               {runningJobs.map(job => (
@@ -444,19 +451,19 @@ export default function Dashboard() {
                   key={job.id}
                   style={{
                     padding: 16,
-                    background: '#fafafa',
+                    background: isDark ? '#2a2a2a' : '#fafafa',
                     borderRadius: 8,
-                    border: '1px solid #f0f0f0',
+                    border: `1px solid ${token.colorBorder}`,
                     cursor: 'pointer',
                     transition: 'all 0.3s',
                   }}
                   onClick={() => navigate(`/workspace/jobs/${job.id}/detail`)}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#1677ff';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(22, 119, 255, 0.15)';
+                    e.currentTarget.style.borderColor = token.colorPrimary;
+                    e.currentTarget.style.boxShadow = `0 4px 12px ${isDark ? 'rgba(107, 154, 255, 0.2)' : 'rgba(91, 141, 239, 0.15)'}`;
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#f0f0f0';
+                    e.currentTarget.style.borderColor = token.colorBorder;
                     e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
@@ -486,8 +493,8 @@ export default function Dashboard() {
                           percent={job.progress}
                           status={job.status === JobStatus.RUNNING ? 'active' : 'normal'}
                           strokeColor={{
-                            '0%': '#108ee9',
-                            '100%': '#87d068',
+                            '0%': token.colorPrimary,
+                            '100%': token.colorSuccess,
                           }}
                           size="small"
                         />
@@ -507,7 +514,7 @@ export default function Dashboard() {
             <Card
               title={
                 <Space>
-                  <LineChartOutlined style={{ color: '#1677ff' }} />
+                  <LineChartOutlined style={{ color: token.colorPrimary }} />
                   <Text strong>任务趋势</Text>
                 </Space>
               }
@@ -522,7 +529,7 @@ export default function Dashboard() {
                   size="small"
                 />
               }
-              style={{ borderRadius: 12, boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)', height: '100%' }}
+              style={{ borderRadius: 12, boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.06)', height: '100%' }}
             >
               {trendData.length > 0 ? (
                 <Column
@@ -534,7 +541,7 @@ export default function Dashboard() {
                   columnStyle={{
                     radius: [4, 4, 0, 0],
                   }}
-                  color={['#52c41a', '#ff4d4f', '#1677ff']}
+                  color={[token.colorSuccess, token.colorError, token.colorPrimary]}
                   legend={{
                     position: 'top-right',
                   }}
@@ -549,6 +556,7 @@ export default function Dashboard() {
                       },
                     },
                   }}
+                  theme={isDark ? 'dark' : 'light'}
                   smooth={true}
                   height={300}
                 />
@@ -565,11 +573,11 @@ export default function Dashboard() {
               <Card
                 title={
                   <Space>
-                    <PieChartOutlined style={{ color: '#1677ff' }} />
+                    <PieChartOutlined style={{ color: token.colorPrimary }} />
                     <Text strong>任务状态分布</Text>
                   </Space>
                 }
-                style={{ borderRadius: 12, boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)' }}
+                style={{ borderRadius: 12, boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.06)' }}
               >
                 {statusDistribution.length > 0 ? (
                   <Pie
@@ -590,7 +598,8 @@ export default function Dashboard() {
                     legend={{
                       position: 'bottom',
                     }}
-                    color={['#52c41a', '#1677ff', '#fa8c16', '#ff4d4f', '#8c8c8c']}
+                    theme={isDark ? 'dark' : 'light'}
+                    color={[token.colorSuccess, token.colorPrimary, token.colorWarning, token.colorError, '#8c8c8c']}
                     height={200}
                   />
                 ) : (
@@ -602,11 +611,11 @@ export default function Dashboard() {
               <Card
                 title={
                   <Space>
-                    <BarChartOutlined style={{ color: '#1677ff' }} />
+                    <BarChartOutlined style={{ color: token.colorPrimary }} />
                     <Text strong>机时占用 Top 5</Text>
                   </Space>
                 }
-                style={{ borderRadius: 12, boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)' }}
+                style={{ borderRadius: 12, boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.06)' }}
               >
                 {projectDistribution.length > 0 ? (
                   <Pie
@@ -621,6 +630,7 @@ export default function Dashboard() {
                     legend={{
                       position: 'bottom',
                     }}
+                    theme={isDark ? 'dark' : 'light'}
                     height={200}
                   />
                 ) : (
@@ -635,7 +645,7 @@ export default function Dashboard() {
         <Card
           title={
             <Space>
-              <ClockCircleOutlined style={{ color: '#1677ff' }} />
+              <ClockCircleOutlined style={{ color: token.colorPrimary }} />
               <Text strong>最近任务</Text>
             </Space>
           }
@@ -657,7 +667,7 @@ export default function Dashboard() {
               </Button>
             </Space>
           }
-          style={{ borderRadius: 12, boxShadow: '0 10px 30px rgba(15, 100, 255, 0.08)' }}
+          style={{ borderRadius: 12, boxShadow: isDark ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.06)' }}
         >
           {allJobs.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
