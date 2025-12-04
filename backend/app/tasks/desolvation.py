@@ -1154,6 +1154,7 @@ def get_molecule_charge(molecule_type: str) -> int:
         'PF6': -1,
         'BF4': -1,
         'ClO4': -1,
+        'DCA': -1,
         'EC': 0,
         'DMC': 0,
         'EMC': 0,
@@ -1162,6 +1163,7 @@ def get_molecule_charge(molecule_type: str) -> int:
         'DOL': 0,
         'TTE': 0,
         'FEC': 0,
+        'VC': 0,
     }
     return charge_map.get(molecule_type, 0)
 
