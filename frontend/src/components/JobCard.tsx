@@ -59,13 +59,14 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
   // 判断是否启用了QC计算
   const hasQCEnabled = job.config?.qc_enabled === true;
 
-  // 生成任务名称
-  const getJobTitle = () => {
-    const taskType = hasQCEnabled ? 'MD+QC 任务' : 'MD 任务';
-    if (electrolyte) {
-      return `${electrolyte.name} - ${taskType}`;
-    }
-    return `${taskType} #${job.id}`;
+  // 生成任务类型标签
+  const getTaskType = () => {
+    return hasQCEnabled ? 'MD+QC 任务' : 'MD 任务';
+  };
+
+  // 获取任务名（简化显示）
+  const getJobName = () => {
+    return job.config?.job_name || `任务 #${job.id}`;
   };
 
   // 处理按钮点击
@@ -237,75 +238,75 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
 
         {/* 右侧内容 */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-            <Text strong style={{ fontSize: 15 }}>
-              {getJobTitle()}
-            </Text>
+          {/* 第一行：任务类型 + 状态标签 */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <Space size={8}>
+              <Text strong style={{ fontSize: 14, color: hasQCEnabled ? '#722ed1' : '#1890ff' }}>
+                {getTaskType()}
+              </Text>
+              {/* 电荷计算方式标签 */}
+              {job.config?.charge_method && (
+                <Tooltip title={job.config.charge_method === 'resp' ? 'RESP 高精度电荷' : 'LigParGen 快速电荷'}>
+                  <Tag
+                    color={job.config.charge_method === 'resp' ? 'gold' : 'blue'}
+                    style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px', margin: 0 }}
+                  >
+                    {job.config.charge_method === 'resp' ? 'RESP' : 'LigParGen'}
+                  </Tag>
+                </Tooltip>
+              )}
+              {/* 管理员可见：提交用户 */}
+              {user?.role === UserRole.ADMIN && job.username && (
+                <Tooltip title={`提交用户: ${job.user_email || '未知邮箱'}`}>
+                  <Tag
+                    color="cyan"
+                    style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px', margin: 0 }}
+                  >
+                    👤 {job.username}
+                  </Tag>
+                </Tooltip>
+              )}
+            </Space>
             <StatusTag status={job.status} />
           </div>
 
-          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {job.config?.job_name || `#${job.id}`}
-            </Text>
+          {/* 第二行：任务名（突出显示） */}
+          <div style={{ marginBottom: 6 }}>
+            <Tooltip title={getJobName()}>
+              <Text
+                strong
+                style={{
+                  fontSize: 13,
+                  display: 'block',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {getJobName()}
+              </Text>
+            </Tooltip>
             {job.config?.user_note && (
               <Tooltip title={`备注: ${job.config.user_note}`}>
-                <Text type="secondary" style={{ fontSize: 12, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  ({job.config.user_note})
+                <Text type="secondary" style={{ fontSize: 11, fontStyle: 'italic' }}>
+                  📝 {job.config.user_note}
                 </Text>
-              </Tooltip>
-            )}
-            {job.slurm_job_id && (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                Slurm: {job.slurm_job_id}
-              </Text>
-            )}
-            {/* 显示电荷计算方式 */}
-            {job.config?.charge_method && (
-              <Tooltip title={job.config.charge_method === 'resp' ? 'RESP 高精度电荷计算' : 'LigParGen 快速电荷计算'}>
-                <Tag
-                  color={job.config.charge_method === 'resp' ? 'gold' : 'blue'}
-                  style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px', margin: 0 }}
-                >
-                  {job.config.charge_method === 'resp' ? 'RESP' : 'LigParGen'}
-                </Tag>
-              </Tooltip>
-            )}
-            {job.config?.qc_enabled && (
-              <Tooltip title={`QC计算: ${job.config.qc_functional || 'B3LYP'}/${job.config.qc_basis_set || '6-31++G(d,p)'}`}>
-                <Tag
-                  color="purple"
-                  style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px', margin: 0 }}
-                  icon={<ExperimentOutlined />}
-                >
-                  QC
-                </Tag>
-              </Tooltip>
-            )}
-            {/* 管理员可见：提交用户 */}
-            {user?.role === UserRole.ADMIN && job.username && (
-              <Tooltip title={`提交用户: ${job.user_email || '未知邮箱'}`}>
-                <Tag
-                  color="cyan"
-                  style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px', margin: 0 }}
-                >
-                  👤 {job.username}
-                </Tag>
               </Tooltip>
             )}
           </div>
 
+          {/* 第三行：计算参数 */}
           {job.config && (
-            <div style={{ marginBottom: 8 }}>
-              <Text type="secondary" style={{ fontSize: 12 }}>
+            <div style={{ marginBottom: 6 }}>
+              <Text type="secondary" style={{ fontSize: 11 }}>
                 NPT: {job.config.nsteps_npt?.toLocaleString()} | NVT: {job.config.nsteps_nvt?.toLocaleString()}
               </Text>
-              {job.config.slurm_ntasks && job.config.slurm_cpus_per_task && (
-                <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-                  资源: {job.config.slurm_ntasks * job.config.slurm_cpus_per_task} 核
-                  {job.config.slurm_partition && ` (${job.config.slurm_partition})`}
-                </Text>
-              )}
+              <br />
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                资源: {(job.config.slurm_ntasks || 8) * (job.config.slurm_cpus_per_task || 8)} 核
+                {job.config.slurm_partition && ` (${job.config.slurm_partition})`}
+                {job.slurm_job_id && ` | Slurm: ${job.slurm_job_id}`}
+              </Text>
             </div>
           )}
 
