@@ -2,7 +2,7 @@
 API v1 router
 """
 from fastapi import APIRouter
-from app.api.v1 import auth, users, projects, electrolytes, jobs, slurm, admin, research, billing, visibility, qc, user_preferences, batch_import, worker, desolvation, binding, redox
+from app.api.v1 import auth, users, projects, electrolytes, jobs, slurm, admin, research, billing, visibility, qc, user_preferences, batch_import, worker, desolvation, binding, redox, cluster_analysis
 
 api_router = APIRouter()
 
@@ -24,3 +24,4 @@ api_router.include_router(worker.router, tags=["Worker"])
 api_router.include_router(desolvation.router, prefix="/desolvation", tags=["Desolvation Energy"])
 api_router.include_router(binding.router, prefix="/binding", tags=["Binding Analysis"])
 api_router.include_router(redox.router, tags=["Redox Potential"])
+api_router.include_router(cluster_analysis.router, prefix="/cluster-analysis", tags=["Cluster Analysis"])

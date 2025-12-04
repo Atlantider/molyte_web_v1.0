@@ -434,3 +434,135 @@ class ReorganizationEnergyJob(Base):
 
     def __repr__(self):
         return f"<ReorganizationEnergyJob(id={self.id}, status={self.status})>"
+
+
+# ============================================================================
+# 高级 Cluster 计算统一管理
+# ============================================================================
+
+class ClusterCalcType(str, enum.Enum):
+    """Cluster 计算类型"""
+    BINDING_TOTAL = "BINDING_TOTAL"           # Binding A: 总脱溶剂化能
+    BINDING_PAIRWISE = "BINDING_PAIRWISE"     # Binding B: 单分子-Li Binding
+    DESOLVATION_STEPWISE = "DESOLVATION_STEPWISE"  # 逐级去溶剂化能
+    DESOLVATION_FULL = "DESOLVATION_FULL"     # 完全去溶剂化能
+    REDOX = "REDOX"                           # 氧化还原电位
+    REORGANIZATION = "REORGANIZATION"         # Marcus 重组能
+
+
+class AdvancedClusterJobStatus(str, enum.Enum):
+    """高级 Cluster 计算任务状态"""
+    CREATED = "CREATED"           # 已创建，规划中
+    SUBMITTED = "SUBMITTED"       # 已提交，等待 Worker
+    RUNNING = "RUNNING"           # 执行中
+    WAITING_QC = "WAITING_QC"     # 等待 QC 子任务完成
+    CALCULATING = "CALCULATING"   # 正在计算能量结果
+    COMPLETED = "COMPLETED"       # 完成
+    FAILED = "FAILED"             # 失败
+    CANCELLED = "CANCELLED"       # 取消
+
+
+class AdvancedClusterJob(Base):
+    """
+    高级 Cluster 计算统一任务模型
+
+    支持多种计算类型的统一管理：
+    - Binding A: 总脱溶剂化能 (E_cluster - E_ion - ΣE_ligand)
+    - Binding B: 单分子-Li Binding (E_Li-X - E_Li - E_X)
+    - Desolvation: 逐级去溶剂化能
+    - Redox: 氧化还原电位
+    - Reorganization: Marcus 重组能
+
+    特性：
+    - 智能 QC 任务复用
+    - 支持追加计算类型
+    - 统一的进度跟踪
+    """
+    __tablename__ = "advanced_cluster_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # 任务状态
+    status = Column(Enum(AdvancedClusterJobStatus), default=AdvancedClusterJobStatus.CREATED, nullable=False, index=True)
+    progress = Column(Float, default=0.0)
+    error_message = Column(Text)
+
+    # 选中的计算类型（支持多选）
+    # 格式: ["BINDING_TOTAL", "DESOLVATION_STEPWISE", ...]
+    calc_types = Column(JSONB, default=list)
+
+    # 选中的结构
+    # 格式: {"solvation_structure_ids": [1, 2, 3], "composition_keys": ["Li_EC_3_DMC_1", ...]}
+    selected_structures = Column(JSONB, default=dict)
+
+    # QC 计算配置
+    # 格式: {functional, basis_set, solvent_model, use_dispersion, ...}
+    qc_config = Column(JSONB, default=dict)
+
+    # QC 任务规划和追踪
+    # 格式: {
+    #   "planned_qc_tasks": [
+    #     {"type": "cluster", "structure_id": 1, "status": "pending", "qc_job_id": null},
+    #     {"type": "ligand", "smiles": "C1COC1", "status": "reused", "qc_job_id": 123},
+    #     ...
+    #   ],
+    #   "reused_qc_jobs": [123, 456],
+    #   "new_qc_jobs": [789, 101],
+    #   "total_qc_tasks": 10,
+    #   "completed_qc_tasks": 5
+    # }
+    qc_task_plan = Column(JSONB, default=dict)
+
+    # 各类计算的结果
+    # 格式: {
+    #   "BINDING_TOTAL": {
+    #     "structures": [...],
+    #     "statistics": {...}
+    #   },
+    #   "DESOLVATION_STEPWISE": {...},
+    #   ...
+    # }
+    results = Column(JSONB, default=dict)
+
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
+
+    # Relationships
+    md_job = relationship("MDJob", backref="advanced_cluster_jobs")
+    user = relationship("User", backref="advanced_cluster_jobs")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_advanced_cluster_md_job_id', 'md_job_id'),
+        Index('idx_advanced_cluster_user_id', 'user_id'),
+        Index('idx_advanced_cluster_status', 'status'),
+        Index('idx_advanced_cluster_created_at', 'created_at'),
+    )
+
+    def add_calc_type(self, calc_type: ClusterCalcType):
+        """添加计算类型（用于追加计算）"""
+        if self.calc_types is None:
+            self.calc_types = []
+        if calc_type.value not in self.calc_types:
+            self.calc_types.append(calc_type.value)
+
+    def has_calc_type(self, calc_type: ClusterCalcType) -> bool:
+        """检查是否包含某计算类型"""
+        return self.calc_types and calc_type.value in self.calc_types
+
+    def get_qc_task_progress(self) -> tuple:
+        """获取 QC 任务进度 (completed, total)"""
+        if not self.qc_task_plan:
+            return (0, 0)
+        return (
+            self.qc_task_plan.get('completed_qc_tasks', 0),
+            self.qc_task_plan.get('total_qc_tasks', 0)
+        )
+
+    def __repr__(self):
+        return f"<AdvancedClusterJob(id={self.id}, md_job_id={self.md_job_id}, types={self.calc_types}, status={self.status})>"
