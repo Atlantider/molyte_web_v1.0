@@ -343,8 +343,22 @@ def generate_gaussian_input(job: QCJob, work_dir: Path, pdb_content: str = None)
 {charge} {spin}
 """
 
-    # 如果有PDB内容，提取坐标
-    if pdb_content:
+    # 首先检查 config 中是否有 xyz_content（来自去溶剂化任务的团簇坐标）
+    xyz_content = config.get("xyz_content")
+
+    if xyz_content:
+        # 使用 config 中的 XYZ 坐标（团簇计算）
+        lines = xyz_content.strip().split('\n')
+        # XYZ 格式：第一行是原子数，第二行是注释，后面是坐标
+        for line in lines[2:]:  # 跳过原子数和注释行
+            parts = line.split()
+            if len(parts) >= 4:
+                atom_symbol = parts[0]
+                x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
+                gjf_content += f" {atom_symbol:<2}  {x:>12.6f}  {y:>12.6f}  {z:>12.6f}\n"
+        logger.info(f"Used xyz_content from config: {len(lines) - 2} atoms for {job.molecule_name}")
+    elif pdb_content:
+        # 如果有PDB内容，提取坐标
         for line in pdb_content.split('\n'):
             if line.startswith("ATOM") or line.startswith("HETATM"):
                 parts = line.split()

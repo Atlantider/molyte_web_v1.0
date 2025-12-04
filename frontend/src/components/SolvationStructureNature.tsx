@@ -24,6 +24,11 @@ import {
   Modal,
   Divider,
   theme,
+  Select,
+  InputNumber,
+  Row,
+  Col,
+  Collapse,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -65,7 +70,7 @@ import {
   getDesolvationJob,
   listClusterDesolvationJobs,
 } from '../api/desolvation';
-import type { DesolvationJobResponse } from '../types/desolvation';
+import type { DesolvationJobResponse, SolventModel, SolventConfig } from '../types/desolvation';
 import DesolvationResultView from './DesolvationResultView';
 
 const { Text } = Typography;
@@ -329,6 +334,9 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
   const [creatingDesolvation, setCreatingDesolvation] = useState(false);
   const [selectedMethodLevel, setSelectedMethodLevel] = useState<'fast' | 'standard' | 'accurate'>('standard');
   const [selectedDesolvationMode, setSelectedDesolvationMode] = useState<'stepwise' | 'full'>('stepwise');
+  const [selectedSolventModel, setSelectedSolventModel] = useState<SolventModel>('gas');
+  const [selectedSolventName, setSelectedSolventName] = useState<string>('');
+  const [customSolventParams, setCustomSolventParams] = useState<Partial<SolventConfig>>({});
 
   const cnChartRef = useRef<any>(null);
   const pieChartRef = useRef<any>(null);
@@ -656,11 +664,22 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
   const handleCreateDesolvationJob = async (clusterId: number) => {
     setCreatingDesolvation(true);
     try {
+      // 构建溶剂配置
+      let solventConfig: SolventConfig | undefined;
+      if (selectedSolventModel !== 'gas') {
+        solventConfig = {
+          model: selectedSolventModel,
+          solvent_name: selectedSolventName || undefined,
+          ...(selectedSolventModel === 'custom' ? customSolventParams : {}),
+        };
+      }
+
       await createDesolvationJob({
         md_job_id: jobId,
         solvation_structure_id: clusterId,
         method_level: selectedMethodLevel,
         desolvation_mode: selectedDesolvationMode,
+        solvent_config: solventConfig,
       });
       message.success('去溶剂化能任务已创建');
       await loadDesolvationJobs(clusterId);
@@ -1886,6 +1905,220 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                 </Text>
               </div>
             </Space>
+
+            {/* 溶剂模型选择 */}
+            <Divider orientation="left" style={{ margin: '16px 0 12px' }}>
+              <Text strong style={{ color: token.colorText }}>溶剂模型</Text>
+            </Divider>
+            <Row gutter={[12, 12]}>
+              <Col span={24}>
+                <Space direction="horizontal" size={12} wrap>
+                  <div
+                    onClick={() => setSelectedSolventModel('gas')}
+                    style={{
+                      padding: 12,
+                      border: `2px solid ${selectedSolventModel === 'gas' ? '#1890ff' : token.colorBorder}`,
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      background: selectedSolventModel === 'gas' ? (isDark ? 'rgba(24,144,255,0.1)' : '#e6f7ff') : 'transparent',
+                      transition: 'all 0.3s',
+                      minWidth: 120,
+                    }}
+                  >
+                    <Tag color="default">气相</Tag>
+                    <Text style={{ fontSize: 13, color: token.colorText }}>Gas</Text>
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                      无溶剂效应
+                    </Text>
+                  </div>
+                  <div
+                    onClick={() => setSelectedSolventModel('pcm')}
+                    style={{
+                      padding: 12,
+                      border: `2px solid ${selectedSolventModel === 'pcm' ? '#1890ff' : token.colorBorder}`,
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      background: selectedSolventModel === 'pcm' ? (isDark ? 'rgba(24,144,255,0.1)' : '#e6f7ff') : 'transparent',
+                      transition: 'all 0.3s',
+                      minWidth: 120,
+                    }}
+                  >
+                    <Tag color="blue">PCM</Tag>
+                    <Text style={{ fontSize: 13, color: token.colorText }}>极化连续介质</Text>
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                      IEFPCM 模型
+                    </Text>
+                  </div>
+                  <div
+                    onClick={() => setSelectedSolventModel('smd')}
+                    style={{
+                      padding: 12,
+                      border: `2px solid ${selectedSolventModel === 'smd' ? '#1890ff' : token.colorBorder}`,
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      background: selectedSolventModel === 'smd' ? (isDark ? 'rgba(24,144,255,0.1)' : '#e6f7ff') : 'transparent',
+                      transition: 'all 0.3s',
+                      minWidth: 120,
+                    }}
+                  >
+                    <Tag color="green">SMD</Tag>
+                    <Text style={{ fontSize: 13, color: token.colorText }}>溶剂密度模型</Text>
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                      更精确的溶剂化
+                    </Text>
+                  </div>
+                  <div
+                    onClick={() => setSelectedSolventModel('custom')}
+                    style={{
+                      padding: 12,
+                      border: `2px solid ${selectedSolventModel === 'custom' ? '#1890ff' : token.colorBorder}`,
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      background: selectedSolventModel === 'custom' ? (isDark ? 'rgba(24,144,255,0.1)' : '#e6f7ff') : 'transparent',
+                      transition: 'all 0.3s',
+                      minWidth: 120,
+                    }}
+                  >
+                    <Tag color="purple">自定义</Tag>
+                    <Text style={{ fontSize: 13, color: token.colorText }}>Custom</Text>
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                      自定义溶剂参数
+                    </Text>
+                  </div>
+                </Space>
+              </Col>
+            </Row>
+
+            {/* 溶剂名称选择（PCM/SMD 模式） */}
+            {(selectedSolventModel === 'pcm' || selectedSolventModel === 'smd') && (
+              <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
+                <Col span={12}>
+                  <Text style={{ fontSize: 12, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
+                    溶剂名称
+                  </Text>
+                  <Select
+                    value={selectedSolventName || undefined}
+                    onChange={(value) => setSelectedSolventName(value)}
+                    placeholder="选择溶剂"
+                    style={{ width: '100%' }}
+                    options={[
+                      { label: 'Water (水)', value: 'water' },
+                      { label: 'Acetonitrile (乙腈)', value: 'acetonitrile' },
+                      { label: 'Methanol (甲醇)', value: 'methanol' },
+                      { label: 'Ethanol (乙醇)', value: 'ethanol' },
+                      { label: 'DMSO (二甲基亚砜)', value: 'dmso' },
+                      { label: 'DMF (二甲基甲酰胺)', value: 'dmf' },
+                      { label: 'THF (四氢呋喃)', value: 'thf' },
+                      { label: 'Dichloromethane (二氯甲烷)', value: 'dichloromethane' },
+                      { label: 'Chloroform (氯仿)', value: 'chloroform' },
+                      { label: 'Acetone (丙酮)', value: 'acetone' },
+                      { label: 'Toluene (甲苯)', value: 'toluene' },
+                      { label: 'Hexane (正己烷)', value: 'hexane' },
+                      { label: 'Diethyl Ether (乙醚)', value: 'diethylether' },
+                      { label: 'Propylene Carbonate (碳酸丙烯酯)', value: 'propylenecarbonate' },
+                      { label: 'Ethylene Carbonate (碳酸乙烯酯)', value: 'ethylenecarbonate' },
+                    ]}
+                  />
+                </Col>
+              </Row>
+            )}
+
+            {/* 自定义溶剂参数（Custom 模式） */}
+            {selectedSolventModel === 'custom' && (
+              <Collapse
+                size="small"
+                style={{ marginTop: 12 }}
+                items={[{
+                  key: 'custom-params',
+                  label: <Text style={{ fontSize: 12 }}>自定义溶剂参数</Text>,
+                  children: (
+                    <Row gutter={[12, 12]}>
+                      <Col span={8}>
+                        <Text style={{ fontSize: 11, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
+                          介电常数 ε
+                        </Text>
+                        <InputNumber
+                          value={customSolventParams.eps}
+                          onChange={(value) => setCustomSolventParams(prev => ({ ...prev, eps: value ?? undefined }))}
+                          placeholder="如: 78.4"
+                          style={{ width: '100%' }}
+                          min={1}
+                          step={0.1}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Text style={{ fontSize: 11, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
+                          光学介电常数 n²
+                        </Text>
+                        <InputNumber
+                          value={customSolventParams.eps_inf}
+                          onChange={(value) => setCustomSolventParams(prev => ({ ...prev, eps_inf: value ?? undefined }))}
+                          placeholder="如: 1.78"
+                          style={{ width: '100%' }}
+                          min={1}
+                          step={0.01}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Text style={{ fontSize: 11, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
+                          表面张力 γ
+                        </Text>
+                        <InputNumber
+                          value={customSolventParams.surface_tension}
+                          onChange={(value) => setCustomSolventParams(prev => ({ ...prev, surface_tension: value ?? undefined }))}
+                          placeholder="如: 72.0"
+                          style={{ width: '100%' }}
+                          min={0}
+                          step={0.1}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Text style={{ fontSize: 11, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
+                          氢键酸度 α
+                        </Text>
+                        <InputNumber
+                          value={customSolventParams.hbond_acidity}
+                          onChange={(value) => setCustomSolventParams(prev => ({ ...prev, hbond_acidity: value ?? undefined }))}
+                          placeholder="如: 0.82"
+                          style={{ width: '100%' }}
+                          min={0}
+                          max={1}
+                          step={0.01}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Text style={{ fontSize: 11, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
+                          氢键碱度 β
+                        </Text>
+                        <InputNumber
+                          value={customSolventParams.hbond_basicity}
+                          onChange={(value) => setCustomSolventParams(prev => ({ ...prev, hbond_basicity: value ?? undefined }))}
+                          placeholder="如: 0.35"
+                          style={{ width: '100%' }}
+                          min={0}
+                          max={1}
+                          step={0.01}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Text style={{ fontSize: 11, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
+                          芳香碳比例 φ
+                        </Text>
+                        <InputNumber
+                          value={customSolventParams.carbon_aromaticity}
+                          onChange={(value) => setCustomSolventParams(prev => ({ ...prev, carbon_aromaticity: value ?? undefined }))}
+                          placeholder="如: 0.0"
+                          style={{ width: '100%' }}
+                          min={0}
+                          max={1}
+                          step={0.01}
+                        />
+                      </Col>
+                    </Row>
+                  ),
+                }]}
+              />
+            )}
 
             <div style={{ marginTop: 16 }}>
               <Space>
