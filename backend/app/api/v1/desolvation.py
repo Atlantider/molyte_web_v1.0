@@ -232,6 +232,85 @@ async def get_md_desolvation_overview(
     )
 
 
+@router.get("/jobs/{job_id}/qc-tasks")
+async def get_desolvation_qc_tasks(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    获取某个去溶剂化任务的 QC 子任务列表
+    用于展示多级计算结构
+    """
+    # 检查任务是否存在
+    job = db.query(PostprocessJob).filter(
+        PostprocessJob.id == job_id,
+        PostprocessJob.job_type == PostprocessType.DESOLVATION_ENERGY
+    ).first()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="去溶剂化任务不存在"
+        )
+
+    # 查询关联的 QC 任务
+    qc_jobs = db.query(QCJob).filter(
+        QCJob.desolvation_postprocess_job_id == job_id
+    ).order_by(QCJob.created_at.asc()).all()
+
+    # 构建响应
+    qc_tasks = []
+    for qc in qc_jobs:
+        # 从 molecule_name 提取类型信息
+        # 格式如: Cluster_995_minus_PF6_2 或 EC 或 Li
+        mol_name = qc.molecule_name
+        task_type = "cluster"  # 默认
+        if mol_name.startswith("Cluster_") and "_minus_" in mol_name:
+            task_type = "cluster_minus"
+        elif not mol_name.startswith("Cluster_"):
+            task_type = "ligand"
+
+        qc_tasks.append({
+            "id": qc.id,
+            "molecule_name": mol_name,
+            "task_type": task_type,  # cluster, cluster_minus, ligand
+            "status": qc.status.value,
+            "progress": qc.progress,
+            "charge": qc.charge,
+            "spin_multiplicity": qc.spin_multiplicity,
+            "basis_set": qc.basis_set,
+            "functional": qc.functional,
+            "is_reused": qc.is_reused,
+            "reused_from_job_id": qc.reused_from_job_id,
+            "slurm_job_id": qc.slurm_job_id,
+            "error_message": qc.error_message,
+            "created_at": qc.created_at.isoformat() if qc.created_at else None,
+            "started_at": qc.started_at.isoformat() if qc.started_at else None,
+            "finished_at": qc.finished_at.isoformat() if qc.finished_at else None,
+        })
+
+    # 统计
+    total = len(qc_tasks)
+    completed = sum(1 for t in qc_tasks if t["status"] == "COMPLETED")
+    running = sum(1 for t in qc_tasks if t["status"] == "RUNNING")
+    failed = sum(1 for t in qc_tasks if t["status"] == "FAILED")
+    queued = sum(1 for t in qc_tasks if t["status"] in ["QUEUED", "SUBMITTED", "CREATED"])
+    reused = sum(1 for t in qc_tasks if t["is_reused"])
+
+    return {
+        "job_id": job_id,
+        "composition_key": job.config.get("solvation_structure_id"),
+        "total": total,
+        "completed": completed,
+        "running": running,
+        "failed": failed,
+        "queued": queued,
+        "reused": reused,
+        "qc_tasks": qc_tasks
+    }
+
+
 def _build_job_response(job: PostprocessJob, db: Session) -> DesolvationJobResponse:
     """构建任务响应，包含溯源信息和 QC 进度"""
     elapsed_seconds = None

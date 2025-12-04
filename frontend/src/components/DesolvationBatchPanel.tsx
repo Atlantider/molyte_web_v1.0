@@ -45,6 +45,9 @@ import { autoSelectSolvationStructures, type AutoSelectedStructure } from '../ap
 import {
   batchCreateDesolvationJobs,
   getDesolvationOverview,
+  getDesolvationQCTasks,
+  type QCTaskInfo,
+  type DesolvationQCTasksResponse,
 } from '../api/desolvation';
 import type {
   DesolvationJobResponse,
@@ -119,6 +122,8 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
   const [submitting, setSubmitting] = useState(false);
   const [overview, setOverview] = useState<DesolvationOverviewResponse | null>(null);
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
+  const [expandedRowKeys, setExpandedRowKeys] = useState<number[]>([]);
+  const [qcTasksCache, setQcTasksCache] = useState<Record<number, DesolvationQCTasksResponse>>({});
 
   // 多维度筛选条件
   const [cnFilter, setCnFilter] = useState<number[]>([]);  // 配位数筛选
@@ -250,8 +255,7 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
     try {
       const solventConfig: SolventConfig | undefined = solventModel === 'gas' ? undefined : {
         model: solventModel,
-        solvent_name: solventModel !== 'custom' ? solventName : undefined,
-        ...customParams,
+        solvent_name: solventName || undefined,
       };
       
       const result = await batchCreateDesolvationJobs({
@@ -269,6 +273,135 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // 加载 QC 子任务
+  const loadQCTasks = useCallback(async (jobId: number) => {
+    if (qcTasksCache[jobId]) return; // 已缓存
+    try {
+      const data = await getDesolvationQCTasks(jobId);
+      setQcTasksCache(prev => ({ ...prev, [jobId]: data }));
+    } catch (error) {
+      console.error('加载QC子任务失败:', error);
+    }
+  }, [qcTasksCache]);
+
+  // 展开行渲染
+  const expandedRowRender = (record: DesolvationJobResponse) => {
+    const qcData = qcTasksCache[record.job_id];
+
+    if (!qcData) {
+      return (
+        <div style={{ padding: 16, textAlign: 'center' }}>
+          <Spin tip="加载子任务..." />
+        </div>
+      );
+    }
+
+    const qcTasks = qcData.qc_tasks;
+
+    // 按类型分组
+    const clusterTask = qcTasks.find(t => t.task_type === 'cluster');
+    const clusterMinusTasks = qcTasks.filter(t => t.task_type === 'cluster_minus');
+    const ligandTasks = qcTasks.filter(t => t.task_type === 'ligand');
+
+    const getStatusTag = (status: string, isReused?: boolean) => {
+      if (isReused) {
+        return <Tag color="cyan" icon={<CheckCircleOutlined />}>复用</Tag>;
+      }
+      const statusConfig: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
+        CREATED: { color: 'default', icon: <ClockCircleOutlined />, text: '已创建' },
+        SUBMITTED: { color: 'blue', icon: <ClockCircleOutlined />, text: '已提交' },
+        QUEUED: { color: 'cyan', icon: <ClockCircleOutlined />, text: '排队中' },
+        RUNNING: { color: 'processing', icon: <SyncOutlined spin />, text: '运行中' },
+        COMPLETED: { color: 'success', icon: <CheckCircleOutlined />, text: '完成' },
+        FAILED: { color: 'error', icon: <ExclamationCircleOutlined />, text: '失败' },
+      };
+      const config = statusConfig[status] || { color: 'default', icon: null, text: status };
+      return <Tag color={config.color} icon={config.icon}>{config.text}</Tag>;
+    };
+
+    return (
+      <div style={{
+        padding: '12px 16px',
+        background: isDark ? 'rgba(0,0,0,0.2)' : '#fafafa',
+        borderRadius: 4,
+      }}>
+        {/* 统计信息 */}
+        <Row gutter={16} style={{ marginBottom: 12 }}>
+          <Col><Text type="secondary">子任务: {qcData.total}</Text></Col>
+          <Col><Text style={{ color: '#52c41a' }}>✓ {qcData.completed}</Text></Col>
+          <Col><Text style={{ color: '#1890ff' }}>⟳ {qcData.running}</Text></Col>
+          <Col><Text style={{ color: '#ff4d4f' }}>✗ {qcData.failed}</Text></Col>
+          {qcData.reused > 0 && <Col><Text style={{ color: '#13c2c2' }}>♻ 复用 {qcData.reused}</Text></Col>}
+        </Row>
+
+        {/* Cluster 完整结构 */}
+        {clusterTask && (
+          <div style={{ marginBottom: 8 }}>
+            <Text strong style={{ fontSize: 12 }}>完整 Cluster:</Text>
+            <div style={{ marginLeft: 16, marginTop: 4 }}>
+              <Space size={8}>
+                <Text style={{ fontSize: 11 }}>{clusterTask.molecule_name}</Text>
+                {getStatusTag(clusterTask.status, clusterTask.is_reused)}
+                <Text type="secondary" style={{ fontSize: 10 }}>
+                  {clusterTask.functional}/{clusterTask.basis_set}
+                </Text>
+              </Space>
+            </div>
+          </div>
+        )}
+
+        {/* Cluster-minus 结构 */}
+        {clusterMinusTasks.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <Text strong style={{ fontSize: 12 }}>去配体 Cluster ({clusterMinusTasks.length}):</Text>
+            <div style={{ marginLeft: 16, marginTop: 4, maxHeight: 120, overflowY: 'auto' }}>
+              {clusterMinusTasks.map(task => (
+                <div key={task.id} style={{ marginBottom: 4 }}>
+                  <Space size={8}>
+                    <Text style={{ fontSize: 11, fontFamily: 'monospace' }}>
+                      {task.molecule_name.replace('Cluster_', '').replace(/_/g, ' ')}
+                    </Text>
+                    {getStatusTag(task.status, task.is_reused)}
+                    {task.error_message && (
+                      <Tooltip title={task.error_message}>
+                        <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 11 }} />
+                      </Tooltip>
+                    )}
+                  </Space>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 配体分子 */}
+        {ligandTasks.length > 0 && (
+          <div>
+            <Text strong style={{ fontSize: 12 }}>配体分子 ({ligandTasks.length}):</Text>
+            <div style={{ marginLeft: 16, marginTop: 4 }}>
+              <Space wrap size={4}>
+                {ligandTasks.map(task => (
+                  <Tooltip
+                    key={task.id}
+                    title={`${task.functional}/${task.basis_set} | charge=${task.charge}${task.is_reused ? ' (复用)' : ''}`}
+                  >
+                    <Tag
+                      color={task.status === 'COMPLETED' ? 'success' : task.status === 'FAILED' ? 'error' : 'processing'}
+                      style={{ fontSize: 11 }}
+                    >
+                      {task.molecule_name}
+                      {task.is_reused && ' ♻'}
+                    </Tag>
+                  </Tooltip>
+                ))}
+              </Space>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   // 结构表格列
@@ -390,16 +523,24 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 120,
       render: (_, record) => (
-        <Button
-          type="link"
-          size="small"
-          disabled={record.status !== 'COMPLETED'}
-          onClick={() => setExpandedJobId(expandedJobId === record.job_id ? null : record.job_id)}
-        >
-          {expandedJobId === record.job_id ? '收起' : '查看结果'}
-        </Button>
+        <Space size={4}>
+          <Button
+            type="link"
+            size="small"
+            disabled={record.status !== 'COMPLETED'}
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpandedJobId(expandedJobId === record.job_id ? null : record.job_id);
+              if (expandedJobId !== record.job_id) {
+                setExpandedRowKeys([record.job_id]);
+              }
+            }}
+          >
+            {expandedJobId === record.job_id ? '收起' : '结果'}
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -758,12 +899,17 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
               {overview.status_summary['COMPLETED'] > 0 && (
                 <Tag color="success">{overview.status_summary['COMPLETED']} 完成</Tag>
               )}
-              {overview.status_summary['RUNNING'] > 0 && (
-                <Tag color="processing">{overview.status_summary['RUNNING']} 运行中</Tag>
+              {(overview.status_summary['RUNNING'] || 0) + (overview.status_summary['QUEUED'] || 0) > 0 && (
+                <Tag color="processing">
+                  {(overview.status_summary['RUNNING'] || 0) + (overview.status_summary['QUEUED'] || 0)} 进行中
+                </Tag>
+              )}
+              {overview.status_summary['FAILED'] > 0 && (
+                <Tag color="error">{overview.status_summary['FAILED']} 失败</Tag>
               )}
             </Space>
           </Divider>
-          
+
           <Table
             dataSource={overview.jobs}
             columns={jobColumns}
@@ -771,15 +917,24 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
             size="small"
             pagination={{ pageSize: 5, size: 'small' }}
             expandable={{
-              expandedRowKeys: expandedJobId ? [expandedJobId] : [],
-              expandedRowRender: (record) =>
-                record.result ? (
-                  <DesolvationResultView result={record.result} />
-                ) : (
-                  <Empty description="暂无结果" />
-                ),
-              rowExpandable: (record) => record.status === 'COMPLETED',
-              expandIcon: () => null,
+              expandedRowKeys: expandedRowKeys,
+              onExpand: (expanded, record) => {
+                if (expanded) {
+                  setExpandedRowKeys([record.job_id]);
+                  loadQCTasks(record.job_id);
+                } else {
+                  setExpandedRowKeys([]);
+                }
+              },
+              expandedRowRender: (record) => {
+                // 如果有结果且要查看结果
+                if (expandedJobId === record.job_id && record.result) {
+                  return <DesolvationResultView result={record.result} />;
+                }
+                // 否则展示子任务
+                return expandedRowRender(record);
+              },
+              rowExpandable: () => true,
             }}
           />
         </div>
