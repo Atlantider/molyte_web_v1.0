@@ -160,11 +160,13 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
     return count;
   };
 
-  // 辅助函数：获取结构中的溶剂类型列表
+  // 辅助函数：获取结构中的溶剂类型列表（只返回数量 > 0 的非阴离子）
   const getSolventTypes = (composition: Record<string, number>): string[] => {
-    return Object.keys(composition).filter(mol =>
-      !ANION_PATTERNS.some(anion => mol.toUpperCase().includes(anion.toUpperCase()))
-    );
+    return Object.entries(composition)
+      .filter(([mol, count]) =>
+        count > 0 && !ANION_PATTERNS.some(anion => mol.toUpperCase().includes(anion.toUpperCase()))
+      )
+      .map(([mol]) => mol);
   };
 
   // 获取所有可用的配位数选项
