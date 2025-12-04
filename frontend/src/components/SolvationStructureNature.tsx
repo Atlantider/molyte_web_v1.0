@@ -245,6 +245,7 @@ const RESPONSIVE_STYLES = `
     border: 1px solid #e8e8e8 !important;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
     transition: all 0.3s ease !important;
+    overflow: hidden !important;
   }
   .chart-card:hover {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
@@ -261,9 +262,10 @@ const RESPONSIVE_STYLES = `
   }
   .chart-card .ant-card-body {
     padding: 8px !important;
+    overflow: hidden !important;
   }
-  /* 图表容器样式 */
-  .chart-container {
+  /* 饼图容器样式 - 使用特定类名避免影响其他组件 */
+  .solvation-pie-chart-container {
     background: transparent;
     border: none;
     border-radius: 0;
@@ -1224,7 +1226,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
             />
           }
         >
-          <div className="chart-container">
+          <div className="solvation-pie-chart-container">
             <ReactECharts
               ref={cnChartRef}
               option={cnPieOption}
@@ -1257,7 +1259,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
             />
           }
         >
-          <div className="chart-container">
+          <div className="solvation-pie-chart-container">
             <ReactECharts
               ref={anionChartRef}
               option={anionCnPieOption}
@@ -1290,7 +1292,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
             />
           }
         >
-          <div className="chart-container">
+          <div className="solvation-pie-chart-container">
             <ReactECharts
               ref={pieChartRef}
               option={pieOption}
@@ -1323,7 +1325,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
             />
           }
         >
-          <div className="chart-container">
+          <div className="solvation-pie-chart-container">
             <ReactECharts
               ref={ionPairChartRef}
               option={ionPairPieOption}
