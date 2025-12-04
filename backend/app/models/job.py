@@ -235,3 +235,65 @@ class RESPJob(Base):
     def __repr__(self):
         return f"<RESPJob(id={self.id}, molecule={self.molecule_name}, status={self.status})>"
 
+
+class BindingAnalysisStatus(str, enum.Enum):
+    """Binding analysis job status"""
+    CREATED = "CREATED"
+    SUBMITTED = "SUBMITTED"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class BindingAnalysisJob(Base):
+    """
+    Li-配体 Binding Energy 分析任务
+
+    简化版 binding energy 计算：
+    E_bind_shell = E_cluster - (E_center_ion + Σ n_j × E_ligand_j)
+
+    不需要生成 cluster_minus 结构，只需要：
+    1. Cluster 能量（可复用已有 QC 结果）
+    2. 中心离子（Li+）能量
+    3. 各配体类型的能量
+    """
+    __tablename__ = "binding_analysis_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # 任务状态
+    status = Column(Enum(BindingAnalysisStatus), default=BindingAnalysisStatus.CREATED, nullable=False, index=True)
+    progress = Column(Float, default=0.0)
+    error_message = Column(Text)
+
+    # 配置
+    config = Column(JSONB)  # {composition_keys, functional, basis_set, solvent_model, ...}
+
+    # 结果
+    result = Column(JSONB)  # {per_cluster_results, per_type_statistics, summary}
+
+    # 关联的 QC 任务 ID 列表
+    qc_job_ids = Column(JSONB)  # [qc_job_id, ...]
+
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
+
+    # Relationships
+    md_job = relationship("MDJob", backref="binding_analysis_jobs")
+    user = relationship("User", backref="binding_analysis_jobs")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_binding_analysis_md_job_id', 'md_job_id'),
+        Index('idx_binding_analysis_user_id', 'user_id'),
+        Index('idx_binding_analysis_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<BindingAnalysisJob(id={self.id}, md_job_id={self.md_job_id}, status={self.status})>"
+

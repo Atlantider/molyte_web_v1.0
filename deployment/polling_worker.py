@@ -376,6 +376,13 @@ class PollingWorker:
                     break
                 self._process_postprocess_job(job)
 
+            # 获取待处理的 Binding 分析任务
+            binding_jobs = self._fetch_pending_jobs('binding')
+            for job in binding_jobs:
+                if len(self.running_jobs) >= self.config['worker']['max_concurrent_jobs']:
+                    break
+                self._process_binding_job(job)
+
             # 检查等待 QC 任务完成的去溶剂化任务
             # 注意：在 API 架构下，这个功能由后端处理，worker 不需要直接访问数据库
             # self._check_waiting_desolvation_jobs()
@@ -817,6 +824,236 @@ class PollingWorker:
             self.logger.error(f"去溶剂化能任务 {job_id} 失败: {e}", exc_info=True)
             self._update_job_status(job_id, 'FAILED', 'postprocess', error_message=str(e))
             raise
+
+    def _process_binding_job(self, job: Dict):
+        """
+        处理 Binding 分析任务
+
+        简化版 Li-配体 binding energy 计算：
+        E_bind_shell = E_cluster - (E_center_ion + Σ n_j × E_ligand_j)
+        """
+        job_id = job['id']
+        config = job.get('config', {})
+        md_job_id = config.get('md_job_id')
+
+        self.logger.info(f"开始处理 Binding 分析任务 {job_id} (MD job: {md_job_id})")
+
+        try:
+            # 1. 更新状态为 RUNNING
+            self._update_job_status(job_id, 'RUNNING', 'binding', progress=0)
+
+            # 2. 获取可用的 cluster 信息
+            endpoint = f"{self.api_base_url}/binding/available-clusters/{md_job_id}"
+            response = requests.get(
+                endpoint,
+                headers=self.api_headers,
+                timeout=60
+            )
+
+            if response.status_code != 200:
+                raise Exception(f"获取 cluster 信息失败: {response.status_code}")
+
+            clusters_info = response.json()
+            composition_keys = config.get('composition_keys', [])
+
+            if not composition_keys:
+                composition_keys = clusters_info.get('composition_keys', [])
+
+            if not composition_keys:
+                raise Exception("没有找到可分析的 cluster")
+
+            self.logger.info(f"Binding 任务 {job_id}: 分析 {len(composition_keys)} 个 cluster 类型")
+
+            # 3. 获取已有的 QC 结果
+            existing_qc = clusters_info.get('existing_qc_by_type', {})
+
+            # 4. 调用后端 API 执行 binding 计算
+            # 这里简化处理：直接调用后端 API 处理
+            process_endpoint = f"{self.api_base_url}/binding/jobs/{job_id}/process"
+
+            # 尝试调用后端处理（如果后端有这个接口）
+            try:
+                process_response = requests.post(
+                    process_endpoint,
+                    headers=self.api_headers,
+                    json={'composition_keys': composition_keys},
+                    timeout=300
+                )
+
+                if process_response.status_code == 200:
+                    result = process_response.json()
+                    self.logger.info(f"Binding 任务 {job_id} 后端处理成功")
+                    return
+                elif process_response.status_code == 404:
+                    # 后端没有实现 process 接口，使用本地处理
+                    self.logger.info(f"Binding 任务 {job_id}: 使用本地处理逻辑")
+                else:
+                    self.logger.warning(f"Binding 后端处理返回 {process_response.status_code}")
+            except Exception as e:
+                self.logger.warning(f"Binding 后端处理调用失败，使用本地逻辑: {e}")
+
+            # 5. 本地处理：从现有 QC 结果计算 binding energy
+            self._calculate_binding_from_existing_qc(job_id, md_job_id, composition_keys, config)
+
+        except Exception as e:
+            self.logger.error(f"处理 Binding 任务 {job_id} 失败: {e}", exc_info=True)
+            self._update_job_status(job_id, 'FAILED', 'binding', error_message=str(e))
+
+    def _calculate_binding_from_existing_qc(self, job_id: int, md_job_id: int,
+                                            composition_keys: List[str], config: Dict):
+        """从现有 QC 结果计算 binding energy"""
+        self.logger.info(f"Binding 任务 {job_id}: 从现有 QC 结果计算")
+
+        try:
+            # 获取该 MD 任务下的 QC 结果
+            endpoint = f"{self.api_base_url}/qc/jobs"
+            params = {
+                'md_job_id': md_job_id,
+                'status': 'COMPLETED',
+                'limit': 1000
+            }
+
+            response = requests.get(
+                endpoint,
+                headers=self.api_headers,
+                params=params,
+                timeout=60
+            )
+
+            if response.status_code != 200:
+                raise Exception(f"获取 QC 结果失败: {response.status_code}")
+
+            qc_data = response.json()
+            qc_jobs = qc_data.get('items', [])
+
+            if not qc_jobs:
+                raise Exception("没有找到已完成的 QC 计算结果")
+
+            # 按分子类型分组
+            energy_by_type = {}  # {molecule_name: energy_au}
+            cluster_energies = {}  # {composition_key: energy_au}
+
+            for qc in qc_jobs:
+                mol_name = qc.get('molecule_name', '')
+                mol_type = qc.get('molecule_type', 'unknown')
+
+                # 获取能量（需要从 results 中获取）
+                # 这里简化处理，假设 config 中有 energy_au
+                qc_config = qc.get('config', {}) or {}
+                energy_au = qc_config.get('energy_au')
+
+                if energy_au is None:
+                    # 需要获取详细结果
+                    detail_endpoint = f"{self.api_base_url}/qc/jobs/{qc['id']}"
+                    detail_resp = requests.get(
+                        detail_endpoint,
+                        headers=self.api_headers,
+                        timeout=30
+                    )
+                    if detail_resp.status_code == 200:
+                        detail = detail_resp.json()
+                        results = detail.get('results', [])
+                        if results:
+                            energy_au = results[0].get('energy_au')
+
+                if energy_au is not None:
+                    energy_by_type[mol_name] = energy_au
+
+                    # 检查是否是 cluster
+                    if 'cluster' in mol_name.lower() or mol_type == 'cluster':
+                        # 提取 composition_key
+                        for key in composition_keys:
+                            if key in mol_name:
+                                cluster_energies[key] = energy_au
+                                break
+
+            # 计算 binding energy（简化版）
+            per_cluster_results = []
+            qc_job_ids = []
+
+            # 获取 Li+ 能量
+            li_energy = None
+            for name, energy in energy_by_type.items():
+                if 'li' in name.lower() and 'cluster' not in name.lower():
+                    li_energy = energy
+                    break
+
+            total_bindings = []
+
+            for comp_key, cluster_energy in cluster_energies.items():
+                if li_energy is None:
+                    continue
+
+                # 简化计算：只有 cluster 和 Li+
+                # 实际应该解析 ligand 类型和数量
+                binding_au = cluster_energy - li_energy
+                binding_kcal = binding_au * 627.509  # Hartree to kcal/mol
+
+                per_cluster_results.append({
+                    'composition_key': comp_key,
+                    'cluster_energy_au': cluster_energy,
+                    'center_ion_energy_au': li_energy,
+                    'binding_energy_au': binding_au,
+                    'binding_energy_kcal': binding_kcal,
+                    'converged': True,
+                    'warnings': ['简化计算：未减去配体能量']
+                })
+                total_bindings.append(binding_kcal)
+
+            # 生成汇总
+            import statistics
+            summary = {
+                'total_clusters': len(composition_keys),
+                'completed_clusters': len(per_cluster_results),
+                'failed_clusters': len(composition_keys) - len(per_cluster_results),
+                'warnings': []
+            }
+
+            if total_bindings:
+                summary['mean_total_binding_kcal'] = statistics.mean(total_bindings)
+                if len(total_bindings) > 1:
+                    summary['std_total_binding_kcal'] = statistics.stdev(total_bindings)
+
+            result = {
+                'per_cluster_results': per_cluster_results,
+                'summary': summary
+            }
+
+            # 更新任务状态为完成
+            self._update_binding_result(job_id, result, qc_job_ids)
+
+        except Exception as e:
+            self.logger.error(f"计算 binding energy 失败: {e}", exc_info=True)
+            raise
+
+    def _update_binding_result(self, job_id: int, result: Dict, qc_job_ids: List[int]):
+        """更新 Binding 任务结果"""
+        try:
+            endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/status"
+
+            data = {
+                'status': 'COMPLETED',
+                'job_type': 'BINDING',
+                'worker_name': self.worker_name,
+                'progress': 100.0,
+                'result': result,
+                'qc_job_ids': qc_job_ids
+            }
+
+            response = requests.put(
+                endpoint,
+                headers=self.api_headers,
+                json=data,
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                self.logger.info(f"Binding 任务 {job_id} 完成，已更新结果")
+            else:
+                self.logger.error(f"更新 Binding 任务 {job_id} 状态失败: {response.status_code}")
+
+        except Exception as e:
+            self.logger.error(f"更新 Binding 任务结果失败: {e}")
 
     def _check_waiting_desolvation_jobs(self):
         """

@@ -44,6 +44,7 @@ import {
   FilterOutlined,
   PlusOutlined,
   EyeOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { autoSelectSolvationStructures, type AutoSelectedStructure } from '../api/jobs';
@@ -70,6 +71,7 @@ import DesolvationSummaryPanel from './DesolvationSummaryPanel';
 import DesolvationComparisonView from './DesolvationComparisonView';
 import BindingEnergyView from './BindingEnergyView';
 import ClusterStatisticsPanel from './ClusterStatisticsPanel';
+import BindingAnalysisPanel from './BindingAnalysisPanel';
 
 // 3Dmol.js 类型声明
 declare global {
@@ -1708,6 +1710,18 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                   </Space>
                 ),
                 children: <ClusterStatisticsPanel mdJobId={jobId} />,
+              },
+              {
+                key: 'binding-analysis',
+                label: (
+                  <Space>
+                    Binding 分析
+                    <Tooltip title="独立的 Li-配体 Binding Energy 计算任务">
+                      <ExperimentOutlined />
+                    </Tooltip>
+                  </Space>
+                ),
+                children: <BindingAnalysisPanel mdJobId={jobId} />,
               },
             ]}
           />

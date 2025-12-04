@@ -71,7 +71,7 @@ class WorkerHeartbeat(BaseModel):
 class JobStatusUpdate(BaseModel):
     """任务状态更新"""
     status: str
-    job_type: str  # MD, QC, or POSTPROCESS
+    job_type: str  # MD, QC, POSTPROCESS, or BINDING
     worker_name: str
     slurm_job_id: Optional[str] = None
     work_dir: Optional[str] = None
@@ -81,6 +81,9 @@ class JobStatusUpdate(BaseModel):
     progress: Optional[float] = None  # 任务进度 0-100
     cpu_hours: Optional[float] = None  # MD/QC 计算消耗的 CPU 核时数
     resp_cpu_hours: Optional[float] = None  # RESP 电荷计算消耗的 CPU 核时数
+    # Binding 任务专用字段
+    result: Optional[Dict[str, Any]] = None  # Binding 分析结果
+    qc_job_ids: Optional[List[int]] = None  # 关联的 QC 任务 ID
 
 
 class PendingJobResponse(BaseModel):
@@ -303,6 +306,27 @@ async def get_pending_jobs(
                 type=f"POSTPROCESS_{job.job_type.value}",
                 config={
                     "job_type": job.job_type.value,
+                    "md_job_id": job.md_job_id,
+                    **(job.config or {}),
+                },
+                created_at=job.created_at
+            )
+            for job in jobs
+        ]
+
+    elif job_type == "BINDING":
+        # 获取 SUBMITTED 状态的 Binding 分析任务
+        from app.models.job import BindingAnalysisJob, BindingAnalysisStatus
+
+        jobs = db.query(BindingAnalysisJob).filter(
+            BindingAnalysisJob.status == BindingAnalysisStatus.SUBMITTED
+        ).order_by(BindingAnalysisJob.created_at).limit(limit).all()
+
+        return [
+            PendingJobResponse(
+                id=job.id,
+                type="BINDING",
+                config={
                     "md_job_id": job.md_job_id,
                     **(job.config or {}),
                 },
@@ -588,6 +612,56 @@ async def update_job_status(
 
         logger.info(
             f"Postprocess Job {job_id} status updated to {mapped_status} "
+            f"by worker {status_update.worker_name}"
+        )
+
+        return {"status": "ok", "job_id": job_id, "new_status": mapped_status}
+
+    elif job_type == "BINDING":
+        from app.models.job import BindingAnalysisJob, BindingAnalysisStatus
+
+        valid_statuses = [s.value for s in BindingAnalysisStatus]
+        if mapped_status not in valid_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status for BINDING job: {mapped_status}"
+            )
+
+        job = db.query(BindingAnalysisJob).filter(BindingAnalysisJob.id == job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Binding Job {job_id} not found"
+            )
+
+        job.status = BindingAnalysisStatus(mapped_status)
+
+        if status_update.progress is not None:
+            job.progress = status_update.progress
+
+        if status_update.error_message:
+            job.error_message = status_update.error_message
+
+        if mapped_status == "RUNNING" and not job.started_at:
+            job.started_at = datetime.now()
+
+        if mapped_status in ["COMPLETED", "FAILED"]:
+            job.finished_at = datetime.now()
+            if mapped_status == "COMPLETED":
+                job.progress = 100.0
+
+        # 更新结果
+        if status_update.result:
+            job.result = status_update.result
+
+        # 更新关联的 QC 任务 ID
+        if status_update.qc_job_ids:
+            job.qc_job_ids = status_update.qc_job_ids
+
+        db.commit()
+
+        logger.info(
+            f"Binding Job {job_id} status updated to {mapped_status} "
             f"by worker {status_update.worker_name}"
         )
 
