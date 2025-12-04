@@ -31,6 +31,66 @@ logger = logging.getLogger(__name__)
 # Hartree to kcal/mol conversion factor
 HARTREE_TO_KCAL = 627.509474
 
+# 原子序数映射（用于计算电子数）
+ATOMIC_NUMBERS = {
+    'H': 1, 'He': 2, 'Li': 3, 'Be': 4, 'B': 5, 'C': 6, 'N': 7, 'O': 8, 'F': 9, 'Ne': 10,
+    'Na': 11, 'Mg': 12, 'Al': 13, 'Si': 14, 'P': 15, 'S': 16, 'Cl': 17, 'Ar': 18,
+    'K': 19, 'Ca': 20, 'Br': 35, 'I': 53
+}
+
+
+def calculate_spin_multiplicity_from_xyz(xyz_content: str, charge: int) -> int:
+    """
+    根据 XYZ 内容和电荷自动计算自旋多重度
+
+    逻辑：
+    1. 从 XYZ 内容解析原子，计算总电子数
+    2. 电子数 = Σ(原子序数) - 电荷
+    3. 偶数电子 → 单重态 (spin=1)
+    4. 奇数电子 → 双重态 (spin=2)
+
+    Args:
+        xyz_content: XYZ 格式的分子坐标
+        charge: 分子电荷
+
+    Returns:
+        自旋多重度 (1 或 2)
+    """
+    try:
+        lines = xyz_content.strip().split('\n')
+        if len(lines) < 3:
+            logger.warning(f"XYZ content too short, using default spin=1")
+            return 1
+
+        total_electrons = 0
+        for line in lines[2:]:  # 跳过原子数和注释行
+            parts = line.split()
+            if len(parts) >= 4:
+                element = parts[0].strip()
+                # 处理元素符号（可能有大小写问题）
+                element_cap = element.capitalize()
+                atomic_num = ATOMIC_NUMBERS.get(element_cap, 0)
+                if atomic_num == 0:
+                    logger.warning(f"Unknown element: {element}, assuming 0 electrons")
+                total_electrons += atomic_num
+
+        # 减去电荷得到实际电子数
+        total_electrons -= charge
+
+        # 计算自旋多重度
+        if total_electrons % 2 == 0:
+            spin = 1  # 闭壳层，单重态
+        else:
+            spin = 2  # 开壳层，双重态
+
+        logger.debug(f"Spin calculation: {total_electrons} electrons, charge={charge} -> spin={spin}")
+        return spin
+
+    except Exception as e:
+        logger.warning(f"Failed to calculate spin multiplicity: {e}, using default spin=1")
+        return 1
+
+
 # 分子原子数映射（用于确定配体原子范围）
 MOLECULE_ATOM_COUNTS = {
     'Li': 1,
@@ -195,22 +255,27 @@ def _phase1_create_qc_jobs(
     created_qc_jobs = []
 
     # 1. 创建 E_cluster QC 任务
+    cluster_charge = cluster_data['total_charge']
+    cluster_spin = calculate_spin_multiplicity_from_xyz(cluster_data['xyz_content'], cluster_charge)
+    logger.info(f"Cluster {cluster_base_name}: charge={cluster_charge}, spin={cluster_spin}")
+
     cluster_qc_job = create_qc_job_for_structure(
         db=db,
         user_id=user_id,
         md_job_id=md_job_id,
         molecule_name=cluster_base_name,
         xyz_content=cluster_data['xyz_content'],
-        charge=cluster_data['total_charge'],
+        charge=cluster_charge,
         basis_set=basis_set,
         functional=functional,
         job_type="cluster",
+        spin_multiplicity=cluster_spin,
         solvent_model=solvent_model,
         solvent_name=solvent_name,
         solvent_config=solvent_config
     )
     created_qc_jobs.append(cluster_qc_job.id)
-    logger.info(f"Created cluster QC job {cluster_qc_job.id}: {cluster_base_name} (solvent={solvent_model})")
+    logger.info(f"Created cluster QC job {cluster_qc_job.id}: {cluster_base_name} (charge={cluster_charge}, spin={cluster_spin}, solvent={solvent_model})")
 
     # 2. 创建每种配体的 QC 任务（去重，支持跨任务复用）
     ligand_qc_jobs = {}
@@ -229,6 +294,10 @@ def _phase1_create_qc_jobs(
                 fallback_xyz=ligand['xyz_content']
             )
 
+            # 自动计算配体的自旋多重度
+            ligand_spin = calculate_spin_multiplicity_from_xyz(ligand_xyz, ligand_charge)
+            logger.info(f"Ligand {ligand_type}: charge={ligand_charge}, spin={ligand_spin}")
+
             # 使用新的 find_or_create 函数，支持跨任务复用
             qc_job_id, is_reused = find_or_create_ligand_qc_job(
                 db=db,
@@ -239,6 +308,7 @@ def _phase1_create_qc_jobs(
                 ligand_xyz=ligand_xyz,
                 basis_set=basis_set,
                 functional=functional,
+                spin_multiplicity=ligand_spin,
                 solvent_model=solvent_model,
                 solvent_name=solvent_name,
                 solvent_config=solvent_config
@@ -247,10 +317,10 @@ def _phase1_create_qc_jobs(
             ligand_qc_jobs[ligand_key] = qc_job_id
             if is_reused:
                 reused_qc_jobs.append(qc_job_id)
-                logger.info(f"Reused existing QC job {qc_job_id} for {ligand_type}")
+                logger.info(f"Reused existing QC job {qc_job_id} for {ligand_type} (charge={ligand_charge}, spin={ligand_spin})")
             else:
                 created_qc_jobs.append(qc_job_id)
-                logger.info(f"Created new ligand QC job {qc_job_id} for {ligand_type}")
+                logger.info(f"Created new ligand QC job {qc_job_id} for {ligand_type} (charge={ligand_charge}, spin={ligand_spin})")
 
     # 3. 根据模式创建额外的 QC 任务
     cluster_minus_job_ids = []
@@ -280,9 +350,11 @@ def _phase1_create_qc_jobs(
 
             cluster_minus_xyz = generate_cluster_minus_xyz(cluster_data, ligand)
             cluster_minus_charge = cluster_data['total_charge'] - ligand['charge']
+            cluster_minus_spin = calculate_spin_multiplicity_from_xyz(cluster_minus_xyz, cluster_minus_charge)
 
             # 命名格式: Li_EC1DMC1EMC1PF62_1004_minus_EC1
             cluster_minus_name = f"{cluster_base_name}_minus_{ligand['ligand_label']}"
+            logger.info(f"Cluster minus {cluster_minus_name}: charge={cluster_minus_charge}, spin={cluster_minus_spin}")
 
             cluster_minus_qc_job = create_qc_job_for_structure(
                 db=db,
@@ -294,6 +366,7 @@ def _phase1_create_qc_jobs(
                 basis_set=basis_set,
                 functional=functional,
                 job_type="cluster_minus",
+                spin_multiplicity=cluster_minus_spin,
                 solvent_model=solvent_model,
                 solvent_name=solvent_name,
                 solvent_config=solvent_config
@@ -301,13 +374,17 @@ def _phase1_create_qc_jobs(
             cluster_minus_job_ids.append(cluster_minus_qc_job.id)
             created_qc_jobs.append(cluster_minus_qc_job.id)
             ligand_type_mapping[ligand_type] = cluster_minus_qc_job.id
-            logger.info(f"Created cluster_minus QC job {cluster_minus_qc_job.id}: {cluster_minus_name} (representative for {ligand_type})")
+            logger.info(f"Created cluster_minus QC job {cluster_minus_qc_job.id}: {cluster_minus_name} (charge={cluster_minus_charge}, spin={cluster_minus_spin}, representative for {ligand_type})")
 
     elif desolvation_mode == "full":
         # 全部去溶剂模式：只需要计算中心离子的能量
         center_ion = cluster_data['center_ion']
         center_ion_charge = cluster_data['center_ion_charge']
         center_ion_xyz = generate_center_ion_xyz(cluster_data)
+
+        # 自动计算中心离子的自旋多重度
+        center_ion_spin = calculate_spin_multiplicity_from_xyz(center_ion_xyz, center_ion_charge)
+        logger.info(f"Center ion {center_ion}: charge={center_ion_charge}, spin={center_ion_spin}")
 
         # 尝试复用已有的中心离子 QC 计算
         center_ion_job_id, is_reused = find_or_create_ligand_qc_job(
@@ -319,6 +396,7 @@ def _phase1_create_qc_jobs(
             ligand_xyz=center_ion_xyz,
             basis_set=basis_set,
             functional=functional,
+            spin_multiplicity=center_ion_spin,
             solvent_model=solvent_model,
             solvent_name=solvent_name,
             solvent_config=solvent_config
@@ -326,10 +404,10 @@ def _phase1_create_qc_jobs(
 
         if is_reused:
             reused_qc_jobs.append(center_ion_job_id)
-            logger.info(f"Reused existing QC job {center_ion_job_id} for center ion {center_ion}")
+            logger.info(f"Reused existing QC job {center_ion_job_id} for center ion {center_ion} (charge={center_ion_charge}, spin={center_ion_spin})")
         else:
             created_qc_jobs.append(center_ion_job_id)
-            logger.info(f"Created center ion QC job {center_ion_job_id} for {center_ion}")
+            logger.info(f"Created center ion QC job {center_ion_job_id} for {center_ion} (charge={center_ion_charge}, spin={center_ion_spin})")
 
     # 保存 QC job IDs 到 config
     # 注意：SQLAlchemy 的 JSON 字段需要创建新字典才能检测到变更
