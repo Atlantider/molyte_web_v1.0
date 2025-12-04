@@ -769,91 +769,128 @@ class PollingWorker:
             self._update_job_status(job_id, 'FAILED', 'postprocess', error_message=str(e))
 
     def _process_desolvation_energy_job(self, job_id: int, config: Dict):
-        """处理去溶剂化能计算任务（通过 API 调用）"""
+        """处理去溶剂化能计算任务（通过 API 调用后端处理）"""
         self.logger.info(f"开始去溶剂化能计算任务 {job_id}")
 
-        # 通过 API 调用腾讯云后端处理去溶剂化任务
-        url = f"{self.api_base_url}/workers/jobs/{job_id}/process_desolvation"
-        headers = {"Authorization": f"Bearer {self.worker_token}"}
-
         try:
-            response = requests.post(url, headers=headers, timeout=300)
+            # 调用后端 API 处理任务
+            endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/process_desolvation"
+
+            response = requests.post(
+                endpoint,
+                headers=self.api_headers,
+                timeout=300  # 5分钟超时
+            )
 
             if response.status_code == 200:
                 result = response.json()
-                self.logger.info(f"去溶剂化能任务 {job_id} Phase {result.get('phase', '?')} 完成: {result.get('message')}")
+                if result.get('success'):
+                    self.logger.info(f"去溶剂化能任务 {job_id} 处理成功")
+                    self._update_job_status(job_id, 'COMPLETED', 'postprocess')
+                else:
+                    error_msg = result.get('error', 'Unknown error')
+                    self.logger.error(f"去溶剂化能任务 {job_id} 处理失败: {error_msg}")
+                    self._update_job_status(job_id, 'FAILED', 'postprocess', error_message=error_msg)
             else:
-                error_detail = response.json().get('detail', response.text) if response.text else f"HTTP {response.status_code}"
-                self.logger.error(f"去溶剂化能任务 {job_id} 失败: {error_detail}")
-                raise ValueError(error_detail)
+                error_msg = f"API returned status {response.status_code}: {response.text}"
+                self.logger.error(f"去溶剂化能任务 {job_id} API调用失败: {error_msg}")
+                self._update_job_status(job_id, 'FAILED', 'postprocess', error_message=error_msg)
 
-        except requests.exceptions.Timeout:
-            self.logger.error(f"去溶剂化能任务 {job_id} 请求超时")
-            raise
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"去溶剂化能任务 {job_id} 请求异常: {e}")
+        except Exception as e:
+            self.logger.error(f"去溶剂化能任务 {job_id} 失败: {e}", exc_info=True)
+            self._update_job_status(job_id, 'FAILED', 'postprocess', error_message=str(e))
             raise
 
     def _check_waiting_desolvation_jobs(self):
         """
-        检查等待 QC 任务完成的去溶剂化任务（通过 API 调用）
+        检查等待 QC 任务完成的去溶剂化任务
 
         去溶剂化能计算分两个阶段：
         - Phase 1: 创建 QC 任务（cluster, ligands, cluster_minus）
         - Phase 2: 等待 QC 完成后计算去溶剂化能
 
-        此函数通过 API 获取等待中的任务列表，并逐个检查处理。
+        此函数检查处于 POSTPROCESSING 状态且 phase=2 的任务，
+        如果其 QC 任务已完成，则继续执行 Phase 2 计算。
         """
         try:
-            # 1. 获取等待中的去溶剂化任务列表
-            url = f"{self.api_base_url}/workers/jobs/waiting_desolvation"
-            headers = {"Authorization": f"Bearer {self.worker_token}"}
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent / 'backend'))
 
-            response = requests.get(url, headers=headers, timeout=60)
+            from app.database import SessionLocal
+            from app.models.job import PostprocessJob, JobStatus
+            from app.tasks.desolvation import run_desolvation_job
 
-            if response.status_code != 200:
-                self.logger.error(f"获取等待中的去溶剂化任务失败: HTTP {response.status_code}")
-                return
+            db = SessionLocal()
+            try:
+                # 查找处于 POSTPROCESSING 状态的去溶剂化任务
+                waiting_jobs = db.query(PostprocessJob).filter(
+                    PostprocessJob.job_type == 'DESOLVATION_ENERGY',
+                    PostprocessJob.status == JobStatus.POSTPROCESSING
+                ).all()
 
-            result = response.json()
-            waiting_jobs = result.get('jobs', [])
+                if waiting_jobs:
+                    self.logger.info(f"发现 {len(waiting_jobs)} 个等待中的去溶剂化任务")
 
-            if waiting_jobs:
-                self.logger.info(f"发现 {len(waiting_jobs)} 个等待中的去溶剂化任务")
+                for job in waiting_jobs:
+                    config = job.config or {}
+                    phase = config.get('phase', 1)
 
-            # 2. 逐个检查并处理
-            for job_info in waiting_jobs:
-                job_id = job_info['id']
-                config = job_info.get('config', {})
-                phase = config.get('phase', 1)
+                    if phase == 2:
+                        # 获取需要等待的 QC 任务（不包括复用的）
+                        qc_job_ids = config.get('qc_job_ids', [])
+                        reused_qc_job_ids = config.get('reused_qc_job_ids', [])
 
-                if phase == 2:
-                    self.logger.info(f"检查去溶剂化任务 {job_id} 的 QC 任务状态...")
+                        # 需要等待完成的任务 = 所有任务 - 复用的任务
+                        # 复用的任务已经是 COMPLETED 状态
+                        pending_qc_job_ids = [jid for jid in qc_job_ids if jid not in reused_qc_job_ids]
 
-                    # 调用 API 检查并处理
-                    check_url = f"{self.api_base_url}/workers/jobs/{job_id}/check_waiting_desolvation"
-                    try:
-                        check_response = requests.post(check_url, headers=headers, timeout=300)
+                        if not qc_job_ids and not reused_qc_job_ids:
+                            continue
 
-                        if check_response.status_code == 200:
-                            check_result = check_response.json()
-                            status = check_result.get('status')
-                            message = check_result.get('message', '')
+                        # 检查 QC 任务状态
+                        from app.models.qc_job import QCJob, QCJobStatus
+                        all_completed = True
+                        any_failed = False
 
-                            if status == 'ok':
-                                self.logger.info(f"去溶剂化任务 {job_id} Phase 2 完成: {message}")
-                            elif status == 'skipped':
-                                self.logger.debug(f"去溶剂化任务 {job_id}: {message}")
-                            else:
-                                self.logger.warning(f"去溶剂化任务 {job_id}: {message}")
+                        for qc_job_id in pending_qc_job_ids:
+                            qc_job = db.query(QCJob).filter(QCJob.id == qc_job_id).first()
+                            if not qc_job:
+                                all_completed = False
+                                break
+                            if qc_job.status == QCJobStatus.FAILED:
+                                any_failed = True
+                                break
+                            if qc_job.status != QCJobStatus.COMPLETED:
+                                all_completed = False
+                                break
+
+                        if any_failed:
+                            self.logger.warning(f"去溶剂化任务 {job.id} 的 QC 任务失败")
+                            job.status = JobStatus.FAILED
+                            job.error_message = "One or more QC jobs failed"
+                            db.commit()
+                            continue
+
+                        if all_completed:
+                            reused_count = len(reused_qc_job_ids)
+                            self.logger.info(f"去溶剂化任务 {job.id} 的所有 QC 任务已完成 (复用了 {reused_count} 个)，开始 Phase 2 计算")
+                            try:
+                                result = run_desolvation_job(job, db)
+                                if result['success']:
+                                    self.logger.info(f"去溶剂化任务 {job.id} Phase 2 完成")
+                                else:
+                                    self.logger.error(f"去溶剂化任务 {job.id} Phase 2 失败: {result.get('error')}")
+                            except Exception as e:
+                                self.logger.error(f"去溶剂化任务 {job.id} Phase 2 异常: {e}", exc_info=True)
+                                job.status = JobStatus.FAILED
+                                job.error_message = str(e)
+                                db.commit()
                         else:
-                            error_detail = check_response.json().get('detail', '') if check_response.text else ''
-                            self.logger.error(f"检查去溶剂化任务 {job_id} 失败: HTTP {check_response.status_code} - {error_detail}")
+                            pending_count = len(pending_qc_job_ids)
+                            self.logger.debug(f"去溶剂化任务 {job.id} 仍在等待 {pending_count} 个 QC 任务完成")
 
-                    except requests.exceptions.Timeout:
-                        self.logger.error(f"检查去溶剂化任务 {job_id} 超时")
-                    except requests.exceptions.RequestException as e:
-                        self.logger.error(f"检查去溶剂化任务 {job_id} 请求异常: {e}")
+            finally:
+                db.close()
 
         except Exception as e:
             self.logger.error(f"检查等待中的去溶剂化任务失败: {e}", exc_info=True)
