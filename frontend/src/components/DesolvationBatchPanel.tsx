@@ -316,6 +316,23 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
 
     const qcTasks = qcData.qc_tasks;
 
+    // 如果没有子任务，根据状态显示不同提示
+    if (qcTasks.length === 0) {
+      let message = '暂无子任务';
+      let icon = <ClockCircleOutlined />;
+      if (record.status === 'SUBMITTED' || record.status === 'QUEUED') {
+        message = '任务排队中，等待创建 QC 计算子任务...';
+      } else if (record.status === 'FAILED') {
+        message = record.error_message || '任务失败，未创建子任务';
+        icon = <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />;
+      }
+      return (
+        <div style={{ padding: 16, textAlign: 'center', color: token.colorTextSecondary }}>
+          {icon} <span style={{ marginLeft: 8 }}>{message}</span>
+        </div>
+      );
+    }
+
     // 按类型分组
     const clusterTask = qcTasks.find(t => t.task_type === 'cluster');
     const clusterMinusTasks = qcTasks.filter(t => t.task_type === 'cluster_minus');
