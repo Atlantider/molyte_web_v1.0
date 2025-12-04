@@ -631,8 +631,58 @@ export default function QCJobDetail() {
                   <>
                     <CloseCircleOutlined style={{ fontSize: 48, color: '#ff4d4f' }} />
                     <Paragraph type="danger" style={{ marginTop: 16, fontSize: 16 }}>
-                      计算失败，请检查错误信息
+                      计算失败
                     </Paragraph>
+                    {job.error_message && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        style={{ marginTop: 16, textAlign: 'left', maxWidth: 600, margin: '16px auto' }}
+                        message="错误详情"
+                        description={
+                          <div>
+                            <div style={{ marginBottom: 12 }}>{job.error_message}</div>
+                            {/* 根据错误类型提供建议 */}
+                            {job.error_message.toLowerCase().includes('scf') && (
+                              <div style={{ background: '#fffbe6', padding: 12, borderRadius: 4, marginTop: 8 }}>
+                                <strong>💡 SCF 收敛问题建议：</strong>
+                                <ul style={{ marginTop: 8, paddingLeft: 20, marginBottom: 0 }}>
+                                  <li>系统会自动尝试使用更稳健的 SCF 设置重试</li>
+                                  <li>如果持续失败，可尝试使用较小的基组</li>
+                                  <li>对于金属体系，考虑使用 Fermi 展宽</li>
+                                </ul>
+                              </div>
+                            )}
+                            {job.error_message.toLowerCase().includes('opt') && (
+                              <div style={{ background: '#fffbe6', padding: 12, borderRadius: 4, marginTop: 8 }}>
+                                <strong>💡 几何优化问题建议：</strong>
+                                <ul style={{ marginTop: 8, paddingLeft: 20, marginBottom: 0 }}>
+                                  <li>检查初始结构是否合理</li>
+                                  <li>可尝试使用分子力学预优化结构</li>
+                                  <li>增加优化步数或使用 GDIIS 算法</li>
+                                </ul>
+                              </div>
+                            )}
+                            {job.error_message.toLowerCase().includes('memory') && (
+                              <div style={{ background: '#fffbe6', padding: 12, borderRadius: 4, marginTop: 8 }}>
+                                <strong>💡 内存问题建议：</strong>
+                                <ul style={{ marginTop: 8, paddingLeft: 20, marginBottom: 0 }}>
+                                  <li>系统会自动增加内存分配重试</li>
+                                  <li>如果持续失败，可尝试使用较小的基组</li>
+                                  <li>联系管理员检查集群资源配置</li>
+                                </ul>
+                              </div>
+                            )}
+                            {job.error_message.includes('重试') && (
+                              <div style={{ background: '#e6f7ff', padding: 12, borderRadius: 4, marginTop: 8 }}>
+                                <strong>ℹ️ 自动重试信息：</strong>
+                                <div style={{ marginTop: 4 }}>系统已自动尝试使用不同的计算策略重试，如果问题持续，请联系管理员。</div>
+                              </div>
+                            )}
+                          </div>
+                        }
+                      />
+                    )}
                   </>
                 ) : (
                   <>

@@ -928,7 +928,8 @@ class PollingWorker:
                                    functional: str, basis_set: str,
                                    solvent_model: str, solvent_name: str,
                                    solvent_config: Dict = None,
-                                   xyz_content: str = None):
+                                   xyz_content: str = None,
+                                   retry_level: int = 0):
         """
         生成 Gaussian 输入文件
 
@@ -944,13 +945,59 @@ class PollingWorker:
             solvent_name: 溶剂名称
             solvent_config: 自定义溶剂参数
             xyz_content: XYZ 坐标内容（用于 desolvation 创建的 QC 任务）
+            retry_level: 重试级别 (0=首次, 1+=重试)
         """
+        # 导入 QC 安全机制模块
+        try:
+            from qc_safety import check_structure, get_robust_keywords, SCF_CONVERGENCE_STRATEGIES
+            has_safety_module = True
+        except ImportError:
+            has_safety_module = False
+            self.logger.warning("未找到 qc_safety 模块，使用默认设置")
+
         # 构建计算关键字
         keywords = f"opt freq {functional}/{basis_set}"
 
         # 添加色散校正（对于DFT方法）
         if functional.upper() not in ["HF"]:
             keywords += " em=gd3bj"
+
+        # 添加 SCF 收敛辅助关键词
+        atom_count = 0
+        if xyz_content:
+            atom_count = len([l for l in xyz_content.strip().split('\n') if l.strip() and len(l.split()) >= 4])
+
+        # 检查是否含有金属（用于选择更稳健的 SCF 策略）
+        has_metal = False
+        metals = {'Li', 'Na', 'K', 'Mg', 'Ca', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Mn'}
+        if xyz_content:
+            for line in xyz_content.strip().split('\n'):
+                parts = line.split()
+                if parts:
+                    elem = ''.join(c for c in parts[0] if not c.isdigit())
+                    if elem in metals:
+                        has_metal = True
+                        break
+
+        # 根据体系特点和重试级别添加 SCF 设置
+        if has_safety_module:
+            scf_keywords = get_robust_keywords(atom_count, has_metal, retry_level)
+        else:
+            # 默认的稳健设置
+            if retry_level == 0:
+                if atom_count > 50 or has_metal:
+                    scf_keywords = "scf=(maxcycle=200,xqc)"
+                else:
+                    scf_keywords = "scf=(maxcycle=150)"
+            elif retry_level == 1:
+                scf_keywords = "scf=(maxcycle=300,xqc,novaracc)"
+            elif retry_level == 2:
+                scf_keywords = "scf=(maxcycle=300,xqc,vshift=500)"
+            else:
+                scf_keywords = "scf=(maxcycle=400,qc,nodamping,novaracc)"
+
+        if scf_keywords:
+            keywords += f" {scf_keywords}"
 
         # 自定义溶剂参数块（用于custom模型）
         custom_solvent_params = ""
@@ -1460,6 +1507,14 @@ echo "QC calculation completed"
                     self.logger.error(f"任务 {job_id} (Slurm: {slurm_job_id}) 失败")
                     # 获取失败原因
                     error_msg = self._get_job_failure_reason(slurm_job_id, job_info.get('work_dir'))
+
+                    # 对于 QC 任务，尝试自动重试
+                    if actual_type == 'qc':
+                        retry_success = self._try_qc_retry(job_id, job_info, error_msg)
+                        if retry_success:
+                            # 重试已提交，不移除任务
+                            continue
+
                     self._update_job_status(job_id, 'FAILED', actual_type, error_message=error_msg)
                     completed_jobs.append(job_id)
 
@@ -1475,6 +1530,107 @@ echo "QC calculation completed"
         for job_id in completed_jobs:
             if job_id in self.running_jobs:
                 del self.running_jobs[job_id]
+
+    def _try_qc_retry(self, job_id: int, job_info: Dict, error_msg: str) -> bool:
+        """
+        尝试自动重试 QC 任务
+
+        Args:
+            job_id: 任务 ID
+            job_info: 任务信息
+            error_msg: 错误信息
+
+        Returns:
+            是否成功提交重试
+        """
+        try:
+            # 导入 QC 安全机制模块
+            try:
+                from qc_safety import analyze_gaussian_error, generate_retry_gjf, QCRetryManager
+                has_safety_module = True
+            except ImportError:
+                self.logger.warning("未找到 qc_safety 模块，无法自动重试")
+                return False
+
+            # 检查重试次数
+            retry_count = job_info.get('retry_count', 0)
+            max_retries = 3
+
+            if retry_count >= max_retries:
+                self.logger.warning(f"QC 任务 {job_id} 已达到最大重试次数 ({max_retries})，不再重试")
+                return False
+
+            work_dir = Path(job_info['work_dir'])
+
+            # 读取 Gaussian 日志文件
+            log_files = list(work_dir.glob("*_out.log")) + list(work_dir.glob("*.log"))
+            if not log_files:
+                self.logger.warning(f"QC 任务 {job_id} 未找到日志文件，无法分析错误")
+                return False
+
+            log_content = log_files[0].read_text(errors='ignore')
+
+            # 分析错误
+            error_analysis = analyze_gaussian_error(log_content)
+
+            if not error_analysis.can_retry:
+                self.logger.info(f"QC 任务 {job_id} 错误类型 {error_analysis.error_type.value} 不可自动重试")
+                # 更新错误信息，添加建议
+                if error_analysis.suggestions:
+                    error_msg += f"\n建议: {'; '.join(error_analysis.suggestions)}"
+                return False
+
+            self.logger.info(f"QC 任务 {job_id} 准备第 {retry_count + 1} 次重试，错误类型: {error_analysis.error_type.value}")
+
+            # 找到原始 GJF 文件
+            gjf_files = list(work_dir.glob("*.gjf"))
+            if not gjf_files:
+                self.logger.warning(f"QC 任务 {job_id} 未找到 GJF 文件")
+                return False
+
+            original_gjf = gjf_files[0]
+
+            # 生成重试 GJF
+            new_gjf_content = generate_retry_gjf(original_gjf, retry_count + 1, error_analysis)
+
+            # 备份原始 GJF
+            backup_gjf = work_dir / f"{original_gjf.stem}_retry{retry_count}.gjf"
+            import shutil
+            shutil.copy(original_gjf, backup_gjf)
+
+            # 写入新的 GJF
+            with open(original_gjf, 'w') as f:
+                f.write(new_gjf_content)
+
+            self.logger.info(f"已更新 GJF 文件，使用策略: {error_analysis.retry_keywords or 'default'}")
+
+            # 重新提交到 Slurm
+            slurm_result = self._submit_to_slurm(work_dir)
+
+            if not slurm_result['success']:
+                self.logger.error(f"重试提交 Slurm 失败: {slurm_result.get('error')}")
+                return False
+
+            new_slurm_job_id = slurm_result['slurm_job_id']
+
+            # 更新任务信息
+            job_info['slurm_job_id'] = new_slurm_job_id
+            job_info['retry_count'] = retry_count + 1
+            job_info['last_error'] = error_analysis.error_type.value
+
+            # 更新 API 状态
+            self._update_job_status(
+                job_id, 'RUNNING', 'qc',
+                slurm_job_id=new_slurm_job_id,
+                error_message=f"自动重试第 {retry_count + 1} 次 (原因: {error_analysis.error_message})"
+            )
+
+            self.logger.info(f"✅ QC 任务 {job_id} 重试已提交 (Slurm: {new_slurm_job_id})")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"QC 任务 {job_id} 重试失败: {e}", exc_info=True)
+            return False
 
     def _check_md_waiting_resp(self, job_id: int, job_info: Dict, completed_jobs: List):
         """
