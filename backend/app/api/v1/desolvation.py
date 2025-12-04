@@ -603,3 +603,219 @@ async def preview_desolvation_structures(
 
     return response
 
+
+@router.get("/jobs/{job_id}/binding-summary")
+async def get_binding_energy_summary(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    获取去溶剂化任务的 Binding Energy 汇总
+    从已有的 per_ligand_results 派生，不需要额外计算
+
+    返回:
+    - per_ligand_binding: 每个配体的 binding energy
+    - per_type_stats: 按类型汇总的统计 (均值、标准差、最小、最大)
+    - last_layer_binding: 最后一级去溶剂化能（最内层 binding）
+    """
+    import numpy as np
+
+    # 获取任务
+    job = db.query(PostprocessJob).filter(
+        PostprocessJob.id == job_id,
+        PostprocessJob.job_type == PostprocessType.DESOLVATION_ENERGY
+    ).first()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="去溶剂化任务不存在"
+        )
+
+    # 获取结果
+    result = db.query(DesolvationEnergyResult).filter(
+        DesolvationEnergyResult.postprocess_job_id == job_id
+    ).first()
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="去溶剂化结果不存在，任务可能未完成"
+        )
+
+    per_ligand_results = result.per_ligand_results or []
+
+    # 1. 提取每个配体的 binding energy
+    per_ligand_binding = []
+    for ligand in per_ligand_results:
+        per_ligand_binding.append({
+            "ligand_id": ligand.get("ligand_id"),
+            "ligand_type": ligand.get("ligand_type"),
+            "ligand_label": ligand.get("ligand_label"),
+            "binding_energy_kcal": ligand.get("delta_e"),  # kcal/mol
+            "e_ligand_au": ligand.get("e_ligand"),
+            "e_cluster_minus_au": ligand.get("e_cluster_minus")
+        })
+
+    # 2. 按类型统计
+    type_energies = defaultdict(list)
+    for ligand in per_ligand_binding:
+        if ligand["binding_energy_kcal"] is not None:
+            type_energies[ligand["ligand_type"]].append(ligand["binding_energy_kcal"])
+
+    per_type_stats = {}
+    for ltype, energies in type_energies.items():
+        arr = np.array(energies)
+        per_type_stats[ltype] = {
+            "count": len(energies),
+            "mean": float(np.mean(arr)),
+            "std": float(np.std(arr)) if len(arr) > 1 else 0.0,
+            "min": float(np.min(arr)),
+            "max": float(np.max(arr)),
+            "values": energies
+        }
+
+    # 3. 找出"最后一级去溶剂化"（最内层 binding）
+    # 定义：最大的 binding energy（最难脱除的配体）
+    last_layer_binding = None
+    if per_ligand_binding:
+        valid_bindings = [l for l in per_ligand_binding if l["binding_energy_kcal"] is not None]
+        if valid_bindings:
+            # 按 binding energy 绝对值排序，取最大的
+            last_layer = max(valid_bindings, key=lambda x: abs(x["binding_energy_kcal"]))
+            last_layer_binding = {
+                "ligand_type": last_layer["ligand_type"],
+                "ligand_label": last_layer["ligand_label"],
+                "binding_energy_kcal": last_layer["binding_energy_kcal"]
+            }
+
+    # 4. 获取溶剂化结构信息
+    solvation_info = None
+    if result.solvation_structure_id:
+        solvation = db.query(SolvationStructure).filter(
+            SolvationStructure.id == result.solvation_structure_id
+        ).first()
+        if solvation:
+            solvation_info = {
+                "center_ion": solvation.center_ion,
+                "coordination_num": solvation.coordination_num,
+                "composition_key": solvation.composition_key
+            }
+
+    return {
+        "job_id": job_id,
+        "method_level": result.method_level,
+        "e_cluster_au": result.e_cluster,
+        "solvation_info": solvation_info,
+        "per_ligand_binding": per_ligand_binding,
+        "per_type_stats": per_type_stats,
+        "last_layer_binding": last_layer_binding,
+        "total_ligands": len(per_ligand_binding)
+    }
+
+
+@router.get("/overview/{md_job_id}/binding-statistics")
+async def get_binding_statistics_overview(
+    md_job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    获取某个 MD 任务下所有已完成去溶剂化任务的 Binding Energy 统计汇总
+    用于总览分析面板
+    """
+    import numpy as np
+
+    # 获取所有已完成的去溶剂化任务
+    completed_jobs = db.query(PostprocessJob).filter(
+        PostprocessJob.md_job_id == md_job_id,
+        PostprocessJob.job_type == PostprocessType.DESOLVATION_ENERGY,
+        PostprocessJob.status == JobStatus.COMPLETED
+    ).all()
+
+    if not completed_jobs:
+        return {
+            "md_job_id": md_job_id,
+            "total_completed": 0,
+            "message": "没有已完成的去溶剂化任务"
+        }
+
+    # 收集所有配体的 binding energy
+    all_bindings = []  # 所有配体
+    type_bindings = defaultdict(list)  # 按类型分组
+    last_layer_bindings = []  # 最后一级
+
+    for job in completed_jobs:
+        result = db.query(DesolvationEnergyResult).filter(
+            DesolvationEnergyResult.postprocess_job_id == job.id
+        ).first()
+
+        if not result or not result.per_ligand_results:
+            continue
+
+        # 获取溶剂化结构信息
+        composition_key = None
+        if result.solvation_structure_id:
+            solvation = db.query(SolvationStructure).filter(
+                SolvationStructure.id == result.solvation_structure_id
+            ).first()
+            if solvation:
+                composition_key = solvation.composition_key
+
+        # 提取每个配体的 binding
+        valid_ligands = []
+        for ligand in result.per_ligand_results:
+            delta_e = ligand.get("delta_e")
+            if delta_e is not None:
+                binding_data = {
+                    "job_id": job.id,
+                    "composition_key": composition_key,
+                    "ligand_type": ligand.get("ligand_type"),
+                    "binding_energy_kcal": delta_e
+                }
+                all_bindings.append(binding_data)
+                type_bindings[ligand.get("ligand_type")].append(delta_e)
+                valid_ligands.append(binding_data)
+
+        # 找出该 cluster 的最后一级
+        if valid_ligands:
+            last_layer = max(valid_ligands, key=lambda x: abs(x["binding_energy_kcal"]))
+            last_layer_bindings.append(last_layer)
+
+    # 统计
+    def calc_stats(values):
+        if not values:
+            return None
+        arr = np.array(values)
+        return {
+            "count": len(values),
+            "mean": float(np.mean(arr)),
+            "std": float(np.std(arr)) if len(arr) > 1 else 0.0,
+            "min": float(np.min(arr)),
+            "max": float(np.max(arr)),
+            "percentile_25": float(np.percentile(arr, 25)),
+            "percentile_75": float(np.percentile(arr, 75))
+        }
+
+    # 按类型统计
+    per_type_overall = {}
+    for ltype, values in type_bindings.items():
+        per_type_overall[ltype] = calc_stats(values)
+        per_type_overall[ltype]["values"] = values  # 用于前端画分布图
+
+    # 最后一级统计
+    last_layer_stats = None
+    if last_layer_bindings:
+        last_values = [l["binding_energy_kcal"] for l in last_layer_bindings]
+        last_layer_stats = calc_stats(last_values)
+        last_layer_stats["details"] = last_layer_bindings
+
+    return {
+        "md_job_id": md_job_id,
+        "total_completed": len(completed_jobs),
+        "total_ligand_bindings": len(all_bindings),
+        "per_type_statistics": per_type_overall,
+        "last_layer_statistics": last_layer_stats
+    }
+

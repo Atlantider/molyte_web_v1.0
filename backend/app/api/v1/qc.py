@@ -1918,3 +1918,188 @@ def calculate_spin_multiplicity(
     except Exception as e:
         logger.error(f"Error calculating spin multiplicity: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================================
+# Cluster 统计分析
+# ============================================================================
+
+@router.get("/cluster-statistics")
+def get_cluster_statistics(
+    md_job_id: Optional[int] = Query(None, description="MD 任务 ID，用于筛选该任务下的 cluster"),
+    include_single_molecule: bool = Query(False, description="是否包含单分子 QC 结果"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    获取 Cluster QC 结果的统计信息
+
+    返回 HOMO/LUMO 能量分布、gap 分布等统计数据
+    用于电解液窗口的简化评估
+    """
+    import numpy as np
+    from collections import defaultdict
+
+    # 构建查询
+    query = db.query(QCJob).filter(
+        QCJob.status == QCJobStatusModel.COMPLETED
+    )
+
+    # 如果指定了 MD job，筛选关联的 QC 任务
+    if md_job_id:
+        # 通过 desolvation_postprocess_job_id 或 config 关联
+        from app.models.job import PostprocessJob, PostprocessType
+
+        # 获取该 MD 任务下的所有去溶剂化任务
+        postprocess_jobs = db.query(PostprocessJob).filter(
+            PostprocessJob.md_job_id == md_job_id,
+            PostprocessJob.job_type == PostprocessType.DESOLVATION_ENERGY
+        ).all()
+
+        postprocess_ids = [pj.id for pj in postprocess_jobs]
+
+        if postprocess_ids:
+            query = query.filter(
+                QCJob.desolvation_postprocess_job_id.in_(postprocess_ids)
+            )
+        else:
+            # 没有关联的去溶剂化任务
+            return {
+                "md_job_id": md_job_id,
+                "total_qc_jobs": 0,
+                "message": "没有找到关联的 QC 计算结果"
+            }
+
+    # 获取 QC 任务及其结果
+    qc_jobs = query.options(selectinload(QCJob.results)).all()
+
+    if not qc_jobs:
+        return {
+            "md_job_id": md_job_id,
+            "total_qc_jobs": 0,
+            "message": "没有已完成的 QC 计算结果"
+        }
+
+    # 收集数据
+    homo_values = []
+    lumo_values = []
+    gap_values = []
+    energy_values = []
+
+    # 按分子类型分组
+    type_data = defaultdict(lambda: {"homo": [], "lumo": [], "gap": [], "energy": [], "count": 0})
+
+    # 按是否包含 Li 分组
+    with_li_data = {"homo": [], "lumo": [], "gap": []}
+    without_li_data = {"homo": [], "lumo": [], "gap": []}
+
+    for job in qc_jobs:
+        # 判断是否是 cluster（多原子体系）或单分子
+        is_cluster = 'cluster' in (job.molecule_name or '').lower() or job.desolvation_postprocess_job_id is not None
+
+        if not include_single_molecule and not is_cluster:
+            continue
+
+        # 获取结果
+        result = job.results[0] if job.results else None
+        if not result:
+            continue
+
+        # 提取能量数据
+        if result.energy_au is not None:
+            energy_values.append(result.energy_au)
+
+        if result.ehomo is not None and result.elumo is not None:
+            homo_ev = result.ehomo * 27.2114  # Hartree to eV
+            lumo_ev = result.elumo * 27.2114
+            gap_ev = lumo_ev - homo_ev
+
+            homo_values.append(homo_ev)
+            lumo_values.append(lumo_ev)
+            gap_values.append(gap_ev)
+
+            # 按类型分组
+            mol_type = job.molecule_type or 'unknown'
+            type_data[mol_type]["homo"].append(homo_ev)
+            type_data[mol_type]["lumo"].append(lumo_ev)
+            type_data[mol_type]["gap"].append(gap_ev)
+            type_data[mol_type]["count"] += 1
+            if result.energy_au:
+                type_data[mol_type]["energy"].append(result.energy_au)
+
+            # 按是否包含 Li 分组
+            has_li = 'li' in (job.molecule_name or '').lower()
+            target = with_li_data if has_li else without_li_data
+            target["homo"].append(homo_ev)
+            target["lumo"].append(lumo_ev)
+            target["gap"].append(gap_ev)
+
+    # 统计函数
+    def calc_stats(values):
+        if not values:
+            return None
+        arr = np.array(values)
+        return {
+            "count": len(values),
+            "mean": float(np.mean(arr)),
+            "std": float(np.std(arr)) if len(arr) > 1 else 0.0,
+            "min": float(np.min(arr)),
+            "max": float(np.max(arr)),
+            "percentile_5": float(np.percentile(arr, 5)) if len(arr) >= 5 else float(np.min(arr)),
+            "percentile_95": float(np.percentile(arr, 95)) if len(arr) >= 5 else float(np.max(arr)),
+            "values": [float(v) for v in values]  # 用于前端画直方图
+        }
+
+    # 构建响应
+    result = {
+        "md_job_id": md_job_id,
+        "total_qc_jobs": len(qc_jobs),
+        "total_with_orbital_data": len(homo_values),
+
+        # 整体统计
+        "homo_statistics": calc_stats(homo_values),
+        "lumo_statistics": calc_stats(lumo_values),
+        "gap_statistics": calc_stats(gap_values),
+
+        # 按类型分组
+        "per_type_statistics": {
+            mol_type: {
+                "count": data["count"],
+                "homo": calc_stats(data["homo"]),
+                "lumo": calc_stats(data["lumo"]),
+                "gap": calc_stats(data["gap"]),
+            }
+            for mol_type, data in type_data.items()
+        },
+
+        # 按是否含 Li 分组
+        "with_li_statistics": {
+            "homo": calc_stats(with_li_data["homo"]),
+            "lumo": calc_stats(with_li_data["lumo"]),
+            "gap": calc_stats(with_li_data["gap"]),
+        } if with_li_data["homo"] else None,
+        "without_li_statistics": {
+            "homo": calc_stats(without_li_data["homo"]),
+            "lumo": calc_stats(without_li_data["lumo"]),
+            "gap": calc_stats(without_li_data["gap"]),
+        } if without_li_data["homo"] else None,
+
+        # 简化的电化学窗口估计（基于 HOMO/LUMO）
+        "electrochemical_window_estimate": None
+    }
+
+    # 计算简化的电化学窗口估计
+    if homo_values and lumo_values:
+        # 氧化极限 ~ -HOMO（最易氧化的）
+        # 还原极限 ~ -LUMO（最易还原的）
+        homo_5th = np.percentile(homo_values, 5)  # 最高的 HOMO（最易氧化）
+        lumo_95th = np.percentile(lumo_values, 95)  # 最低的 LUMO（最易还原）
+
+        result["electrochemical_window_estimate"] = {
+            "oxidation_limit_ev": float(-homo_5th),  # 相对于真空能级
+            "reduction_limit_ev": float(-lumo_95th),
+            "window_ev": float(-homo_5th - (-lumo_95th)),
+            "note": "简化估计，基于 HOMO/LUMO 能级，未做热力学循环校正。仅供参考。"
+        }
+
+    return result

@@ -496,3 +496,80 @@ export async function downloadLUMOImage(resultId: number, filename?: string): Pr
     throw error;
   }
 }
+
+// ============================================================================
+// Cluster Statistics APIs
+// ============================================================================
+
+/**
+ * 能级统计数据
+ */
+export interface OrbitalStatistics {
+  count: number;
+  mean: number;
+  std: number;
+  min: number;
+  max: number;
+  percentile_5: number;
+  percentile_95: number;
+  values: number[];
+}
+
+/**
+ * 电化学窗口估计
+ */
+export interface ElectrochemicalWindowEstimate {
+  oxidation_limit_ev: number;
+  reduction_limit_ev: number;
+  window_ev: number;
+  note: string;
+}
+
+/**
+ * Cluster 统计响应
+ */
+export interface ClusterStatisticsResponse {
+  md_job_id: number | null;
+  total_qc_jobs: number;
+  total_with_orbital_data?: number;
+  message?: string;
+
+  // 整体统计
+  homo_statistics: OrbitalStatistics | null;
+  lumo_statistics: OrbitalStatistics | null;
+  gap_statistics: OrbitalStatistics | null;
+
+  // 按类型分组
+  per_type_statistics?: Record<string, {
+    count: number;
+    homo: OrbitalStatistics | null;
+    lumo: OrbitalStatistics | null;
+    gap: OrbitalStatistics | null;
+  }>;
+
+  // 按是否含 Li 分组
+  with_li_statistics?: {
+    homo: OrbitalStatistics | null;
+    lumo: OrbitalStatistics | null;
+    gap: OrbitalStatistics | null;
+  } | null;
+  without_li_statistics?: {
+    homo: OrbitalStatistics | null;
+    lumo: OrbitalStatistics | null;
+    gap: OrbitalStatistics | null;
+  } | null;
+
+  // 电化学窗口估计
+  electrochemical_window_estimate: ElectrochemicalWindowEstimate | null;
+}
+
+/**
+ * 获取 Cluster QC 统计
+ */
+export async function getClusterStatistics(params?: {
+  md_job_id?: number;
+  include_single_molecule?: boolean;
+}): Promise<ClusterStatisticsResponse> {
+  const response = await apiClient.get('/qc/cluster-statistics', { params });
+  return response.data;
+}

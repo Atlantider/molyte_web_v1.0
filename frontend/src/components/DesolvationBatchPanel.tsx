@@ -68,6 +68,8 @@ import { useThemeStore } from '../stores/themeStore';
 import DesolvationResultView from './DesolvationResultView';
 import DesolvationSummaryPanel from './DesolvationSummaryPanel';
 import DesolvationComparisonView from './DesolvationComparisonView';
+import BindingEnergyView from './BindingEnergyView';
+import ClusterStatisticsPanel from './ClusterStatisticsPanel';
 
 // 3Dmol.js 类型声明
 declare global {
@@ -1682,6 +1684,30 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                 key: 'comparison',
                 label: '结果对比',
                 children: <DesolvationComparisonView jobs={overview.jobs} />,
+              },
+              {
+                key: 'binding',
+                label: (
+                  <Space>
+                    Li-配体 Binding
+                    <Tooltip title="从去溶剂化结果派生的 Li-配体结合能分析">
+                      <BulbOutlined />
+                    </Tooltip>
+                  </Space>
+                ),
+                children: <BindingEnergyView mdJobId={jobId} />,
+              },
+              {
+                key: 'cluster-stats',
+                label: (
+                  <Space>
+                    Cluster 统计
+                    <Tooltip title="HOMO/LUMO/Gap 分布和简化的电化学窗口估计">
+                      <ThunderboltOutlined />
+                    </Tooltip>
+                  </Space>
+                ),
+                children: <ClusterStatisticsPanel mdJobId={jobId} />,
               },
             ]}
           />

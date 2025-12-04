@@ -157,3 +157,84 @@ export const previewDesolvationStructures = async (
   const response = await client.get(`/desolvation/preview/${structureId}`);
   return response.data;
 };
+
+/**
+ * Binding Energy 汇总
+ */
+export interface LigandBindingData {
+  ligand_id: string;
+  ligand_type: string;
+  ligand_label: string;
+  binding_energy_kcal: number | null;
+  e_ligand_au: number | null;
+  e_cluster_minus_au: number | null;
+}
+
+export interface TypeBindingStats {
+  count: number;
+  mean: number;
+  std: number;
+  min: number;
+  max: number;
+  values: number[];
+  percentile_25?: number;
+  percentile_75?: number;
+}
+
+export interface BindingSummaryResponse {
+  job_id: number;
+  method_level: string;
+  e_cluster_au: number;
+  solvation_info: {
+    center_ion: string;
+    coordination_num: number;
+    composition_key: string;
+  } | null;
+  per_ligand_binding: LigandBindingData[];
+  per_type_stats: Record<string, TypeBindingStats>;
+  last_layer_binding: {
+    ligand_type: string;
+    ligand_label: string;
+    binding_energy_kcal: number;
+  } | null;
+  total_ligands: number;
+}
+
+/**
+ * 获取单个去溶剂化任务的 Binding Energy 汇总
+ */
+export const getBindingSummary = async (
+  jobId: number
+): Promise<BindingSummaryResponse> => {
+  const response = await client.get(`/desolvation/jobs/${jobId}/binding-summary`);
+  return response.data;
+};
+
+/**
+ * Binding 统计总览
+ */
+export interface BindingStatisticsOverview {
+  md_job_id: number;
+  total_completed: number;
+  total_ligand_bindings: number;
+  per_type_statistics: Record<string, TypeBindingStats>;
+  last_layer_statistics: TypeBindingStats & {
+    details: Array<{
+      job_id: number;
+      composition_key: string;
+      ligand_type: string;
+      binding_energy_kcal: number;
+    }>;
+  } | null;
+  message?: string;
+}
+
+/**
+ * 获取 MD 任务下所有去溶剂化结果的 Binding 统计
+ */
+export const getBindingStatisticsOverview = async (
+  mdJobId: number
+): Promise<BindingStatisticsOverview> => {
+  const response = await client.get(`/desolvation/overview/${mdJobId}/binding-statistics`);
+  return response.data;
+};
