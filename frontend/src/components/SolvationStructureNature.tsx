@@ -72,6 +72,7 @@ import {
 } from '../api/desolvation';
 import type { DesolvationJobResponse, SolventModel, SolventConfig } from '../types/desolvation';
 import DesolvationResultView from './DesolvationResultView';
+import DesolvationBatchPanel from './DesolvationBatchPanel';
 
 const { Text } = Typography;
 
@@ -1656,7 +1657,18 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
         </Card>
       </div>
 
-      {/* 去溶剂化能计算 Modal */}
+      {/* 批量去溶剂化能计算面板 */}
+      <div style={{ marginTop: 24 }}>
+        <DesolvationBatchPanel
+          jobId={jobId}
+          onStructureSelect={(structureId) => {
+            setSelectedStructureId(structureId);
+            loadSideStructure(structureId);
+          }}
+        />
+      </div>
+
+      {/* 去溶剂化能计算 Modal（单个结构详细操作） */}
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

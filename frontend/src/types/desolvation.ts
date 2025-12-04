@@ -74,6 +74,14 @@ export interface DesolvationEnergyResult {
   created_at: string;
 }
 
+export interface QCProgress {
+  total: number;
+  completed: number;
+  running: number;
+  failed: number;
+  progress_percent: number;
+}
+
 export interface DesolvationJobResponse {
   job_id: number;
   status: string;
@@ -85,5 +93,33 @@ export interface DesolvationJobResponse {
   elapsed_seconds?: number;
   error_message?: string;
   result?: DesolvationEnergyResult;
+  // 溯源信息
+  solvation_structure_id?: number;
+  composition_key?: string;  // 如 "Li-EC2-DMC1-PF6_1"
+  md_job_id?: number;
+  electrolyte_name?: string;
+  qc_progress?: QCProgress;
+}
+
+export interface BatchDesolvationJobCreate {
+  md_job_id: number;
+  structure_ids: number[];
+  method_level: string;
+  desolvation_mode?: DesolvationMode;
+  solvent_config?: SolventConfig;
+}
+
+export interface BatchDesolvationJobResponse {
+  created_count: number;
+  skipped_count: number;
+  jobs: DesolvationJobResponse[];
+}
+
+export interface DesolvationOverviewResponse {
+  md_job_id: number;
+  electrolyte_name?: string;
+  total_jobs: number;
+  status_summary: Record<string, number>;
+  jobs: DesolvationJobResponse[];
 }
 

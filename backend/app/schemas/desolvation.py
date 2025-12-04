@@ -85,7 +85,38 @@ class DesolvationJobResponse(BaseModel):
     elapsed_seconds: Optional[float] = None
     error_message: Optional[str] = None
     result: Optional[DesolvationEnergyResultSchema] = None
+    # 溯源信息
+    solvation_structure_id: Optional[int] = None
+    composition_key: Optional[str] = None  # 如 "Li-EC2-DMC1-PF6_1"
+    md_job_id: Optional[int] = None
+    electrolyte_name: Optional[str] = None  # 电解液配方名称
+    qc_progress: Optional[Dict[str, Any]] = None  # QC任务进度 {"total": 10, "completed": 5, "running": 2}
 
     class Config:
         from_attributes = True
+
+
+class BatchDesolvationJobCreate(BaseModel):
+    """批量创建去溶剂化能任务"""
+    md_job_id: int = Field(..., description="MD job ID")
+    structure_ids: List[int] = Field(..., description="要计算的溶剂化结构ID列表")
+    method_level: str = Field(default="standard", description="计算方法级别")
+    desolvation_mode: Literal["stepwise", "full"] = Field(default="stepwise")
+    solvent_config: Optional[SolventConfigSchema] = None
+
+
+class BatchDesolvationJobResponse(BaseModel):
+    """批量创建响应"""
+    created_count: int
+    skipped_count: int  # 已存在的任务数
+    jobs: List[DesolvationJobResponse]
+
+
+class DesolvationOverviewResponse(BaseModel):
+    """去溶剂化任务总览（用于监控面板）"""
+    md_job_id: int
+    electrolyte_name: Optional[str] = None
+    total_jobs: int
+    status_summary: Dict[str, int]  # {"COMPLETED": 3, "RUNNING": 2, "QUEUED": 1}
+    jobs: List[DesolvationJobResponse]
 
