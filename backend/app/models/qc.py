@@ -53,6 +53,9 @@ class QCJob(Base):
     
     # 关联MD任务（可选）
     md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # 关联去溶剂化后处理任务（可选）
+    desolvation_postprocess_job_id = Column(Integer, ForeignKey("postprocess_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # 分子信息
     molecule_name = Column(String(255), nullable=False)

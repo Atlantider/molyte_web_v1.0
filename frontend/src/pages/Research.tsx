@@ -69,7 +69,26 @@ export default function Research() {
   useEffect(() => {
     loadStats();
     loadAvailableOptions();
+    // 默认加载所有 MD 结果
+    loadInitialData();
   }, []);
+
+  // 初始加载数据
+  const loadInitialData = async () => {
+    setLoading(true);
+    try {
+      const response = await searchMyElectrolytes({
+        skip: 0,
+        limit: pagination.pageSize,
+      });
+      setResults(response.data);
+      setTotal(response.total);
+    } catch (error) {
+      console.error('Failed to load initial data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadStats = async () => {
     try {
