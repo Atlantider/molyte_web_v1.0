@@ -755,10 +755,11 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
     },
     legend: {
       orient: 'horizontal',
-      bottom: 8,
+      bottom: 4,
+      left: 'center',
       itemWidth: 12,
       itemHeight: 12,
-      itemGap: 16,
+      itemGap: 12,
       textStyle: {
         fontSize: CHART_LEGEND_SIZE,
         fontFamily: CHART_FONT_FAMILY,
