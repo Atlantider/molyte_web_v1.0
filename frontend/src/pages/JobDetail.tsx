@@ -460,13 +460,17 @@ export default function JobDetail() {
         const translatedError = translateError(job.error_message);
         return (
           <Tooltip title={job.error_message}>
-            <Alert
-              message={translatedError?.description || '任务运行过程中发生错误'}
-              type="error"
-              showIcon
-              style={{ marginBottom: 12, borderRadius: 8 }}
-              banner
-            />
+            <div style={{
+              padding: '8px 12px',
+              marginBottom: 12,
+              background: isDark ? 'rgba(255,77,79,0.15)' : '#fff1f0',
+              borderRadius: 6,
+              fontSize: 13,
+              color: isDark ? '#ff7875' : '#cf1322',
+              cursor: 'pointer'
+            }}>
+              {translatedError?.suggestion || '请查看日志或联系管理员'}
+            </div>
           </Tooltip>
         );
       })()}
