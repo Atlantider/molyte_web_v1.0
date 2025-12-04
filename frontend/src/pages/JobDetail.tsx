@@ -41,6 +41,7 @@ import MSDCalculatorNature from '../components/MSDCalculatorNature';
 import SolvationStructureNature from '../components/SolvationStructureNature';
 import JobBasicInfo from '../components/JobBasicInfo';
 import QCTasksPanel from '../components/QCTasksPanel';
+import DesolvationBatchPanel from '../components/DesolvationBatchPanel';
 import { getMDJob, resubmitMDJob, getJobSlurmStatus, syncJobStatus, type SlurmJobStatus } from '../api/jobs';
 import { getElectrolyte } from '../api/electrolytes';
 import { translateError } from '../utils/errorTranslator';
@@ -64,6 +65,7 @@ export default function JobDetail() {
   const [slurmStatus, setSlurmStatus] = useState<SlurmJobStatus | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [activeTab, setActiveTab] = useState('info');
 
   // 检查任务是否处于活跃状态（需要轮询）
   const isJobActive = useCallback((jobData: MDJob | null) => {
@@ -532,7 +534,8 @@ export default function JobDetail() {
         styles={{ body: { padding: 0 } }}
       >
         <Tabs
-          defaultActiveKey="info"
+          activeKey={activeTab}
+          onChange={setActiveTab}
           size="large"
           tabBarStyle={{
             margin: 0,
@@ -626,13 +629,39 @@ export default function JobDetail() {
               ),
               children: job.status === JobStatus.COMPLETED || job.status === JobStatus.POSTPROCESSING ? (
                 <div style={{ padding: 0 }}>
-                  <SolvationStructureNature jobId={job.id} />
+                  <SolvationStructureNature
+                    jobId={job.id}
+                    onGoToDesolvation={() => setActiveTab('desolvation')}
+                  />
                 </div>
               ) : (
                 <div style={{ padding: 24 }}>
                   <Alert
                     message="任务未完成"
                     description="请等待 MD 任务完成后再进行溶剂化结构分析"
+                    type="info"
+                    showIcon
+                  />
+                </div>
+              ),
+            },
+            {
+              key: 'desolvation',
+              label: (
+                <span style={{ fontSize: 14, fontWeight: 500 }}>
+                  <ThunderboltOutlined style={{ marginRight: 6, color: '#1890ff' }} />
+                  去溶剂化能
+                </span>
+              ),
+              children: job.status === JobStatus.COMPLETED || job.status === JobStatus.POSTPROCESSING ? (
+                <div style={{ padding: 24 }}>
+                  <DesolvationBatchPanel jobId={job.id} />
+                </div>
+              ) : (
+                <div style={{ padding: 24 }}>
+                  <Alert
+                    message="任务未完成"
+                    description="请等待 MD 任务完成后再进行去溶剂化能计算"
                     type="info"
                     showIcon
                   />

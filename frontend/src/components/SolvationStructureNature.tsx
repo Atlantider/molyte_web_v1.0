@@ -72,7 +72,6 @@ import {
 } from '../api/desolvation';
 import type { DesolvationJobResponse, SolventModel, SolventConfig } from '../types/desolvation';
 import DesolvationResultView from './DesolvationResultView';
-import DesolvationBatchPanel from './DesolvationBatchPanel';
 
 const { Text } = Typography;
 
@@ -290,6 +289,7 @@ declare global {
 
 interface SolvationStructureProps {
   jobId: number;
+  onGoToDesolvation?: () => void;  // 跳转到去溶剂化能计算 Tab
 }
 
 // Nature 期刊风格配色（低饱和度）
@@ -305,7 +305,7 @@ const NATURE_COLORS = [
   '#17becf', // 青色
 ];
 
-export default function SolvationStructureNature({ jobId }: SolvationStructureProps) {
+export default function SolvationStructureNature({ jobId, onGoToDesolvation }: SolvationStructureProps) {
   const { mode } = useThemeStore();
   const { token } = theme.useToken();
   const isDark = mode === 'dark';
@@ -1478,20 +1478,33 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
           className="dashboard-card structure-card-center"
           style={{ ...dashboardCardStyle, overflow: 'hidden' }}
           title={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <TableOutlined style={{ color: '#fa8c16', fontSize: 16 }} />
-              <span
-                style={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: token.colorText,
-                }}
-              >
-                溶剂化结构列表 (Structures)
-              </span>
-              <Tag color="blue" style={{ marginLeft: 4, fontSize: 11 }}>
-                {structures.length}
-              </Tag>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <TableOutlined style={{ color: '#fa8c16', fontSize: 16 }} />
+                <span
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: token.colorText,
+                  }}
+                >
+                  溶剂化结构列表
+                </span>
+                <Tag color="blue" style={{ marginLeft: 4, fontSize: 11 }}>
+                  {structures.length}
+                </Tag>
+              </div>
+              {onGoToDesolvation && structures.length > 0 && (
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<ThunderboltOutlined />}
+                  onClick={onGoToDesolvation}
+                  style={{ fontSize: 12 }}
+                >
+                  一键计算去溶剂化能
+                </Button>
+              )}
             </div>
           }
         >
@@ -1655,17 +1668,6 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
             </div>
           )}
         </Card>
-      </div>
-
-      {/* 批量去溶剂化能计算面板 */}
-      <div style={{ marginTop: 24 }}>
-        <DesolvationBatchPanel
-          jobId={jobId}
-          onStructureSelect={(structureId) => {
-            setSelectedStructureId(structureId);
-            loadSideStructure(structureId);
-          }}
-        />
       </div>
 
       {/* 去溶剂化能计算 Modal（单个结构详细操作） */}
