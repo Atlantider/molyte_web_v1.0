@@ -77,13 +77,37 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
   const [submitting, setSubmitting] = useState(false);
   const [overview, setOverview] = useState<DesolvationOverviewResponse | null>(null);
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
-  
+
+  // 筛选条件
+  const [cnFilter, setCnFilter] = useState<number[]>([]);  // 配位数筛选
+
   // 计算参数
   const [methodLevel, setMethodLevel] = useState<'fast' | 'standard' | 'accurate'>('standard');
   const [desolvationMode, setDesolvationMode] = useState<'stepwise' | 'full'>('stepwise');
   const [solventModel, setSolventModel] = useState<SolventModel>('gas');
   const [solventName, setSolventName] = useState<string>('');
   const [customParams, setCustomParams] = useState<Partial<SolventConfig>>({});
+
+  // 获取所有可用的配位数选项
+  const availableCNs = React.useMemo(() => {
+    const cnSet = new Set<number>();
+    structures.forEach(s => cnSet.add(s.coordination_num));
+    return Array.from(cnSet).sort((a, b) => a - b);
+  }, [structures]);
+
+  // 根据筛选条件过滤后的结构
+  const filteredStructures = React.useMemo(() => {
+    if (cnFilter.length === 0) return structures;
+    return structures.filter(s => cnFilter.includes(s.coordination_num));
+  }, [structures, cnFilter]);
+
+  // 当筛选条件变化时，更新选中的 keys
+  useEffect(() => {
+    if (cnFilter.length > 0) {
+      const filteredIds = filteredStructures.map(s => s.id);
+      setSelectedKeys(prev => prev.filter(id => filteredIds.includes(id)));
+    }
+  }, [cnFilter, filteredStructures]);
 
   // 加载自动挑选的结构
   const loadAutoSelectedStructures = useCallback(async () => {
@@ -336,22 +360,75 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
           children: (
             <div>
               <div style={{ marginBottom: 16 }}>
-                <Button
-                  type="primary"
-                  icon={<BulbOutlined />}
-                  onClick={loadAutoSelectedStructures}
-                  loading={loading}
-                >
-                  自动挑选不同配位组成
-                </Button>
-                <Text type="secondary" style={{ marginLeft: 12, fontSize: 12 }}>
-                  系统会自动从所有溶剂化结构中挑选出不同配位组成的代表性结构
-                </Text>
+                <Space wrap>
+                  <Button
+                    type="primary"
+                    icon={<BulbOutlined />}
+                    onClick={loadAutoSelectedStructures}
+                    loading={loading}
+                  >
+                    自动挑选不同配位组成
+                  </Button>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    系统会自动从所有溶剂化结构中挑选出不同配位组成的代表性结构
+                  </Text>
+                </Space>
               </div>
-              
+
+              {/* 配位数筛选器 */}
+              {structures.length > 0 && availableCNs.length > 1 && (
+                <div style={{ marginBottom: 12 }}>
+                  <Space size={8} align="center">
+                    <Text style={{ fontSize: 12, color: token.colorTextSecondary }}>
+                      按配位数筛选：
+                    </Text>
+                    <Select
+                      mode="multiple"
+                      placeholder="全部配位数"
+                      value={cnFilter}
+                      onChange={(values) => {
+                        setCnFilter(values);
+                        // 如果选择了筛选条件，自动选中所有符合条件的结构
+                        if (values.length > 0) {
+                          const filtered = structures.filter(s => values.includes(s.coordination_num));
+                          setSelectedKeys(filtered.map(s => s.id));
+                        } else {
+                          // 清空筛选时恢复全选
+                          setSelectedKeys(structures.map(s => s.id));
+                        }
+                      }}
+                      style={{ minWidth: 200 }}
+                      size="small"
+                      allowClear
+                      options={availableCNs.map(cn => ({
+                        label: `CN = ${cn}`,
+                        value: cn,
+                      }))}
+                    />
+                    {cnFilter.length > 0 && (
+                      <Tag color="orange">
+                        筛选后 {filteredStructures.length} 个结构
+                      </Tag>
+                    )}
+                    <Button
+                      size="small"
+                      onClick={() => setSelectedKeys(filteredStructures.map(s => s.id))}
+                    >
+                      全选当前
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => setSelectedKeys([])}
+                    >
+                      清空选择
+                    </Button>
+                  </Space>
+                </div>
+              )}
+
               {structures.length > 0 && (
                 <Table
-                  dataSource={structures}
+                  dataSource={filteredStructures}
                   columns={structureColumns}
                   rowKey="id"
                   size="small"
