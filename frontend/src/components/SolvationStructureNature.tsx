@@ -22,6 +22,7 @@ import {
   Slider,
   Dropdown,
   Modal,
+  Divider,
   theme,
 } from 'antd';
 import {
@@ -326,6 +327,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
   const [loadingDesolvation, setLoadingDesolvation] = useState(false);
   const [creatingDesolvation, setCreatingDesolvation] = useState(false);
   const [selectedMethodLevel, setSelectedMethodLevel] = useState<'fast' | 'standard' | 'accurate'>('standard');
+  const [selectedDesolvationMode, setSelectedDesolvationMode] = useState<'stepwise' | 'full'>('stepwise');
 
   const cnChartRef = useRef<any>(null);
   const pieChartRef = useRef<any>(null);
@@ -657,6 +659,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
         md_job_id: jobId,
         solvation_structure_id: clusterId,
         method_level: selectedMethodLevel,
+        desolvation_mode: selectedDesolvationMode,
       });
       message.success('去溶剂化能任务已创建');
       await loadDesolvationJobs(clusterId);
@@ -1794,6 +1797,54 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                 </div>
               </div>
             </Space>
+
+            {/* 去溶剂化模式选择 */}
+            <Divider orientation="left" style={{ margin: '16px 0 12px' }}>
+              <Text strong style={{ color: token.colorText }}>去溶剂化模式</Text>
+            </Divider>
+            <Space direction="horizontal" size={12}>
+              <div
+                onClick={() => setSelectedDesolvationMode('stepwise')}
+                style={{
+                  padding: 12,
+                  border: `2px solid ${selectedDesolvationMode === 'stepwise' ? '#1890ff' : token.colorBorder}`,
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  background: selectedDesolvationMode === 'stepwise' ? (isDark ? 'rgba(24,144,255,0.1)' : '#e6f7ff') : 'transparent',
+                  transition: 'all 0.3s',
+                  flex: 1,
+                }}
+              >
+                <div>
+                  <Tag color="cyan">逐级去溶剂</Tag>
+                  <Text style={{ fontSize: 13, color: token.colorText }}>Stepwise</Text>
+                </div>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                  逐个移除配体，计算每个配体的去溶剂化能
+                </Text>
+              </div>
+              <div
+                onClick={() => setSelectedDesolvationMode('full')}
+                style={{
+                  padding: 12,
+                  border: `2px solid ${selectedDesolvationMode === 'full' ? '#1890ff' : token.colorBorder}`,
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  background: selectedDesolvationMode === 'full' ? (isDark ? 'rgba(24,144,255,0.1)' : '#e6f7ff') : 'transparent',
+                  transition: 'all 0.3s',
+                  flex: 1,
+                }}
+              >
+                <div>
+                  <Tag color="orange">全部去溶剂</Tag>
+                  <Text style={{ fontSize: 13, color: token.colorText }}>Full</Text>
+                </div>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                  一次性移除所有配体，计算总去溶剂化能
+                </Text>
+              </div>
+            </Space>
+
             <div style={{ marginTop: 16 }}>
               <Space>
                 <Button
@@ -1836,6 +1887,17 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                   dataIndex: 'method_level',
                   key: 'method_level',
                   width: 100,
+                },
+                {
+                  title: '模式',
+                  dataIndex: 'desolvation_mode',
+                  key: 'desolvation_mode',
+                  width: 100,
+                  render: (mode: string) => (
+                    <Tag color={mode === 'stepwise' ? 'cyan' : 'orange'}>
+                      {mode === 'stepwise' ? '逐级' : '全部'}
+                    </Tag>
+                  ),
                 },
                 {
                   title: '状态',

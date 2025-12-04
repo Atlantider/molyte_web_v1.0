@@ -128,16 +128,24 @@ def _phase1_create_qc_jobs(
     """
     阶段 1：创建所有需要的 QC 任务
 
-    需要创建的 QC 任务：
-    1. E_cluster：完整溶剂化簇
-    2. E_ligand_i：每种配体分子（去重，使用 PDB 中的结构）
-    3. E_cluster_minus_i：移除每个配体后的簇
+    支持两种去溶剂化模式：
+    - stepwise: 逐级去溶剂（每次去掉一个配体）
+      - E_cluster: 完整溶剂化簇
+      - E_ligand_i: 每种配体分子
+      - E_cluster_minus_i: 移除每个配体后的簇
+    - full: 全部去溶剂（直接计算中心离子能量）
+      - E_cluster: 完整溶剂化簇
+      - E_ligand_i: 每种配体分子
+      - E_ion: 中心离子能量
 
     核心改进：
     - 从 ResultSummary.molecule_structures 获取分子 PDB
     - 单分子能量使用标准 PDB 结构，可复用
     """
-    logger.info(f"Phase 1: Creating QC jobs for desolvation job {job.id}")
+    config = job.config or {}
+    desolvation_mode = config.get("desolvation_mode", "stepwise")
+
+    logger.info(f"Phase 1: Creating QC jobs for desolvation job {job.id} (mode={desolvation_mode})")
 
     # 更新状态为 RUNNING
     job.status = JobStatus.RUNNING
@@ -224,26 +232,55 @@ def _phase1_create_qc_jobs(
                 created_qc_jobs.append(qc_job_id)
                 logger.info(f"Created new ligand QC job {qc_job_id} for {ligand_type}")
 
-    # 3. 创建每个 cluster_minus_i 的 QC 任务
+    # 3. 根据模式创建额外的 QC 任务
     cluster_minus_job_ids = []
-    for i, ligand in enumerate(cluster_data['ligands']):
-        cluster_minus_xyz = generate_cluster_minus_xyz(cluster_data, ligand)
-        cluster_minus_charge = cluster_data['total_charge'] - ligand['charge']
+    center_ion_job_id = None
 
-        cluster_minus_qc_job = create_qc_job_for_structure(
+    if desolvation_mode == "stepwise":
+        # 逐级模式：创建每个 cluster_minus_i 的 QC 任务
+        for i, ligand in enumerate(cluster_data['ligands']):
+            cluster_minus_xyz = generate_cluster_minus_xyz(cluster_data, ligand)
+            cluster_minus_charge = cluster_data['total_charge'] - ligand['charge']
+
+            cluster_minus_qc_job = create_qc_job_for_structure(
+                db=db,
+                user_id=user_id,
+                md_job_id=md_job_id,
+                molecule_name=f"Cluster_{solvation_structure.id}_minus_{ligand['ligand_label']}",
+                xyz_content=cluster_minus_xyz,
+                charge=cluster_minus_charge,
+                basis_set=basis_set,
+                functional=functional,
+                job_type="cluster_minus"
+            )
+            cluster_minus_job_ids.append(cluster_minus_qc_job.id)
+            created_qc_jobs.append(cluster_minus_qc_job.id)
+            logger.info(f"Created cluster_minus QC job {cluster_minus_qc_job.id} for ligand {ligand['ligand_label']}")
+
+    elif desolvation_mode == "full":
+        # 全部去溶剂模式：只需要计算中心离子的能量
+        center_ion = cluster_data['center_ion']
+        center_ion_charge = cluster_data['center_ion_charge']
+        center_ion_xyz = generate_center_ion_xyz(cluster_data)
+
+        # 尝试复用已有的中心离子 QC 计算
+        center_ion_job_id, is_reused = find_or_create_ligand_qc_job(
             db=db,
             user_id=user_id,
             md_job_id=md_job_id,
-            molecule_name=f"Cluster_{solvation_structure.id}_minus_{ligand['ligand_label']}",
-            xyz_content=cluster_minus_xyz,
-            charge=cluster_minus_charge,
+            ligand_type=center_ion,
+            ligand_charge=center_ion_charge,
+            ligand_xyz=center_ion_xyz,
             basis_set=basis_set,
-            functional=functional,
-            job_type="cluster_minus"
+            functional=functional
         )
-        cluster_minus_job_ids.append(cluster_minus_qc_job.id)
-        created_qc_jobs.append(cluster_minus_qc_job.id)
-        logger.info(f"Created cluster_minus QC job {cluster_minus_qc_job.id} for ligand {ligand['ligand_label']}")
+
+        if is_reused:
+            reused_qc_jobs.append(center_ion_job_id)
+            logger.info(f"Reused existing QC job {center_ion_job_id} for center ion {center_ion}")
+        else:
+            created_qc_jobs.append(center_ion_job_id)
+            logger.info(f"Created center ion QC job {center_ion_job_id} for {center_ion}")
 
     # 保存 QC job IDs 到 config
     job.config = job.config or {}
@@ -251,10 +288,13 @@ def _phase1_create_qc_jobs(
     job.config['reused_qc_job_ids'] = reused_qc_jobs  # 复用的 QC 任务
     job.config['cluster_qc_job_id'] = cluster_qc_job.id
     job.config['ligand_qc_jobs'] = ligand_qc_jobs
-    job.config['cluster_minus_job_ids'] = cluster_minus_job_ids  # 新增：按顺序保存
+    job.config['cluster_minus_job_ids'] = cluster_minus_job_ids  # 逐级模式使用
+    job.config['center_ion_job_id'] = center_ion_job_id  # 全部去溶剂模式使用
+    job.config['desolvation_mode'] = desolvation_mode
     job.config['phase'] = 2  # 下次进入阶段 2
     job.config['cluster_data'] = {
         'center_ion': cluster_data['center_ion'],
+        'center_ion_charge': cluster_data.get('center_ion_charge', 1),
         'total_charge': cluster_data['total_charge'],
         'ligands': [
             {
@@ -275,13 +315,18 @@ def _phase1_create_qc_jobs(
 
     # 统计日志
     new_ligand_jobs = len(ligand_qc_jobs) - len(reused_qc_jobs)
-    logger.info(f"Phase 1 completed: Created {len(created_qc_jobs)} new QC jobs, reused {len(reused_qc_jobs)} existing jobs")
-    logger.info(f"  - 1 cluster, {new_ligand_jobs} new ligand types, {len(reused_qc_jobs)} reused ligand types, {len(cluster_minus_job_ids)} cluster_minus")
+    if desolvation_mode == "stepwise":
+        logger.info(f"Phase 1 completed (stepwise): Created {len(created_qc_jobs)} new QC jobs, reused {len(reused_qc_jobs)} existing jobs")
+        logger.info(f"  - 1 cluster, {new_ligand_jobs} new ligand types, {len(reused_qc_jobs)} reused, {len(cluster_minus_job_ids)} cluster_minus")
+    else:
+        logger.info(f"Phase 1 completed (full): Created {len(created_qc_jobs)} new QC jobs, reused {len(reused_qc_jobs)} existing jobs")
+        logger.info(f"  - 1 cluster, {new_ligand_jobs} new ligand types, {len(reused_qc_jobs)} reused, 1 center ion")
 
     return {
         "success": True,
         "job_id": job.id,
         "phase": 1,
+        "desolvation_mode": desolvation_mode,
         "qc_jobs_created": len(created_qc_jobs)
     }
 
@@ -295,15 +340,22 @@ def _phase2_calculate_desolvation(
     """
     阶段 2：从 QC 结果计算去溶剂化能
 
+    支持两种模式：
+    - stepwise: 逐级去溶剂，计算每个配体的去溶剂化能
+    - full: 全部去溶剂，计算总去溶剂化能
+
     前提：所有 QC 任务已完成
     """
-    logger.info(f"Phase 2: Calculating desolvation energies for job {job.id}")
-
     config = job.config or {}
+    desolvation_mode = config.get('desolvation_mode', 'stepwise')
+
+    logger.info(f"Phase 2: Calculating desolvation energies for job {job.id} (mode={desolvation_mode})")
+
     qc_job_ids = config.get('qc_job_ids', [])
     cluster_qc_job_id = config.get('cluster_qc_job_id')
     ligand_qc_jobs = config.get('ligand_qc_jobs', {})
-    cluster_minus_job_ids = config.get('cluster_minus_job_ids', [])  # 新增：按配体顺序的 job IDs
+    cluster_minus_job_ids = config.get('cluster_minus_job_ids', [])  # stepwise 模式使用
+    center_ion_job_id = config.get('center_ion_job_id')  # full 模式使用
     cluster_data = config.get('cluster_data', {})
 
     # 检查所有 QC 任务是否完成
@@ -355,79 +407,156 @@ def _phase2_calculate_desolvation(
     e_cluster = cluster_result.total_energy
     logger.info(f"E_cluster = {e_cluster:.6f} A.U.")
 
-    # 计算每个配体的去溶剂化能
     per_ligand_results = []
+    per_type_summary = []
+    e_ion = None  # full 模式使用
+    total_desolvation_energy = None  # full 模式使用
 
-    for i, ligand_info in enumerate(cluster_data['ligands']):
-        ligand_type = ligand_info['ligand_type']
-        ligand_label = ligand_info['ligand_label']
-        ligand_charge = ligand_info['charge']
+    if desolvation_mode == "stepwise":
+        # 逐级模式：计算每个配体的去溶剂化能
+        for i, ligand_info in enumerate(cluster_data['ligands']):
+            ligand_type = ligand_info['ligand_type']
+            ligand_label = ligand_info['ligand_label']
+            ligand_charge = ligand_info['charge']
 
-        # 获取 E_ligand（同类型配体复用相同的能量）
-        ligand_key = f"{ligand_type}_{ligand_charge}"
-        ligand_qc_job_id = ligand_qc_jobs.get(ligand_key)
+            # 获取 E_ligand（同类型配体复用相同的能量）
+            ligand_key = f"{ligand_type}_{ligand_charge}"
+            ligand_qc_job_id = ligand_qc_jobs.get(ligand_key)
 
-        if not ligand_qc_job_id:
-            raise ValueError(f"Ligand QC job not found for {ligand_key}")
+            if not ligand_qc_job_id:
+                raise ValueError(f"Ligand QC job not found for {ligand_key}")
 
-        ligand_result = db.query(QCResult).filter(
-            QCResult.qc_job_id == ligand_qc_job_id
+            ligand_result = db.query(QCResult).filter(
+                QCResult.qc_job_id == ligand_qc_job_id
+            ).first()
+
+            if not ligand_result or ligand_result.total_energy is None:
+                raise ValueError(f"Ligand QC result not found for {ligand_type}")
+
+            e_ligand = ligand_result.total_energy
+
+            # 获取 E_cluster_minus（使用明确的索引）
+            if i < len(cluster_minus_job_ids):
+                cluster_minus_qc_job_id = cluster_minus_job_ids[i]
+            else:
+                # 兼容旧格式
+                cluster_minus_qc_job_id = qc_job_ids[1 + len(ligand_qc_jobs) + i]
+
+            cluster_minus_result = db.query(QCResult).filter(
+                QCResult.qc_job_id == cluster_minus_qc_job_id
+            ).first()
+
+            if not cluster_minus_result or cluster_minus_result.total_energy is None:
+                raise ValueError(f"Cluster_minus QC result not found for ligand {ligand_label}")
+
+            e_cluster_minus = cluster_minus_result.total_energy
+
+            # 计算 ΔE_i = E_cluster - (E_cluster_minus + E_ligand)
+            delta_e_au = e_cluster - (e_cluster_minus + e_ligand)
+            delta_e_kcal = delta_e_au * HARTREE_TO_KCAL
+
+            per_ligand_results.append({
+                'ligand_id': ligand_info['ligand_id'],
+                'ligand_type': ligand_type,
+                'ligand_label': ligand_label,
+                'e_ligand': e_ligand,
+                'e_cluster_minus': e_cluster_minus,
+                'delta_e': delta_e_kcal
+            })
+
+            logger.info(f"Ligand {ligand_label}: E_ligand={e_ligand:.6f}, E_cluster_minus={e_cluster_minus:.6f}, ΔE = {delta_e_kcal:.2f} kcal/mol")
+
+        # 按类型汇总
+        per_type_summary = summarize_by_type(per_ligand_results)
+        logger.info(f"Type summary: {len(per_type_summary)} types")
+
+    elif desolvation_mode == "full":
+        # 全部去溶剂模式：计算总去溶剂化能
+        # ΔE_total = E_cluster - (E_ion + Σ E_ligand_i)
+
+        # 获取中心离子能量
+        if not center_ion_job_id:
+            raise ValueError("Center ion QC job ID not found for full mode")
+
+        center_ion_result = db.query(QCResult).filter(
+            QCResult.qc_job_id == center_ion_job_id
         ).first()
 
-        if not ligand_result or ligand_result.total_energy is None:
-            raise ValueError(f"Ligand QC result not found for {ligand_type}")
+        if not center_ion_result or center_ion_result.total_energy is None:
+            raise ValueError("Center ion QC result not found or missing energy")
 
-        e_ligand = ligand_result.total_energy
+        e_ion = center_ion_result.total_energy
+        logger.info(f"E_ion = {e_ion:.6f} A.U.")
 
-        # 获取 E_cluster_minus（使用明确的索引）
-        if i < len(cluster_minus_job_ids):
-            cluster_minus_qc_job_id = cluster_minus_job_ids[i]
-        else:
-            # 兼容旧格式
-            cluster_minus_qc_job_id = qc_job_ids[1 + len(ligand_qc_jobs) + i]
+        # 计算所有配体能量之和
+        total_ligand_energy = 0.0
+        ligand_energies = {}  # 缓存每种配体的能量
 
-        cluster_minus_result = db.query(QCResult).filter(
-            QCResult.qc_job_id == cluster_minus_qc_job_id
-        ).first()
+        for ligand_info in cluster_data['ligands']:
+            ligand_type = ligand_info['ligand_type']
+            ligand_charge = ligand_info['charge']
+            ligand_key = f"{ligand_type}_{ligand_charge}"
 
-        if not cluster_minus_result or cluster_minus_result.total_energy is None:
-            raise ValueError(f"Cluster_minus QC result not found for ligand {ligand_label}")
+            if ligand_key not in ligand_energies:
+                ligand_qc_job_id = ligand_qc_jobs.get(ligand_key)
+                if not ligand_qc_job_id:
+                    raise ValueError(f"Ligand QC job not found for {ligand_key}")
 
-        e_cluster_minus = cluster_minus_result.total_energy
+                ligand_result = db.query(QCResult).filter(
+                    QCResult.qc_job_id == ligand_qc_job_id
+                ).first()
 
-        # 计算 ΔE_i = E_cluster - (E_cluster_minus + E_ligand)
-        delta_e_au = e_cluster - (e_cluster_minus + e_ligand)
-        delta_e_kcal = delta_e_au * HARTREE_TO_KCAL
+                if not ligand_result or ligand_result.total_energy is None:
+                    raise ValueError(f"Ligand QC result not found for {ligand_type}")
 
-        per_ligand_results.append({
-            'ligand_id': ligand_info['ligand_id'],
-            'ligand_type': ligand_type,
-            'ligand_label': ligand_label,
-            'e_ligand': e_ligand,
-            'e_cluster_minus': e_cluster_minus,
-            'delta_e': delta_e_kcal
-        })
+                ligand_energies[ligand_key] = ligand_result.total_energy
 
-        logger.info(f"Ligand {ligand_label}: E_ligand={e_ligand:.6f}, E_cluster_minus={e_cluster_minus:.6f}, ΔE = {delta_e_kcal:.2f} kcal/mol")
+            total_ligand_energy += ligand_energies[ligand_key]
 
-    # 按类型汇总
-    per_type_summary = summarize_by_type(per_ligand_results)
-    logger.info(f"Type summary: {len(per_type_summary)} types")
+        # 计算总去溶剂化能
+        delta_e_total_au = e_cluster - (e_ion + total_ligand_energy)
+        total_desolvation_energy = delta_e_total_au * HARTREE_TO_KCAL
+
+        logger.info(f"Total desolvation energy: {total_desolvation_energy:.2f} kcal/mol")
+        logger.info(f"  E_cluster = {e_cluster:.6f} A.U.")
+        logger.info(f"  E_ion = {e_ion:.6f} A.U.")
+        logger.info(f"  Σ E_ligand = {total_ligand_energy:.6f} A.U.")
 
     # 获取计算参数
     basis_set, functional = get_qc_params_for_method_level(method_level)
 
     # 保存结果
-    desolvation_result = DesolvationEnergyResult(
-        postprocess_job_id=job.id,
-        solvation_structure_id=solvation_structure.id,
-        method_level=method_level,
-        basis_set=basis_set,
-        functional=functional,
-        e_cluster=e_cluster,
-        per_ligand_results=per_ligand_results,
-        per_type_summary=per_type_summary
-    )
+    result_data = {
+        'postprocess_job_id': job.id,
+        'solvation_structure_id': solvation_structure.id,
+        'method_level': method_level,
+        'basis_set': basis_set,
+        'functional': functional,
+        'e_cluster': e_cluster,
+        'per_ligand_results': per_ligand_results,
+        'per_type_summary': per_type_summary
+    }
+
+    # full 模式额外保存总去溶剂化能
+    if desolvation_mode == "full":
+        result_data['per_ligand_results'] = [{
+            'ligand_id': 0,
+            'ligand_type': 'TOTAL',
+            'ligand_label': 'Total Desolvation',
+            'e_ligand': e_ion,
+            'e_cluster_minus': 0.0,  # full 模式不使用
+            'delta_e': total_desolvation_energy
+        }]
+        result_data['per_type_summary'] = [{
+            'ligand_type': 'TOTAL',
+            'avg_delta_e': total_desolvation_energy,
+            'std_delta_e': 0.0,
+            'count': 1,
+            'min_delta_e': total_desolvation_energy,
+            'max_delta_e': total_desolvation_energy
+        }]
+
+    desolvation_result = DesolvationEnergyResult(**result_data)
 
     db.add(desolvation_result)
 
@@ -438,12 +567,13 @@ def _phase2_calculate_desolvation(
 
     db.commit()
 
-    logger.info(f"Desolvation job {job.id} completed successfully")
+    logger.info(f"Desolvation job {job.id} completed successfully (mode={desolvation_mode})")
 
     return {
         "success": True,
         "job_id": job.id,
-        "result_id": desolvation_result.id
+        "result_id": desolvation_result.id,
+        "desolvation_mode": desolvation_mode
     }
 
 
@@ -463,30 +593,59 @@ def find_existing_molecule_qc_job(
     db: SessionLocal,
     molecule_name: str,
     charge: int,
+    spin_multiplicity: int,
     basis_set: str,
-    functional: str
+    functional: str,
+    solvent_model: str = "gas",
+    solvent_name: Optional[str] = None
 ) -> Optional[QCJob]:
     """
     查找已完成的相同分子 QC 任务（用于跨任务复用）
+
+    所有计算参数必须完全匹配才能复用：
+    - molecule_name: 分子名称
+    - charge: 电荷
+    - spin_multiplicity: 自旋多重度
+    - basis_set: 基组
+    - functional: 泛函
+    - solvent_model: 溶剂模型 (gas/pcm/smd)
+    - solvent_name: 隐式溶剂名称
 
     Args:
         db: 数据库会话
         molecule_name: 分子名称（如 EC, DMC, FSI）
         charge: 电荷
+        spin_multiplicity: 自旋多重度
         basis_set: 基组
         functional: 泛函
+        solvent_model: 溶剂模型
+        solvent_name: 隐式溶剂名称
 
     Returns:
         已完成的 QCJob 对象，如果不存在则返回 None
     """
-    existing_job = db.query(QCJob).filter(
+    # 构建查询条件
+    query = db.query(QCJob).filter(
         QCJob.molecule_name == molecule_name,
         QCJob.charge == charge,
+        QCJob.spin_multiplicity == spin_multiplicity,
         QCJob.basis_set == basis_set,
         QCJob.functional == functional,
-        QCJob.solvent_model == "gas",  # 去溶剂化能计算使用气相
+        QCJob.solvent_model == solvent_model,
         QCJob.status == QCJobStatus.COMPLETED
-    ).first()
+    )
+
+    # 处理 solvent_name 匹配（气相时为 None）
+    if solvent_model == "gas":
+        # 气相时 solvent_name 应为 None 或空
+        query = query.filter(
+            (QCJob.solvent_name.is_(None)) | (QCJob.solvent_name == "")
+        )
+    else:
+        # 非气相时必须匹配 solvent_name
+        query = query.filter(QCJob.solvent_name == solvent_name)
+
+    existing_job = query.first()
 
     if existing_job:
         # 验证是否有有效的能量结果
@@ -511,7 +670,10 @@ def create_qc_job_for_structure(
     charge: int,
     basis_set: str,
     functional: str,
-    job_type: str
+    job_type: str,
+    spin_multiplicity: int = 1,
+    solvent_model: str = "gas",
+    solvent_name: Optional[str] = None
 ) -> QCJob:
     """创建 QC 任务"""
     # 从 XYZ 生成 SMILES（简化版，实际应该用 RDKit）
@@ -526,8 +688,9 @@ def create_qc_job_for_structure(
         basis_set=basis_set,
         functional=functional,
         charge=charge,
-        spin_multiplicity=1,  # 默认单重态
-        solvent_model="gas",
+        spin_multiplicity=spin_multiplicity,
+        solvent_model=solvent_model,
+        solvent_name=solvent_name,
         status=QCJobStatus.CREATED,
         config={
             "xyz_content": xyz_content,
@@ -551,10 +714,15 @@ def find_or_create_ligand_qc_job(
     ligand_charge: int,
     ligand_xyz: str,
     basis_set: str,
-    functional: str
+    functional: str,
+    spin_multiplicity: int = 1,
+    solvent_model: str = "gas",
+    solvent_name: Optional[str] = None
 ) -> Tuple[int, bool]:
     """
     查找或创建配体分子的 QC 任务（支持跨任务复用）
+
+    复用条件：所有计算参数必须完全匹配
 
     Args:
         db: 数据库会话
@@ -565,21 +733,30 @@ def find_or_create_ligand_qc_job(
         ligand_xyz: 配体 XYZ 内容
         basis_set: 基组
         functional: 泛函
+        spin_multiplicity: 自旋多重度
+        solvent_model: 溶剂模型 (gas/pcm/smd)
+        solvent_name: 隐式溶剂名称
 
     Returns:
         (qc_job_id, is_reused): QC 任务 ID 和是否复用标志
     """
-    # 1. 尝试查找已完成的相同计算
+    # 1. 尝试查找已完成的相同计算（所有参数必须匹配）
     existing_job = find_existing_molecule_qc_job(
         db=db,
         molecule_name=ligand_type,
         charge=ligand_charge,
+        spin_multiplicity=spin_multiplicity,
         basis_set=basis_set,
-        functional=functional
+        functional=functional,
+        solvent_model=solvent_model,
+        solvent_name=solvent_name
     )
 
     if existing_job:
-        logger.info(f"Reusing existing QC job {existing_job.id} for {ligand_type}")
+        logger.info(f"Reusing existing QC job {existing_job.id} for {ligand_type} "
+                   f"(charge={ligand_charge}, spin={spin_multiplicity}, "
+                   f"basis={basis_set}, func={functional}, "
+                   f"solvent={solvent_model}/{solvent_name})")
         return existing_job.id, True
 
     # 2. 创建新的 QC 任务
@@ -592,7 +769,10 @@ def find_or_create_ligand_qc_job(
         charge=ligand_charge,
         basis_set=basis_set,
         functional=functional,
-        job_type="ligand"
+        job_type="ligand",
+        spin_multiplicity=spin_multiplicity,
+        solvent_model=solvent_model,
+        solvent_name=solvent_name
     )
 
     logger.info(f"Created new ligand QC job {new_job.id} for {ligand_type}")
@@ -756,17 +936,18 @@ def parse_solvation_cluster(
 
     # 第一个原子是中心离子
     center_ion = atoms[0][0]
-    center_charge = get_ion_charge(center_ion)
+    center_ion_charge = get_ion_charge(center_ion)
 
     # 根据 composition 和 molecule_structures 识别配体
     composition = solvation_structure.composition or {}
     ligands = identify_ligands(atoms[1:], composition, molecule_structures)  # 跳过中心离子
 
     # 计算总电荷
-    total_charge = center_charge + sum(lig['charge'] for lig in ligands)
+    total_charge = center_ion_charge + sum(lig['charge'] for lig in ligands)
 
     return {
         'center_ion': center_ion,
+        'center_ion_charge': center_ion_charge,  # 新增：中心离子电荷
         'total_charge': total_charge,
         'ligands': ligands,
         'xyz_content': xyz_content,
@@ -913,6 +1094,30 @@ def generate_cluster_minus_xyz(cluster_data: Dict[str, Any], ligand_to_remove: D
 
     for element, x, y, z in kept_atoms:
         xyz_lines.append(f"{element} {x:.6f} {y:.6f} {z:.6f}")
+
+    return '\n'.join(xyz_lines)
+
+
+def generate_center_ion_xyz(cluster_data: Dict[str, Any]) -> str:
+    """
+    生成中心离子的 XYZ 内容（用于 full 模式）
+
+    中心离子是 cluster 的第一个原子
+    """
+    all_atoms = cluster_data['all_atoms']
+
+    if not all_atoms:
+        raise ValueError("No atoms in cluster data")
+
+    # 中心离子是第一个原子
+    center_ion_atom = all_atoms[0]
+    element, x, y, z = center_ion_atom
+
+    xyz_lines = [
+        "1",
+        f"Center ion: {cluster_data.get('center_ion', 'Unknown')}",
+        f"{element} {x:.6f} {y:.6f} {z:.6f}"
+    ]
 
     return '\n'.join(xyz_lines)
 

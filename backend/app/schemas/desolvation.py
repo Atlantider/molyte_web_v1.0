@@ -2,7 +2,7 @@
 Desolvation energy calculation schemas
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 
 
@@ -11,6 +11,10 @@ class DesolvationJobCreate(BaseModel):
     md_job_id: int = Field(..., description="MD job ID")
     solvation_structure_id: int = Field(..., description="Solvation structure ID")
     method_level: str = Field(default="standard", description="Calculation method level: fast (6-31G(d)/B3LYP), standard (6-31++G(d,p)/B3LYP), accurate (6-311++G(2d,2p)/wB97XD)")
+    desolvation_mode: Literal["stepwise", "full"] = Field(
+        default="stepwise",
+        description="Desolvation mode: stepwise (remove one ligand at a time) or full (remove all ligands at once)"
+    )
 
 
 class LigandDesolvationResult(BaseModel):
@@ -55,6 +59,7 @@ class DesolvationJobResponse(BaseModel):
     job_id: int
     status: str
     method_level: str
+    desolvation_mode: str = "stepwise"  # stepwise or full
     created_at: datetime
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None

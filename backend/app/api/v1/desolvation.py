@@ -66,14 +66,15 @@ async def create_desolvation_job(
         status=JobStatus.SUBMITTED,  # 等待 Worker 拉取
         config={
             "solvation_structure_id": job_data.solvation_structure_id,
-            "method_level": job_data.method_level
+            "method_level": job_data.method_level,
+            "desolvation_mode": job_data.desolvation_mode  # stepwise or full
         }
     )
-    
+
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
-    
+
     return _build_job_response(new_job, db)
 
 
@@ -161,6 +162,7 @@ def _build_job_response(job: PostprocessJob, db: Session) -> DesolvationJobRespo
         job_id=job.id,
         status=job.status.value,
         method_level=job.config.get("method_level", "fast_xtb"),
+        desolvation_mode=job.config.get("desolvation_mode", "stepwise"),
         created_at=job.created_at,
         started_at=job.started_at,
         finished_at=job.finished_at,

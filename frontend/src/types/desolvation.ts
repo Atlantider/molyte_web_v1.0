@@ -3,10 +3,18 @@
  * 去溶剂化能计算相关类型定义
  */
 
+/**
+ * 去溶剂化模式
+ * - stepwise: 逐级去溶剂（每次去掉一个配体）
+ * - full: 全部去溶剂（直接计算中心离子单独能量）
+ */
+export type DesolvationMode = 'stepwise' | 'full';
+
 export interface DesolvationJobCreate {
   md_job_id: number;
   solvation_structure_id: number;
   method_level: string;
+  desolvation_mode?: DesolvationMode;  // 默认为 'stepwise'
 }
 
 export interface LigandDesolvationResult {
@@ -44,6 +52,7 @@ export interface DesolvationJobResponse {
   job_id: number;
   status: string;
   method_level: string;
+  desolvation_mode: DesolvationMode;
   created_at: string;
   started_at?: string;
   finished_at?: string;
