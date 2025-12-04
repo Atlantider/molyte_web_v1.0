@@ -1,31 +1,82 @@
 /**
  * Desolvation energy result view component
- * 去溶剂化能结果展示组件
+ * 去溶剂化能结果展示组件 - 增强版
+ *
+ * 功能：
+ * - 图表可视化（柱状图、按类型汇总图）
+ * - 能量单位切换（kcal/mol, kJ/mol, eV, Hartree）
+ * - 数据导出（CSV）
+ * - 详细数据表格
  */
-import React from 'react';
-import { Card, Descriptions, Table, Divider, Typography, theme, Statistic, Row, Col } from 'antd';
-import { ThunderboltOutlined } from '@ant-design/icons';
+import React, { useState } from 'react';
+import { Card, Descriptions, Table, Divider, Typography, theme, Statistic, Row, Col, Space, Select, Button, Tabs, Tooltip } from 'antd';
+import { ThunderboltOutlined, DownloadOutlined, BarChartOutlined, TableOutlined } from '@ant-design/icons';
 import type { DesolvationEnergyResult } from '../types/desolvation';
 import { useThemeStore } from '../stores/themeStore';
+import DesolvationCharts from './DesolvationCharts';
+import { type EnergyUnit, getUnitOptions, convertEnergy, formatEnergy, UNIT_LABELS, UNIT_PRECISION } from '../utils/energyUnits';
+import { exportDesolvationToCSV } from '../utils/exportData';
 
 const { Text } = Typography;
 
 interface DesolvationResultViewProps {
   result: DesolvationEnergyResult;
   mode?: 'stepwise' | 'full';
+  compositionKey?: string;  // 用于导出文件名
 }
 
-export default function DesolvationResultView({ result, mode = 'stepwise' }: DesolvationResultViewProps) {
+export default function DesolvationResultView({ result, mode = 'stepwise', compositionKey }: DesolvationResultViewProps) {
   const { token } = theme.useToken();
   const { isDark } = useThemeStore();
+  const [unit, setUnit] = useState<EnergyUnit>('kcal/mol');
+  const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
 
   // 检测是否为 full 模式（通过结果数据判断）
   const isFullMode = result.per_ligand_results.length === 1 &&
                      result.per_ligand_results[0]?.ligand_type === 'TOTAL';
 
+  // 导出数据
+  const handleExport = () => {
+    const filename = compositionKey ? `desolvation_${compositionKey}` : 'desolvation_energy';
+    exportDesolvationToCSV(result, unit, filename);
+  };
+
   return (
     <Card
-      title="去溶剂化能结果"
+      title={
+        <Space>
+          <ThunderboltOutlined style={{ color: '#1890ff' }} />
+          <span>去溶剂化能结果</span>
+        </Space>
+      }
+      extra={
+        <Space>
+          <Select
+            value={unit}
+            onChange={setUnit}
+            options={getUnitOptions()}
+            style={{ width: 120 }}
+            size="small"
+          />
+          {!isFullMode && (
+            <Select
+              value={viewMode}
+              onChange={setViewMode}
+              size="small"
+              style={{ width: 90 }}
+              options={[
+                { value: 'chart', label: <><BarChartOutlined /> 图表</> },
+                { value: 'table', label: <><TableOutlined /> 表格</> },
+              ]}
+            />
+          )}
+          <Tooltip title="导出 CSV">
+            <Button icon={<DownloadOutlined />} size="small" onClick={handleExport}>
+              导出
+            </Button>
+          </Tooltip>
+        </Space>
+      }
       style={{
         marginTop: 16,
         background: isDark ? token.colorBgContainer : undefined,
@@ -77,9 +128,9 @@ export default function DesolvationResultView({ result, mode = 'stepwise' }: Des
               >
                 <Statistic
                   title={<Text style={{ color: token.colorTextSecondary }}>总去溶剂化能</Text>}
-                  value={result.per_ligand_results[0]?.delta_e || 0}
-                  precision={2}
-                  suffix="kcal/mol"
+                  value={convertEnergy(result.per_ligand_results[0]?.delta_e || 0, unit)}
+                  precision={UNIT_PRECISION[unit]}
+                  suffix={UNIT_LABELS[unit]}
                   prefix={<ThunderboltOutlined />}
                   valueStyle={{
                     color: (result.per_ligand_results[0]?.delta_e || 0) < 0 ? '#52c41a' : '#1890ff',
@@ -127,109 +178,125 @@ export default function DesolvationResultView({ result, mode = 'stepwise' }: Des
       ) : (
         // Stepwise 模式：显示每个配体的去溶剂化能
         <>
-          <Divider orientation="left">
-            <Text style={{ color: token.colorText }}>按配体展示</Text>
-          </Divider>
-          <Table
-            dataSource={result.per_ligand_results}
-            rowKey="ligand_id"
-            columns={[
-              {
-                title: '配体',
-                dataIndex: 'ligand_label',
-                key: 'ligand_label',
-                width: 120,
-              },
-              {
-                title: '类型',
-                dataIndex: 'ligand_type',
-                key: 'ligand_type',
-                width: 100,
-              },
-              {
-                title: 'ΔE (kcal/mol)',
-                dataIndex: 'delta_e',
-                key: 'delta_e',
-                width: 150,
-                render: (val: number) => (
-                  <span style={{ fontWeight: 500, color: val < 0 ? '#52c41a' : '#1890ff' }}>
-                    {val.toFixed(2)}
-                  </span>
-                ),
-                sorter: (a, b) => a.delta_e - b.delta_e,
-              },
-              {
-                title: 'E_ligand (A.U.)',
-                dataIndex: 'e_ligand',
-                key: 'e_ligand',
-                render: (val: number) => val.toFixed(6),
-              },
-              {
-                title: 'E_cluster_minus (A.U.)',
-                dataIndex: 'e_cluster_minus',
-                key: 'e_cluster_minus',
-                render: (val: number) => val.toFixed(6),
-              },
-            ]}
-            pagination={false}
-            size="small"
-          />
+          {viewMode === 'chart' ? (
+            // 图表视图
+            <>
+              <Divider orientation="left">
+                <Text style={{ color: token.colorText }}>去溶剂化能分布</Text>
+              </Divider>
+              <DesolvationCharts
+                perLigandResults={result.per_ligand_results}
+                perTypeSummary={result.per_type_summary}
+                unit={unit}
+              />
+            </>
+          ) : (
+            // 表格视图
+            <>
+              <Divider orientation="left">
+                <Text style={{ color: token.colorText }}>按配体展示</Text>
+              </Divider>
+              <Table
+                dataSource={result.per_ligand_results}
+                rowKey="ligand_id"
+                columns={[
+                  {
+                    title: '配体',
+                    dataIndex: 'ligand_label',
+                    key: 'ligand_label',
+                    width: 120,
+                  },
+                  {
+                    title: '类型',
+                    dataIndex: 'ligand_type',
+                    key: 'ligand_type',
+                    width: 100,
+                  },
+                  {
+                    title: `ΔE (${UNIT_LABELS[unit]})`,
+                    dataIndex: 'delta_e',
+                    key: 'delta_e',
+                    width: 150,
+                    render: (val: number) => (
+                      <span style={{ fontWeight: 500, color: val < 0 ? '#52c41a' : '#1890ff' }}>
+                        {formatEnergy(val, unit)}
+                      </span>
+                    ),
+                    sorter: (a, b) => a.delta_e - b.delta_e,
+                  },
+                  {
+                    title: 'E_ligand (A.U.)',
+                    dataIndex: 'e_ligand',
+                    key: 'e_ligand',
+                    render: (val: number) => val.toFixed(6),
+                  },
+                  {
+                    title: 'E_cluster_minus (A.U.)',
+                    dataIndex: 'e_cluster_minus',
+                    key: 'e_cluster_minus',
+                    render: (val: number) => val.toFixed(6),
+                  },
+                ]}
+                pagination={false}
+                size="small"
+              />
 
-          {/* 按类型汇总 */}
-          <Divider orientation="left">
-            <Text style={{ color: token.colorText }}>按类型汇总</Text>
-          </Divider>
-          <Table
-            dataSource={result.per_type_summary}
-            rowKey="ligand_type"
-            columns={[
-              {
-                title: '配体类型',
-                dataIndex: 'ligand_type',
-                key: 'ligand_type',
-                width: 120,
-              },
-              {
-                title: '数量',
-                dataIndex: 'count',
-                key: 'count',
-                width: 80,
-              },
-              {
-                title: '平均 ΔE (kcal/mol)',
-                dataIndex: 'avg_delta_e',
-                key: 'avg_delta_e',
-                width: 150,
-                render: (val: number) => (
-                  <span style={{ fontWeight: 500 }}>
-                    {val.toFixed(2)}
-                  </span>
-                ),
-                sorter: (a, b) => a.avg_delta_e - b.avg_delta_e,
-              },
-              {
-                title: '标准差',
-                dataIndex: 'std_delta_e',
-                key: 'std_delta_e',
-                width: 100,
-                render: (val: number) => val.toFixed(2),
-              },
-              {
-                title: '范围 (kcal/mol)',
-                key: 'range',
-                render: (_, record) => (
-                  <span>
-                    {record.min_delta_e.toFixed(2)} ~ {record.max_delta_e.toFixed(2)}
-                  </span>
-                ),
-              },
-            ]}
-            pagination={false}
-            size="small"
-          />
+              {/* 按类型汇总 */}
+              <Divider orientation="left">
+                <Text style={{ color: token.colorText }}>按类型汇总</Text>
+              </Divider>
+              <Table
+                dataSource={result.per_type_summary}
+                rowKey="ligand_type"
+                columns={[
+                  {
+                    title: '配体类型',
+                    dataIndex: 'ligand_type',
+                    key: 'ligand_type',
+                    width: 120,
+                  },
+                  {
+                    title: '数量',
+                    dataIndex: 'count',
+                    key: 'count',
+                    width: 80,
+                  },
+                  {
+                    title: `平均 ΔE (${UNIT_LABELS[unit]})`,
+                    dataIndex: 'avg_delta_e',
+                    key: 'avg_delta_e',
+                    width: 150,
+                    render: (val: number) => (
+                      <span style={{ fontWeight: 500 }}>
+                        {formatEnergy(val, unit)}
+                      </span>
+                    ),
+                    sorter: (a, b) => a.avg_delta_e - b.avg_delta_e,
+                  },
+                  {
+                    title: '标准差',
+                    dataIndex: 'std_delta_e',
+                    key: 'std_delta_e',
+                    width: 100,
+                    render: (val: number) => formatEnergy(val, unit),
+                  },
+                  {
+                    title: `范围 (${UNIT_LABELS[unit]})`,
+                    key: 'range',
+                    render: (_, record) => (
+                      <span>
+                        {formatEnergy(record.min_delta_e, unit)} ~ {formatEnergy(record.max_delta_e, unit)}
+                      </span>
+                    ),
+                  },
+                ]}
+                pagination={false}
+                size="small"
+              />
+            </>
+          )}
         </>
       )}
     </Card>
   );
 }
-

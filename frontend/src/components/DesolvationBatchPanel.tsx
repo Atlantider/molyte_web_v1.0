@@ -66,6 +66,8 @@ import type {
 } from '../types/desolvation';
 import { useThemeStore } from '../stores/themeStore';
 import DesolvationResultView from './DesolvationResultView';
+import DesolvationSummaryPanel from './DesolvationSummaryPanel';
+import DesolvationComparisonView from './DesolvationComparisonView';
 
 // 3Dmol.js 类型声明
 declare global {
@@ -1613,53 +1615,75 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
         ) : null}
       </Modal>
 
-      {/* 第四步：任务监控 */}
+      {/* 第四步：任务监控与结果分析 */}
       {overview && overview.total_jobs > 0 && (
         <div style={{ marginTop: 16 }}>
-          <Divider orientation="left">
-            <Space>
-              任务监控
-              <Tag color="blue">{overview.total_jobs} 个任务</Tag>
-              {overview.status_summary['COMPLETED'] > 0 && (
-                <Tag color="success">{overview.status_summary['COMPLETED']} 完成</Tag>
-              )}
-              {(overview.status_summary['RUNNING'] || 0) + (overview.status_summary['QUEUED'] || 0) > 0 && (
-                <Tag color="processing">
-                  {(overview.status_summary['RUNNING'] || 0) + (overview.status_summary['QUEUED'] || 0)} 进行中
-                </Tag>
-              )}
-              {overview.status_summary['FAILED'] > 0 && (
-                <Tag color="error">{overview.status_summary['FAILED']} 失败</Tag>
-              )}
-            </Space>
-          </Divider>
-
-          <Table
-            dataSource={overview.jobs}
-            columns={jobColumns}
-            rowKey="job_id"
-            size="small"
-            pagination={{ pageSize: 5, size: 'small' }}
-            expandable={{
-              expandedRowKeys: expandedRowKeys,
-              onExpand: (expanded, record) => {
-                if (expanded) {
-                  setExpandedRowKeys([record.job_id]);
-                  loadQCTasks(record.job_id);
-                } else {
-                  setExpandedRowKeys([]);
-                }
+          <Tabs
+            defaultActiveKey="tasks"
+            items={[
+              {
+                key: 'tasks',
+                label: (
+                  <Space>
+                    任务列表
+                    <Tag color="blue">{overview.total_jobs}</Tag>
+                    {overview.status_summary['COMPLETED'] > 0 && (
+                      <Tag color="success">{overview.status_summary['COMPLETED']}</Tag>
+                    )}
+                  </Space>
+                ),
+                children: (
+                  <Table
+                    dataSource={overview.jobs}
+                    columns={jobColumns}
+                    rowKey="job_id"
+                    size="small"
+                    pagination={{ pageSize: 5, size: 'small' }}
+                    expandable={{
+                      expandedRowKeys: expandedRowKeys,
+                      onExpand: (expanded, record) => {
+                        if (expanded) {
+                          setExpandedRowKeys([record.job_id]);
+                          loadQCTasks(record.job_id);
+                        } else {
+                          setExpandedRowKeys([]);
+                        }
+                      },
+                      expandedRowRender: (record) => {
+                        if (expandedJobId === record.job_id && record.result) {
+                          return <DesolvationResultView result={record.result} compositionKey={record.composition_key} />;
+                        }
+                        return expandedRowRender(record);
+                      },
+                      rowExpandable: () => true,
+                    }}
+                  />
+                ),
               },
-              expandedRowRender: (record) => {
-                // 如果有结果且要查看结果
-                if (expandedJobId === record.job_id && record.result) {
-                  return <DesolvationResultView result={record.result} />;
-                }
-                // 否则展示子任务
-                return expandedRowRender(record);
+              {
+                key: 'summary',
+                label: (
+                  <Space>
+                    汇总统计
+                    {overview.status_summary['COMPLETED'] > 0 && (
+                      <Tag color="green">{overview.status_summary['COMPLETED']} 已完成</Tag>
+                    )}
+                  </Space>
+                ),
+                children: (
+                  <DesolvationSummaryPanel
+                    jobs={overview.jobs}
+                    mdJobId={jobId}
+                    electrolyteName={overview.electrolyte_name}
+                  />
+                ),
               },
-              rowExpandable: () => true,
-            }}
+              {
+                key: 'comparison',
+                label: '结果对比',
+                children: <DesolvationComparisonView jobs={overview.jobs} />,
+              },
+            ]}
           />
         </div>
       )}
