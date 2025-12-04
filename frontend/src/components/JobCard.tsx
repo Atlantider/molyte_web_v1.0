@@ -69,6 +69,38 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
     return job.config?.job_name || `任务 #${job.id}`;
   };
 
+  // 生成配方组成摘要（阳离子:阴离子:溶剂）
+  const getCompositionSummary = () => {
+    if (!electrolyte) return null;
+
+    const parts: string[] = [];
+
+    // 阳离子
+    if (electrolyte.cations && electrolyte.cations.length > 0) {
+      const cationStr = electrolyte.cations.map(c => `${c.name}×${c.number}`).join('+');
+      parts.push(cationStr);
+    }
+
+    // 阴离子
+    if (electrolyte.anions && electrolyte.anions.length > 0) {
+      const anionStr = electrolyte.anions.map(a => `${a.name}×${a.number}`).join('+');
+      parts.push(anionStr);
+    }
+
+    // 溶剂
+    if (electrolyte.solvents && electrolyte.solvents.length > 0) {
+      const solventStr = electrolyte.solvents.map(s => `${s.name}×${s.number}`).join('+');
+      parts.push(solventStr);
+    }
+
+    return parts.join(' / ');
+  };
+
+  // 获取温度显示
+  const getTemperature = () => {
+    return job.config?.temperature || 298.15;
+  };
+
   // 处理按钮点击
   const handleConfigClick = () => {
     navigate(`/workspace/jobs/${job.id}/submit`);
@@ -271,7 +303,7 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
           </div>
 
           {/* 第二行：任务名（突出显示） */}
-          <div style={{ marginBottom: 6 }}>
+          <div style={{ marginBottom: 4 }}>
             <Tooltip title={getJobName()}>
               <Text
                 strong
@@ -286,24 +318,44 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
                 {getJobName()}
               </Text>
             </Tooltip>
-            {job.config?.user_note && (
-              <Tooltip title={`备注: ${job.config.user_note}`}>
-                <Text type="secondary" style={{ fontSize: 11, fontStyle: 'italic' }}>
-                  📝 {job.config.user_note}
-                </Text>
-              </Tooltip>
-            )}
           </div>
 
-          {/* 第三行：计算参数 */}
+          {/* 第三行：配方组成 + 温度 */}
+          {electrolyte && (
+            <div style={{ marginBottom: 4 }}>
+              <Tooltip title={getCompositionSummary()}>
+                <Text
+                  type="secondary"
+                  style={{
+                    fontSize: 11,
+                    display: 'block',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  🧪 {getCompositionSummary()}
+                </Text>
+              </Tooltip>
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                🌡️ {getTemperature()} K
+                {job.config?.user_note && (
+                  <Tooltip title={`备注: ${job.config.user_note}`}>
+                    <span style={{ marginLeft: 8, fontStyle: 'italic' }}>
+                      📝 {job.config.user_note}
+                    </span>
+                  </Tooltip>
+                )}
+              </Text>
+            </div>
+          )}
+
+          {/* 第四行：计算参数 */}
           {job.config && (
             <div style={{ marginBottom: 6 }}>
               <Text type="secondary" style={{ fontSize: 11 }}>
                 NPT: {job.config.nsteps_npt?.toLocaleString()} | NVT: {job.config.nsteps_nvt?.toLocaleString()}
-              </Text>
-              <br />
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                资源: {(job.config.slurm_ntasks || 8) * (job.config.slurm_cpus_per_task || 8)} 核
+                {' | '}资源: {(job.config.slurm_ntasks || 8) * (job.config.slurm_cpus_per_task || 8)} 核
                 {job.config.slurm_partition && ` (${job.config.slurm_partition})`}
                 {job.slurm_job_id && ` | Slurm: ${job.slurm_job_id}`}
               </Text>
