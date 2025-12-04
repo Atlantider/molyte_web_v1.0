@@ -283,16 +283,17 @@ def _phase1_create_qc_jobs(
             logger.info(f"Created center ion QC job {center_ion_job_id} for {center_ion}")
 
     # 保存 QC job IDs 到 config
-    job.config = job.config or {}
-    job.config['qc_job_ids'] = created_qc_jobs
-    job.config['reused_qc_job_ids'] = reused_qc_jobs  # 复用的 QC 任务
-    job.config['cluster_qc_job_id'] = cluster_qc_job.id
-    job.config['ligand_qc_jobs'] = ligand_qc_jobs
-    job.config['cluster_minus_job_ids'] = cluster_minus_job_ids  # 逐级模式使用
-    job.config['center_ion_job_id'] = center_ion_job_id  # 全部去溶剂模式使用
-    job.config['desolvation_mode'] = desolvation_mode
-    job.config['phase'] = 2  # 下次进入阶段 2
-    job.config['cluster_data'] = {
+    # 注意：SQLAlchemy 的 JSON 字段需要创建新字典才能检测到变更
+    new_config = dict(job.config or {})
+    new_config['qc_job_ids'] = created_qc_jobs
+    new_config['reused_qc_job_ids'] = reused_qc_jobs  # 复用的 QC 任务
+    new_config['cluster_qc_job_id'] = cluster_qc_job.id
+    new_config['ligand_qc_jobs'] = ligand_qc_jobs
+    new_config['cluster_minus_job_ids'] = cluster_minus_job_ids  # 逐级模式使用
+    new_config['center_ion_job_id'] = center_ion_job_id  # 全部去溶剂模式使用
+    new_config['desolvation_mode'] = desolvation_mode
+    new_config['phase'] = 2  # 下次进入阶段 2
+    new_config['cluster_data'] = {
         'center_ion': cluster_data['center_ion'],
         'center_ion_charge': cluster_data.get('center_ion_charge', 1),
         'total_charge': cluster_data['total_charge'],
@@ -306,6 +307,9 @@ def _phase1_create_qc_jobs(
             for lig in cluster_data['ligands']
         ]
     }
+
+    # 重新赋值整个 config，确保 SQLAlchemy 检测到变更
+    job.config = new_config
 
     # 更新状态为 POSTPROCESSING（等待 QC 任务完成）
     job.status = JobStatus.POSTPROCESSING
