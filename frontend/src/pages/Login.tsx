@@ -20,6 +20,7 @@ import {
   GiftOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
+import { useThemeStore } from '../stores/themeStore';
 import './Login.css';
 
 // 用户类型选项
@@ -75,6 +76,7 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, register, isAuthenticated, error, clearError } = useAuthStore();
+  const { isDark } = useThemeStore();
   const [loading, setLoading] = useState(false);
   const [registerPassword, setRegisterPassword] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
@@ -154,7 +156,7 @@ export default function Login() {
   };
 
   return (
-    <div className="login-container">
+    <div className={`login-container ${isDark ? 'dark' : ''}`}>
       {/* 返回首页按钮 */}
       <Button
         type="text"

@@ -624,7 +624,7 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
 
                   <Row gutter={[12, 12]}>
                     {/* 配位数筛选 */}
-                    {availableCNs.length > 1 && (
+                    {availableCNs.length > 0 && (
                       <Col span={8}>
                         <Text style={{ fontSize: 11, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
                           配位数 (CN)
@@ -647,7 +647,7 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                     )}
 
                     {/* 阴离子数量筛选 */}
-                    {availableAnionCounts.length > 1 && (
+                    {availableAnionCounts.length > 0 && (
                       <Col span={8}>
                         <Text style={{ fontSize: 11, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
                           阴离子数量
@@ -670,7 +670,7 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                     )}
 
                     {/* 溶剂类型筛选 */}
-                    {availableSolventTypes.length > 1 && (
+                    {availableSolventTypes.length > 0 && (
                       <Col span={8}>
                         <Text style={{ fontSize: 11, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
                           溶剂类型
