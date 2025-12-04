@@ -865,7 +865,7 @@ class PollingWorker:
                             continue
 
                         # 检查 QC 任务状态
-                        from app.models.qc_job import QCJob, QCJobStatus
+                        from app.models.qc import QCJob, QCJobStatus
                         all_completed = True
                         any_failed = False
 
