@@ -416,29 +416,23 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
             );
           })()}
 
-          {/* 错误信息 - 简洁显示，与进度条对齐 */}
-          {job.error_message && job.status !== JobStatus.COMPLETED && (() => {
-            const translatedError = translateError(job.error_message);
-            return (
-              <div style={{
-                marginBottom: 8,
-                padding: '4px 8px',
-                background: isDark ? 'rgba(255, 77, 79, 0.15)' : '#fff1f0',
-                borderRadius: 4,
-                fontSize: 12,
-                color: isDark ? '#ff7875' : '#cf1322',
-                textAlign: 'center',
-              }}>
-                {translatedError?.suggestion || '请查看详情'}
-              </div>
-            );
-          })()}
-
           <Space size={4}>
             <CalendarOutlined style={{ color: '#bfbfbf', fontSize: 12 }} />
             <Text type="secondary" style={{ fontSize: 12 }}>
               {dayjs(job.created_at).format('YYYY-MM-DD HH:mm')}
             </Text>
+            {/* 错误提示 - 简洁文字 */}
+            {job.error_message && job.status !== JobStatus.COMPLETED && (() => {
+              const translatedError = translateError(job.error_message);
+              return (
+                <>
+                  <span style={{ color: '#bfbfbf', margin: '0 4px' }}>|</span>
+                  <Text style={{ fontSize: 12, color: '#ff7875' }}>
+                    {translatedError?.suggestion || '查看详情'}
+                  </Text>
+                </>
+              );
+            })()}
           </Space>
         </div>
       </div>
