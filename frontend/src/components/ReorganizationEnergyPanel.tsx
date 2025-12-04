@@ -45,15 +45,16 @@ import {
   ReorgEnergyJobResponse,
   ReorgEnergyJobStatus,
   ReorgSpeciesConfig,
+  ClusterTypeInfo,
   createReorgEnergyJob,
   submitReorgEnergyJob,
   deleteReorgEnergyJob,
   getReorgEnergyJob,
   listReorgEnergyJobs,
+  getAvailableClustersForRedox,
 } from '../api/redox';
 
 const { Text, Title } = Typography;
-const { TextArea } = Input;
 
 interface ReorganizationEnergyPanelProps {
   mdJobId?: number;
@@ -66,8 +67,15 @@ const ReorganizationEnergyPanel: React.FC<ReorganizationEnergyPanelProps> = ({ m
   const [selectedJob, setSelectedJob] = useState<ReorgEnergyJobResponse | null>(null);
   const [form] = Form.useForm();
 
+  // 可用的 Cluster 类型
+  const [availableClusters, setAvailableClusters] = useState<ClusterTypeInfo[]>([]);
+  const [loadingClusters, setLoadingClusters] = useState(false);
+
   useEffect(() => {
     loadJobs();
+    if (mdJobId) {
+      loadAvailableClusters();
+    }
   }, [mdJobId]);
 
   const loadJobs = async () => {
@@ -83,33 +91,46 @@ const ReorganizationEnergyPanel: React.FC<ReorganizationEnergyPanelProps> = ({ m
     }
   };
 
+  const loadAvailableClusters = async () => {
+    if (!mdJobId) return;
+    setLoadingClusters(true);
+    try {
+      const response = await getAvailableClustersForRedox(mdJobId, false);
+      setAvailableClusters(response.cluster_types || []);
+    } catch (error: any) {
+      console.error('加载可用 Cluster 失败:', error);
+    } finally {
+      setLoadingClusters(false);
+    }
+  };
+
   const handleCreate = async (values: any) => {
     try {
-      // 解析物种列表
-      const speciesList: ReorgSpeciesConfig[] = values.species_text
-        .split('\n')
-        .filter((line: string) => line.trim())
-        .map((line: string) => {
-          const parts = line.split(',').map((p: string) => p.trim());
-          return {
-            name: parts[0] || 'species',
-            smiles: parts[1] || '',
-            charge_neutral: parseInt(parts[2]) || 0,
-            charge_oxidized: parseInt(parts[3]) || 1,
-            multiplicity_neutral: parseInt(parts[4]) || 1,
-            multiplicity_oxidized: parseInt(parts[5]) || 2,
-          };
-        });
+      // 从选中的 cluster 类型构建物种列表
+      const selectedTypes: string[] = values.selected_clusters || [];
 
-      if (speciesList.length === 0) {
-        message.error('请至少添加一个物种');
+      if (selectedTypes.length === 0) {
+        message.error('请至少选择一个 Cluster 类型');
         return;
       }
 
-      if (speciesList.length > 5) {
+      if (selectedTypes.length > 5) {
         message.error('重组能计算量极大，物种数量不能超过 5 个');
         return;
       }
+
+      // 根据选中的类型构建 species_list
+      const speciesList: ReorgSpeciesConfig[] = selectedTypes.map(typeName => {
+        const clusterInfo = availableClusters.find(c => c.type_name === typeName);
+        const charge = clusterInfo?.charge || 0;
+        return {
+          name: typeName,
+          charge_neutral: charge,
+          charge_oxidized: charge + 1,  // 氧化态 +1
+          multiplicity_neutral: clusterInfo?.multiplicity || 1,
+          multiplicity_oxidized: 2,  // 氧化后通常为双重态
+        };
+      });
 
       await createReorgEnergyJob({
         md_job_id: mdJobId,
@@ -439,22 +460,53 @@ const ReorganizationEnergyPanel: React.FC<ReorganizationEnergyPanelProps> = ({ m
             use_dispersion: true,
           }}
         >
-          <Form.Item
-            name="species_text"
-            label={
-              <Tooltip title="格式: 名称,SMILES,中性电荷,氧化态电荷,中性多重度,氧化态多重度，每行一个">
-                物种列表 (最多 5 个) <InfoCircleOutlined />
-              </Tooltip>
-            }
-            rules={[{ required: true, message: '请输入物种列表' }]}
-          >
-            <TextArea
-              rows={4}
-              placeholder={`示例：
-EC,C1COC(=O)O1,0,1,1,2
-DMC,COC(=O)OC,0,1,1,2`}
+          {/* Cluster 选择 */}
+          {availableClusters.length > 0 ? (
+            <Form.Item
+              name="selected_clusters"
+              label={
+                <Tooltip title="选择要计算重组能的 Cluster 类型（最多 5 个）">
+                  选择 Cluster 类型 <InfoCircleOutlined />
+                </Tooltip>
+              }
+              rules={[{ required: true, message: '请至少选择一个 Cluster 类型' }]}
+            >
+              <Select
+                mode="multiple"
+                placeholder="选择要计算的 Cluster 类型"
+                loading={loadingClusters}
+                style={{ width: '100%' }}
+                optionLabelProp="label"
+                maxTagCount={5}
+              >
+                {availableClusters.map(cluster => (
+                  <Select.Option
+                    key={cluster.type_name}
+                    value={cluster.type_name}
+                    label={cluster.type_name}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{cluster.type_name}</span>
+                      <span style={{ color: '#888' }}>
+                        {cluster.count} 个样本 | 电荷: {cluster.charge}
+                      </span>
+                    </div>
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+          ) : (
+            <Alert
+              type="warning"
+              message="没有可用的 Cluster"
+              description={
+                mdJobId
+                  ? "该 MD 任务没有已完成的 QC 计算。请先运行去溶剂化能计算或 Cluster QC 计算。"
+                  : "请先选择一个 MD 任务。"
+              }
+              style={{ marginBottom: 16 }}
             />
-          </Form.Item>
+          )}
 
           <Row gutter={16}>
             <Col span={12}>

@@ -37,11 +37,50 @@ export type ReorgEnergyJobStatus = 'CREATED' | 'SUBMITTED' | 'RUNNING' | 'COMPLE
 
 export interface SpeciesConfig {
   name: string;
+  qc_job_id?: number;  // 基于已有 QC 任务（推荐）
   smiles?: string;
   xyz_content?: string;
   charge: number;
   multiplicity: number;
   redox_type: RedoxType;
+}
+
+// ============================================================================
+// 可用 Cluster 类型定义
+// ============================================================================
+
+export interface ClusterTypeInfo {
+  type_name: string;
+  count: number;
+  charge: number;
+  multiplicity: number;
+  example_smiles: string;
+  molecule_type: string;
+  energy_mean_au?: number;
+  energy_std_au?: number;
+}
+
+export interface ClusterInfo {
+  qc_job_id: number;
+  molecule_name: string;
+  smiles: string;
+  charge: number;
+  multiplicity: number;
+  functional: string;
+  basis_set: string;
+  molecule_type: string;
+  energy_au?: number;
+  homo_ev?: number;
+  lumo_ev?: number;
+  xyz_content?: string;
+}
+
+export interface AvailableClustersForRedoxResponse {
+  md_job_id: number;
+  total_clusters: number;
+  cluster_types: ClusterTypeInfo[];
+  clusters_by_type?: Record<string, ClusterInfo[]>;
+  note: string;
 }
 
 export interface RedoxJobConfig {
@@ -112,6 +151,7 @@ export interface RedoxJobListResponse {
 
 export interface ReorgSpeciesConfig {
   name: string;
+  qc_job_id?: number;  // 基于已有 QC 任务（推荐）
   smiles?: string;
   xyz_content?: string;
   charge_neutral: number;
@@ -315,5 +355,20 @@ export async function getPhysicalConstants(): Promise<{
   };
 }> {
   const response = await apiClient.get('/redox/constants');
+  return response.data;
+}
+
+/**
+ * 获取可用于 Redox/重组能计算的 Cluster 列表
+ * @param mdJobId MD 任务 ID
+ * @param includeXyz 是否包含 XYZ 结构内容
+ */
+export async function getAvailableClustersForRedox(
+  mdJobId: number,
+  includeXyz: boolean = false
+): Promise<AvailableClustersForRedoxResponse> {
+  const response = await apiClient.get(`/qc/available-clusters-for-redox/${mdJobId}`, {
+    params: { include_xyz: includeXyz },
+  });
   return response.data;
 }

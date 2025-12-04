@@ -2148,3 +2148,111 @@ def get_cluster_statistics(
         result["vip_vea_statistics"] = vip_vea_stats
 
     return result
+
+
+@router.get("/available-clusters-for-redox/{md_job_id}")
+def get_available_clusters_for_redox(
+    md_job_id: int,
+    include_xyz: bool = Query(False, description="是否包含 XYZ 结构内容"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    获取可用于 Redox/重组能计算的 Cluster 列表
+
+    返回该 MD 任务下已完成 QC 计算的 cluster 类型及其结构信息
+    用于选择要进行氧化还原电位或重组能计算的 cluster
+    """
+    from app.models.job import MDJob
+    from collections import defaultdict
+
+    # 检查 MD 任务
+    md_job = db.query(MDJob).filter(MDJob.id == md_job_id).first()
+    if not md_job:
+        raise HTTPException(status_code=404, detail=f"MD 任务 {md_job_id} 不存在")
+
+    if md_job.user_id != current_user.id and current_user.role.value != 'admin':
+        raise HTTPException(status_code=403, detail="无权访问此 MD 任务")
+
+    # 获取该 MD 任务下已完成的 QC 任务
+    qc_jobs = db.query(QCJob).filter(
+        QCJob.md_job_id == md_job_id,
+        QCJob.status == QCJobStatusModel.COMPLETED
+    ).options(selectinload(QCJob.results)).all()
+
+    if not qc_jobs:
+        return {
+            "md_job_id": md_job_id,
+            "total_clusters": 0,
+            "cluster_types": [],
+            "clusters_by_type": {},
+            "message": "该 MD 任务没有已完成的 QC 计算"
+        }
+
+    # 按 molecule_name 分组（这通常是 cluster 类型标识）
+    clusters_by_type = defaultdict(list)
+
+    for qc_job in qc_jobs:
+        # 解析 cluster 类型
+        # molecule_name 通常是 "Li+1EC+1DMC" 或类似格式
+        cluster_type = qc_job.molecule_name
+
+        # 获取结构信息
+        cluster_info = {
+            "qc_job_id": qc_job.id,
+            "molecule_name": qc_job.molecule_name,
+            "smiles": qc_job.smiles,
+            "charge": qc_job.charge,
+            "multiplicity": qc_job.spin_multiplicity,
+            "functional": qc_job.functional,
+            "basis_set": qc_job.basis_set,
+            "molecule_type": qc_job.molecule_type,
+        }
+
+        # 如果有结果，添加能量信息
+        if qc_job.results:
+            result = qc_job.results[0]
+            cluster_info["energy_au"] = result.energy_au
+            cluster_info["homo_ev"] = result.homo * 27.2114 if result.homo else None
+            cluster_info["lumo_ev"] = result.lumo * 27.2114 if result.lumo else None
+
+        # 尝试从 config 中获取 xyz_content
+        if include_xyz and qc_job.config:
+            xyz_content = qc_job.config.get("xyz_content")
+            if xyz_content:
+                cluster_info["xyz_content"] = xyz_content
+
+        clusters_by_type[cluster_type].append(cluster_info)
+
+    # 整理结果
+    cluster_types = []
+    for ctype, clusters in clusters_by_type.items():
+        # 提取类型信息
+        sample = clusters[0]
+        type_info = {
+            "type_name": ctype,
+            "count": len(clusters),
+            "charge": sample["charge"],
+            "multiplicity": sample["multiplicity"],
+            "example_smiles": sample["smiles"],
+            "molecule_type": sample.get("molecule_type", "cluster"),
+        }
+        # 统计能量分布
+        energies = [c["energy_au"] for c in clusters if c.get("energy_au")]
+        if energies:
+            import numpy as np
+            type_info["energy_mean_au"] = float(np.mean(energies))
+            type_info["energy_std_au"] = float(np.std(energies)) if len(energies) > 1 else 0.0
+
+        cluster_types.append(type_info)
+
+    # 按数量排序
+    cluster_types.sort(key=lambda x: x["count"], reverse=True)
+
+    return {
+        "md_job_id": md_job_id,
+        "total_clusters": len(qc_jobs),
+        "cluster_types": cluster_types,
+        "clusters_by_type": dict(clusters_by_type) if include_xyz else None,
+        "note": "选择 cluster_types 中的项目进行 Redox/重组能计算"
+    }

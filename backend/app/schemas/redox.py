@@ -64,10 +64,16 @@ class RedoxType(str, Enum):
 # ============================================================================
 
 class SpeciesConfig(BaseModel):
-    """单个物种的配置"""
-    name: str = Field(..., description="物种名称")
+    """单个物种的配置（支持两种方式：基于已有 QC 任务或手动输入）"""
+    name: str = Field(..., description="物种名称/cluster 类型名")
+
+    # 方式1：基于已有 QC 任务（推荐）
+    qc_job_id: Optional[int] = Field(None, description="已完成的 QC 任务 ID（优先使用此方式）")
+
+    # 方式2：手动输入（不推荐，仅用于单分子测试）
     smiles: Optional[str] = Field(None, description="SMILES 字符串")
     xyz_content: Optional[str] = Field(None, description="XYZ 坐标（如果不从 SMILES 生成）")
+
     charge: int = Field(0, description="电荷")
     multiplicity: int = Field(1, description="自旋多重度")
     redox_type: RedoxType = Field(RedoxType.OXIDATION, description="氧化还原类型")
@@ -230,10 +236,16 @@ class ReorgEnergyJobStatus(str, Enum):
 
 
 class ReorgSpeciesConfig(BaseModel):
-    """重组能物种配置"""
-    name: str = Field(..., description="物种名称")
+    """重组能物种配置（支持两种方式：基于已有 QC 任务或手动输入）"""
+    name: str = Field(..., description="物种名称/cluster 类型名")
+
+    # 方式1：基于已有 QC 任务（推荐）
+    qc_job_id: Optional[int] = Field(None, description="已完成的 QC 任务 ID（优先使用此方式）")
+
+    # 方式2：手动输入（不推荐）
     smiles: Optional[str] = Field(None, description="SMILES 字符串")
     xyz_content: Optional[str] = Field(None, description="XYZ 坐标")
+
     charge_neutral: int = Field(0, description="中性态电荷")
     charge_oxidized: int = Field(1, description="氧化态电荷")
     multiplicity_neutral: int = Field(1, description="中性态自旋多重度")

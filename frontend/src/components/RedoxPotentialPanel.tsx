@@ -47,16 +47,17 @@ import {
   RedoxJobStatus,
   SpeciesConfig,
   RedoxCalculationMode,
+  ClusterTypeInfo,
   listRedoxJobs,
   createRedoxJob,
   submitRedoxJob,
   deleteRedoxJob,
   getRedoxJob,
+  getAvailableClustersForRedox,
   PhysicalConstants,
 } from '../api/redox';
 
 const { Text, Title, Paragraph } = Typography;
-const { TextArea } = Input;
 
 interface RedoxPotentialPanelProps {
   mdJobId?: number;
@@ -69,8 +70,15 @@ const RedoxPotentialPanel: React.FC<RedoxPotentialPanelProps> = ({ mdJobId }) =>
   const [selectedJob, setSelectedJob] = useState<RedoxJobResponse | null>(null);
   const [form] = Form.useForm();
 
+  // 可用的 Cluster 类型
+  const [availableClusters, setAvailableClusters] = useState<ClusterTypeInfo[]>([]);
+  const [loadingClusters, setLoadingClusters] = useState(false);
+
   useEffect(() => {
     loadJobs();
+    if (mdJobId) {
+      loadAvailableClusters();
+    }
   }, [mdJobId]);
 
   const loadJobs = async () => {
@@ -85,32 +93,44 @@ const RedoxPotentialPanel: React.FC<RedoxPotentialPanelProps> = ({ mdJobId }) =>
     }
   };
 
+  const loadAvailableClusters = async () => {
+    if (!mdJobId) return;
+    setLoadingClusters(true);
+    try {
+      const response = await getAvailableClustersForRedox(mdJobId, false);
+      setAvailableClusters(response.cluster_types || []);
+    } catch (error: any) {
+      console.error('加载可用 Cluster 失败:', error);
+    } finally {
+      setLoadingClusters(false);
+    }
+  };
+
   const handleCreate = async (values: any) => {
     try {
-      // 解析物种列表
-      const speciesList: SpeciesConfig[] = values.species_text
-        .split('\n')
-        .filter((line: string) => line.trim())
-        .map((line: string) => {
-          const parts = line.split(',').map((p: string) => p.trim());
-          return {
-            name: parts[0] || 'species',
-            smiles: parts[1] || '',
-            charge: parseInt(parts[2]) || 0,
-            multiplicity: parseInt(parts[3]) || 1,
-            redox_type: (parts[4] || 'oxidation') as 'oxidation' | 'reduction',
-          };
-        });
+      // 从选中的 cluster 类型构建物种列表
+      const selectedTypes: string[] = values.selected_clusters || [];
 
-      if (speciesList.length === 0) {
-        message.error('请至少添加一个物种');
+      if (selectedTypes.length === 0) {
+        message.error('请至少选择一个 Cluster 类型');
         return;
       }
 
-      if (speciesList.length > 20) {
+      if (selectedTypes.length > 20) {
         message.error('物种数量不能超过 20 个');
         return;
       }
+
+      // 根据选中的类型构建 species_list
+      const speciesList: SpeciesConfig[] = selectedTypes.map(typeName => {
+        const clusterInfo = availableClusters.find(c => c.type_name === typeName);
+        return {
+          name: typeName,
+          charge: clusterInfo?.charge || 0,
+          multiplicity: clusterInfo?.multiplicity || 1,
+          redox_type: values.redox_type || 'oxidation',
+        };
+      });
 
       await createRedoxJob({
         md_job_id: mdJobId,
@@ -435,6 +455,7 @@ const RedoxPotentialPanel: React.FC<RedoxPotentialPanelProps> = ({ mdJobId }) =>
           layout="vertical"
           onFinish={handleCreate}
           initialValues={{
+            redox_type: 'oxidation',
             mode: 'cheap',
             functional: 'B3LYP',
             basis_set: '6-31G*',
@@ -444,25 +465,62 @@ const RedoxPotentialPanel: React.FC<RedoxPotentialPanelProps> = ({ mdJobId }) =>
             li_reference_potential: PhysicalConstants.LI_ABSOLUTE_POTENTIAL_VS_SHE,
           }}
         >
-          <Form.Item
-            name="species_text"
-            label={
-              <Tooltip title="格式: 名称,SMILES,电荷,多重度,类型(oxidation/reduction)，每行一个">
-                物种列表 <InfoCircleOutlined />
-              </Tooltip>
-            }
-            rules={[{ required: true, message: '请输入物种列表' }]}
-          >
-            <TextArea
-              rows={5}
-              placeholder={`示例：
-EC,C1COC(=O)O1,0,1,oxidation
-DMC,COC(=O)OC,0,1,oxidation
-PF6,F[P-](F)(F)(F)(F)F,-1,1,reduction`}
+          {/* Cluster 选择 */}
+          {availableClusters.length > 0 ? (
+            <Form.Item
+              name="selected_clusters"
+              label={
+                <Tooltip title="选择要计算氧化还原电位的 Cluster 类型">
+                  选择 Cluster 类型 <InfoCircleOutlined />
+                </Tooltip>
+              }
+              rules={[{ required: true, message: '请至少选择一个 Cluster 类型' }]}
+            >
+              <Select
+                mode="multiple"
+                placeholder="选择要计算的 Cluster 类型"
+                loading={loadingClusters}
+                style={{ width: '100%' }}
+                optionLabelProp="label"
+              >
+                {availableClusters.map(cluster => (
+                  <Select.Option
+                    key={cluster.type_name}
+                    value={cluster.type_name}
+                    label={cluster.type_name}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{cluster.type_name}</span>
+                      <span style={{ color: '#888' }}>
+                        {cluster.count} 个样本 | 电荷: {cluster.charge}
+                      </span>
+                    </div>
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+          ) : (
+            <Alert
+              type="warning"
+              message="没有可用的 Cluster"
+              description={
+                mdJobId
+                  ? "该 MD 任务没有已完成的 QC 计算。请先运行去溶剂化能计算或 Cluster QC 计算。"
+                  : "请先选择一个 MD 任务。"
+              }
+              style={{ marginBottom: 16 }}
             />
-          </Form.Item>
+          )}
 
           <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="redox_type" label="反应类型" rules={[{ required: true }]}>
+                <Select>
+                  <Select.Option value="oxidation">氧化 (失电子)</Select.Option>
+                  <Select.Option value="reduction">还原 (得电子)</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
             <Col span={8}>
               <Form.Item name="mode" label="计算模式" rules={[{ required: true }]}>
                 <Select>
@@ -481,6 +539,9 @@ PF6,F[P-](F)(F)(F)(F)F,-1,1,reduction`}
                 </Select>
               </Form.Item>
             </Col>
+          </Row>
+
+          <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="basis_set" label="基组">
                 <Select>
@@ -490,9 +551,6 @@ PF6,F[P-](F)(F)(F)(F)F,-1,1,reduction`}
                 </Select>
               </Form.Item>
             </Col>
-          </Row>
-
-          <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="solvent_model" label="溶剂模型">
                 <Select>
@@ -507,6 +565,9 @@ PF6,F[P-](F)(F)(F)(F)F,-1,1,reduction`}
                 <Input placeholder="water" />
               </Form.Item>
             </Col>
+          </Row>
+
+          <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="li_reference_potential" label="Li+/Li 参考电位 (V)">
                 <InputNumber style={{ width: '100%' }} step={0.01} />
