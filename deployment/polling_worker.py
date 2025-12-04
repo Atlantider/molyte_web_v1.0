@@ -832,9 +832,15 @@ class PollingWorker:
                     phase = config.get('phase', 1)
 
                     if phase == 2:
-                        # 检查是否所有 QC 任务已完成
+                        # 获取需要等待的 QC 任务（不包括复用的）
                         qc_job_ids = config.get('qc_job_ids', [])
-                        if not qc_job_ids:
+                        reused_qc_job_ids = config.get('reused_qc_job_ids', [])
+
+                        # 需要等待完成的任务 = 所有任务 - 复用的任务
+                        # 复用的任务已经是 COMPLETED 状态
+                        pending_qc_job_ids = [jid for jid in qc_job_ids if jid not in reused_qc_job_ids]
+
+                        if not qc_job_ids and not reused_qc_job_ids:
                             continue
 
                         # 检查 QC 任务状态
@@ -842,7 +848,7 @@ class PollingWorker:
                         all_completed = True
                         any_failed = False
 
-                        for qc_job_id in qc_job_ids:
+                        for qc_job_id in pending_qc_job_ids:
                             qc_job = db.query(QCJob).filter(QCJob.id == qc_job_id).first()
                             if not qc_job:
                                 all_completed = False
@@ -862,7 +868,8 @@ class PollingWorker:
                             continue
 
                         if all_completed:
-                            self.logger.info(f"去溶剂化任务 {job.id} 的所有 QC 任务已完成，开始 Phase 2 计算")
+                            reused_count = len(reused_qc_job_ids)
+                            self.logger.info(f"去溶剂化任务 {job.id} 的所有 QC 任务已完成 (复用了 {reused_count} 个)，开始 Phase 2 计算")
                             try:
                                 result = run_desolvation_job(job, db)
                                 if result['success']:
@@ -875,7 +882,8 @@ class PollingWorker:
                                 job.error_message = str(e)
                                 db.commit()
                         else:
-                            self.logger.debug(f"去溶剂化任务 {job.id} 仍在等待 QC 任务完成")
+                            pending_count = len(pending_qc_job_ids)
+                            self.logger.debug(f"去溶剂化任务 {job.id} 仍在等待 {pending_count} 个 QC 任务完成")
 
             finally:
                 db.close()

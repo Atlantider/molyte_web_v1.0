@@ -187,8 +187,9 @@ def _phase1_create_qc_jobs(
     created_qc_jobs.append(cluster_qc_job.id)
     logger.info(f"Created cluster QC job {cluster_qc_job.id}")
 
-    # 2. 创建每种配体的 QC 任务（去重，使用 PDB 结构）
+    # 2. 创建每种配体的 QC 任务（去重，支持跨任务复用）
     ligand_qc_jobs = {}
+    reused_qc_jobs = []  # 记录复用的 QC 任务
 
     for ligand in cluster_data['ligands']:
         ligand_type = ligand['ligand_type']
@@ -203,20 +204,25 @@ def _phase1_create_qc_jobs(
                 fallback_xyz=ligand['xyz_content']
             )
 
-            ligand_qc_job = create_qc_job_for_structure(
+            # 使用新的 find_or_create 函数，支持跨任务复用
+            qc_job_id, is_reused = find_or_create_ligand_qc_job(
                 db=db,
                 user_id=user_id,
                 md_job_id=md_job_id,
-                molecule_name=f"{ligand_type}",
-                xyz_content=ligand_xyz,
-                charge=ligand_charge,
+                ligand_type=ligand_type,
+                ligand_charge=ligand_charge,
+                ligand_xyz=ligand_xyz,
                 basis_set=basis_set,
-                functional=functional,
-                job_type="ligand"
+                functional=functional
             )
-            ligand_qc_jobs[ligand_key] = ligand_qc_job.id
-            created_qc_jobs.append(ligand_qc_job.id)
-            logger.info(f"Created ligand QC job {ligand_qc_job.id} for {ligand_type}")
+
+            ligand_qc_jobs[ligand_key] = qc_job_id
+            if is_reused:
+                reused_qc_jobs.append(qc_job_id)
+                logger.info(f"Reused existing QC job {qc_job_id} for {ligand_type}")
+            else:
+                created_qc_jobs.append(qc_job_id)
+                logger.info(f"Created new ligand QC job {qc_job_id} for {ligand_type}")
 
     # 3. 创建每个 cluster_minus_i 的 QC 任务
     cluster_minus_job_ids = []
@@ -242,6 +248,7 @@ def _phase1_create_qc_jobs(
     # 保存 QC job IDs 到 config
     job.config = job.config or {}
     job.config['qc_job_ids'] = created_qc_jobs
+    job.config['reused_qc_job_ids'] = reused_qc_jobs  # 复用的 QC 任务
     job.config['cluster_qc_job_id'] = cluster_qc_job.id
     job.config['ligand_qc_jobs'] = ligand_qc_jobs
     job.config['cluster_minus_job_ids'] = cluster_minus_job_ids  # 新增：按顺序保存
@@ -266,7 +273,10 @@ def _phase1_create_qc_jobs(
 
     db.commit()
 
-    logger.info(f"Phase 1 completed: Created {len(created_qc_jobs)} QC jobs (1 cluster, {len(ligand_qc_jobs)} ligand types, {len(cluster_minus_job_ids)} cluster_minus)")
+    # 统计日志
+    new_ligand_jobs = len(ligand_qc_jobs) - len(reused_qc_jobs)
+    logger.info(f"Phase 1 completed: Created {len(created_qc_jobs)} new QC jobs, reused {len(reused_qc_jobs)} existing jobs")
+    logger.info(f"  - 1 cluster, {new_ligand_jobs} new ligand types, {len(reused_qc_jobs)} reused ligand types, {len(cluster_minus_job_ids)} cluster_minus")
 
     return {
         "success": True,
@@ -449,6 +459,49 @@ def get_qc_params_for_method_level(method_level: str) -> tuple:
         return ("6-31++G(d,p)", "B3LYP")  # 默认
 
 
+def find_existing_molecule_qc_job(
+    db: SessionLocal,
+    molecule_name: str,
+    charge: int,
+    basis_set: str,
+    functional: str
+) -> Optional[QCJob]:
+    """
+    查找已完成的相同分子 QC 任务（用于跨任务复用）
+
+    Args:
+        db: 数据库会话
+        molecule_name: 分子名称（如 EC, DMC, FSI）
+        charge: 电荷
+        basis_set: 基组
+        functional: 泛函
+
+    Returns:
+        已完成的 QCJob 对象，如果不存在则返回 None
+    """
+    existing_job = db.query(QCJob).filter(
+        QCJob.molecule_name == molecule_name,
+        QCJob.charge == charge,
+        QCJob.basis_set == basis_set,
+        QCJob.functional == functional,
+        QCJob.solvent_model == "gas",  # 去溶剂化能计算使用气相
+        QCJob.status == QCJobStatus.COMPLETED
+    ).first()
+
+    if existing_job:
+        # 验证是否有有效的能量结果
+        result = db.query(QCResult).filter(
+            QCResult.qc_job_id == existing_job.id,
+            QCResult.total_energy.isnot(None)
+        ).first()
+
+        if result:
+            logger.info(f"Found existing completed QC job {existing_job.id} for {molecule_name} (charge={charge})")
+            return existing_job
+
+    return None
+
+
 def create_qc_job_for_structure(
     db: SessionLocal,
     user_id: int,
@@ -488,6 +541,62 @@ def create_qc_job_for_structure(
     db.refresh(qc_job)
 
     return qc_job
+
+
+def find_or_create_ligand_qc_job(
+    db: SessionLocal,
+    user_id: int,
+    md_job_id: int,
+    ligand_type: str,
+    ligand_charge: int,
+    ligand_xyz: str,
+    basis_set: str,
+    functional: str
+) -> Tuple[int, bool]:
+    """
+    查找或创建配体分子的 QC 任务（支持跨任务复用）
+
+    Args:
+        db: 数据库会话
+        user_id: 用户 ID
+        md_job_id: MD 任务 ID
+        ligand_type: 配体类型（如 EC, DMC）
+        ligand_charge: 配体电荷
+        ligand_xyz: 配体 XYZ 内容
+        basis_set: 基组
+        functional: 泛函
+
+    Returns:
+        (qc_job_id, is_reused): QC 任务 ID 和是否复用标志
+    """
+    # 1. 尝试查找已完成的相同计算
+    existing_job = find_existing_molecule_qc_job(
+        db=db,
+        molecule_name=ligand_type,
+        charge=ligand_charge,
+        basis_set=basis_set,
+        functional=functional
+    )
+
+    if existing_job:
+        logger.info(f"Reusing existing QC job {existing_job.id} for {ligand_type}")
+        return existing_job.id, True
+
+    # 2. 创建新的 QC 任务
+    new_job = create_qc_job_for_structure(
+        db=db,
+        user_id=user_id,
+        md_job_id=md_job_id,
+        molecule_name=ligand_type,
+        xyz_content=ligand_xyz,
+        charge=ligand_charge,
+        basis_set=basis_set,
+        functional=functional,
+        job_type="ligand"
+    )
+
+    logger.info(f"Created new ligand QC job {new_job.id} for {ligand_type}")
+    return new_job.id, False
 
 
 def get_molecule_xyz_from_structures(
