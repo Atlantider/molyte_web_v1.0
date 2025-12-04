@@ -257,8 +257,8 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
       // 清空容器并重新创建 viewer
       viewerRef.current.innerHTML = '';
 
-      // 创建新的 viewer
-      const config = { backgroundColor: 'white' };
+      // 创建新的 viewer - 根据主题设置背景色
+      const config = { backgroundColor: isDark ? '#1a1a1a' : 'white' };
       const viewer = window.$3Dmol.createViewer(viewerRef.current, config);
       viewerInstance.current = viewer;
 
@@ -834,7 +834,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
                   size="small"
                   style={{
                     borderRadius: 8,
-                    border: '1px solid #e8e8e8',
+                    border: `1px solid ${token.colorBorder}`,
                   }}
                 >
                   {(() => {

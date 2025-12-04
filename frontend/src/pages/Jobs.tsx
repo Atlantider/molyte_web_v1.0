@@ -1343,8 +1343,10 @@ export default function Jobs() {
             size="small"
             style={{
               marginBottom: 16,
-              borderColor: '#d3adf7',
-              background: 'linear-gradient(135deg, #f9f0ff 0%, #fff 100%)'
+              borderColor: isDark ? 'rgba(114, 46, 209, 0.5)' : '#d3adf7',
+              background: isDark
+                ? 'linear-gradient(135deg, rgba(114, 46, 209, 0.15) 0%, rgba(114, 46, 209, 0.05) 100%)'
+                : 'linear-gradient(135deg, #f9f0ff 0%, #fff 100%)'
             }}
           >
             <Form.Item
@@ -1534,7 +1536,11 @@ export default function Jobs() {
                       const solventModels = getFieldValueInner2('qc_solvent_models') || [];
                       if (!solventModels.includes('custom')) return null;
                       return (
-                        <Card size="small" style={{ marginBottom: 12, background: '#fffbe6', borderColor: '#ffe58f' }}>
+                        <Card size="small" style={{
+                          marginBottom: 12,
+                          background: isDark ? 'rgba(250, 173, 20, 0.1)' : '#fffbe6',
+                          borderColor: isDark ? 'rgba(250, 173, 20, 0.5)' : '#ffe58f'
+                        }}>
                           <Text strong style={{ display: 'block', marginBottom: 8 }}>
                             🔧 自定义溶剂参数（SMD模型）
                           </Text>

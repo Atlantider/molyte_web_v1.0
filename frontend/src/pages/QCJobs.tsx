@@ -2024,39 +2024,54 @@ export default function QCJobs() {
                     {/* 参数对比 */}
                     {useRecommendedParams && (
                       <div style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: 500 }}>参数对比</div>
+                        <div style={{ fontSize: 12, color: isDark ? token.colorTextSecondary : '#666', marginBottom: 8, fontWeight: 500 }}>参数对比</div>
                         <Row gutter={12}>
                           {/* 泛函 */}
                           <Col span={8}>
-                            <div style={{ padding: '8px', background: '#f5f5f5', borderRadius: 4, border: '1px solid #e8e8e8' }}>
-                              <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>泛函</div>
+                            <div style={{
+                              padding: '8px',
+                              background: isDark ? 'rgba(255, 255, 255, 0.04)' : '#f5f5f5',
+                              borderRadius: 4,
+                              border: `1px solid ${isDark ? token.colorBorder : '#e8e8e8'}`
+                            }}>
+                              <div style={{ fontSize: 11, color: isDark ? token.colorTextTertiary : '#999', marginBottom: 4 }}>泛函</div>
                               <div style={{ fontSize: 13, fontWeight: 500, color: '#1890ff' }}>{recommended.functional}</div>
                               {recommended.functional !== currentFunctional && (
-                                <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>原: {currentFunctional}</div>
+                                <div style={{ fontSize: 10, color: isDark ? token.colorTextTertiary : '#999', marginTop: 2 }}>原: {currentFunctional}</div>
                               )}
                             </div>
                           </Col>
 
                           {/* 基组 */}
                           <Col span={8}>
-                            <div style={{ padding: '8px', background: '#f5f5f5', borderRadius: 4, border: '1px solid #e8e8e8' }}>
-                              <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>基组</div>
+                            <div style={{
+                              padding: '8px',
+                              background: isDark ? 'rgba(255, 255, 255, 0.04)' : '#f5f5f5',
+                              borderRadius: 4,
+                              border: `1px solid ${isDark ? token.colorBorder : '#e8e8e8'}`
+                            }}>
+                              <div style={{ fontSize: 11, color: isDark ? token.colorTextTertiary : '#999', marginBottom: 4 }}>基组</div>
                               <div style={{ fontSize: 13, fontWeight: 500, color: '#52c41a' }}>{recommended.basis_set}</div>
                               {recommended.basis_set !== currentBasisSet && (
-                                <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>原: {currentBasisSet}</div>
+                                <div style={{ fontSize: 10, color: isDark ? token.colorTextTertiary : '#999', marginTop: 2 }}>原: {currentBasisSet}</div>
                               )}
                             </div>
                           </Col>
 
                           {/* 溶剂模型 */}
                           <Col span={8}>
-                            <div style={{ padding: '8px', background: '#f5f5f5', borderRadius: 4, border: '1px solid #e8e8e8' }}>
-                              <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>溶剂模型</div>
+                            <div style={{
+                              padding: '8px',
+                              background: isDark ? 'rgba(255, 255, 255, 0.04)' : '#f5f5f5',
+                              borderRadius: 4,
+                              border: `1px solid ${isDark ? token.colorBorder : '#e8e8e8'}`
+                            }}>
+                              <div style={{ fontSize: 11, color: isDark ? token.colorTextTertiary : '#999', marginBottom: 4 }}>溶剂模型</div>
                               <div style={{ fontSize: 13, fontWeight: 500, color: '#fa8c16' }}>
                                 {recommended.solvent_model === 'gas' ? '气相' : recommended.solvent_model.toUpperCase()}
                               </div>
                               {recommended.solvent_model !== solventModel && (
-                                <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+                                <div style={{ fontSize: 10, color: isDark ? token.colorTextTertiary : '#999', marginTop: 2 }}>
                                   原: {solventModel === 'gas' ? '气相' : solventModel.toUpperCase()}
                                 </div>
                               )}
