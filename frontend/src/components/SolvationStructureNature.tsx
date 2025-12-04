@@ -325,6 +325,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
   const [selectedDesolvationJob, setSelectedDesolvationJob] = useState<DesolvationJobResponse | null>(null);
   const [loadingDesolvation, setLoadingDesolvation] = useState(false);
   const [creatingDesolvation, setCreatingDesolvation] = useState(false);
+  const [selectedMethodLevel, setSelectedMethodLevel] = useState<'fast' | 'standard' | 'accurate'>('standard');
 
   const cnChartRef = useRef<any>(null);
   const pieChartRef = useRef<any>(null);
@@ -655,7 +656,7 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
       await createDesolvationJob({
         md_job_id: jobId,
         solvation_structure_id: clusterId,
-        method_level: 'standard',
+        method_level: selectedMethodLevel,
       });
       message.success('去溶剂化能任务已创建');
       await loadDesolvationJobs(clusterId);
@@ -1646,34 +1647,175 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
           setSelectedDesolvationJob(null);
         }}
         footer={null}
-        width={900}
+        width={1000}
         destroyOnClose
       >
         <div style={{ marginTop: 16 }}>
-          {/* 创建任务按钮 */}
-          <Card size="small" style={{ marginBottom: 16 }}>
-            <Space>
-              <Button
-                type="primary"
-                icon={<ThunderboltOutlined />}
-                onClick={() => selectedStructureId && handleCreateDesolvationJob(selectedStructureId)}
-                loading={creatingDesolvation}
-                disabled={!selectedStructureId}
+          {/* 溶剂化结构信息 */}
+          {selectedStructureId && sideStructureContent && (
+            <Card
+              size="small"
+              style={{ marginBottom: 16, background: isDark ? 'rgba(255,255,255,0.04)' : '#f5f5f5' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div>
+                  <Text strong style={{ fontSize: 14, color: token.colorText }}>
+                    溶剂化结构 #{selectedStructureId}
+                  </Text>
+                </div>
+                <Tag color="purple">
+                  {sideStructureContent.center_ion}⁺ CN = {sideStructureContent.coordination_num}
+                </Tag>
+                <div style={{ flex: 1 }}>
+                  <Space size={4} wrap>
+                    {Object.entries(sideStructureContent.composition || {})
+                      .filter(([_, count]) => count > 0)
+                      .map(([mol, count]) => (
+                        <Tag key={mol} style={{ margin: 0, fontSize: 11 }}>
+                          {mol}: {count}
+                        </Tag>
+                      ))}
+                  </Space>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* 计算说明 */}
+          <Card
+            title={
+              <Space>
+                <ExperimentOutlined style={{ color: '#1890ff' }} />
+                <span>计算说明</span>
+              </Space>
+            }
+            size="small"
+            style={{ marginBottom: 16 }}
+          >
+            <div style={{ fontSize: 13, lineHeight: 1.8, color: token.colorText }}>
+              <p style={{ margin: '0 0 8px 0' }}>
+                <strong>去溶剂化能定义：</strong> ΔE<sub>i</sub> = E<sub>cluster</sub> - (E<sub>cluster-i</sub> + E<sub>i</sub>)
+              </p>
+              <p style={{ margin: '0 0 8px 0' }}>
+                <strong>计算流程：</strong>
+              </p>
+              <ol style={{ margin: '0 0 8px 0', paddingLeft: 20 }}>
+                <li>创建完整溶剂化团簇的 QC 任务 (E<sub>cluster</sub>)</li>
+                <li>为每个配体分子创建 2 个 QC 任务：
+                  <ul style={{ marginTop: 4 }}>
+                    <li>单独配体分子 (E<sub>i</sub>)</li>
+                    <li>移除该配体后的团簇 (E<sub>cluster-i</sub>)</li>
+                  </ul>
+                </li>
+                <li>等待所有 QC 任务完成</li>
+                <li>计算每个配体的去溶剂化能</li>
+              </ol>
+              <p style={{ margin: 0 }}>
+                <strong>预计创建 QC 任务数：</strong>
+                {sideStructureContent && (
+                  <Tag color="blue" style={{ marginLeft: 8 }}>
+                    {1 + Object.values(sideStructureContent.composition || {}).reduce((sum, count) => sum + count, 0) * 2} 个
+                  </Tag>
+                )}
+              </p>
+            </div>
+          </Card>
+
+          {/* 方法选择和创建任务 */}
+          <Card
+            title={
+              <Space>
+                <ThunderboltOutlined style={{ color: '#52c41a' }} />
+                <span>创建计算任务</span>
+              </Space>
+            }
+            size="small"
+            style={{ marginBottom: 16 }}
+          >
+            <div style={{ marginBottom: 12 }}>
+              <Text strong style={{ fontSize: 13, color: token.colorText }}>选择计算方法：</Text>
+            </div>
+            <Space direction="vertical" style={{ width: '100%' }} size={8}>
+              <div
+                onClick={() => setSelectedMethodLevel('fast')}
+                style={{
+                  padding: 12,
+                  border: `2px solid ${selectedMethodLevel === 'fast' ? '#1890ff' : token.colorBorder}`,
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  background: selectedMethodLevel === 'fast' ? (isDark ? 'rgba(24,144,255,0.1)' : '#e6f7ff') : 'transparent',
+                  transition: 'all 0.3s',
+                }}
               >
-                创建计算任务
-              </Button>
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={() => selectedStructureId && loadDesolvationJobs(selectedStructureId)}
-                loading={loadingDesolvation}
-                disabled={!selectedStructureId}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <Tag color="green">快速 (Fast)</Tag>
+                    <Text style={{ fontSize: 13, color: token.colorText }}>B3LYP/6-31G(d)</Text>
+                  </div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>~1-2 小时</Text>
+                </div>
+              </div>
+              <div
+                onClick={() => setSelectedMethodLevel('standard')}
+                style={{
+                  padding: 12,
+                  border: `2px solid ${selectedMethodLevel === 'standard' ? '#1890ff' : token.colorBorder}`,
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  background: selectedMethodLevel === 'standard' ? (isDark ? 'rgba(24,144,255,0.1)' : '#e6f7ff') : 'transparent',
+                  transition: 'all 0.3s',
+                }}
               >
-                刷新
-              </Button>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                方法: B3LYP/6-31++G(d,p)
-              </Text>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <Tag color="blue">标准 (Standard)</Tag>
+                    <Text style={{ fontSize: 13, color: token.colorText }}>B3LYP/6-31++G(d,p)</Text>
+                  </div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>~2-4 小时</Text>
+                </div>
+              </div>
+              <div
+                onClick={() => setSelectedMethodLevel('accurate')}
+                style={{
+                  padding: 12,
+                  border: `2px solid ${selectedMethodLevel === 'accurate' ? '#1890ff' : token.colorBorder}`,
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  background: selectedMethodLevel === 'accurate' ? (isDark ? 'rgba(24,144,255,0.1)' : '#e6f7ff') : 'transparent',
+                  transition: 'all 0.3s',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <Tag color="purple">精确 (Accurate)</Tag>
+                    <Text style={{ fontSize: 13, color: token.colorText }}>wB97XD/6-311++G(2d,2p)</Text>
+                  </div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>~4-8 小时</Text>
+                </div>
+              </div>
             </Space>
+            <div style={{ marginTop: 16 }}>
+              <Space>
+                <Button
+                  type="primary"
+                  icon={<ThunderboltOutlined />}
+                  onClick={() => selectedStructureId && handleCreateDesolvationJob(selectedStructureId)}
+                  loading={creatingDesolvation}
+                  disabled={!selectedStructureId}
+                  size="large"
+                >
+                  创建计算任务
+                </Button>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={() => selectedStructureId && loadDesolvationJobs(selectedStructureId)}
+                  loading={loadingDesolvation}
+                  disabled={!selectedStructureId}
+                >
+                  刷新任务列表
+                </Button>
+              </Space>
+            </div>
           </Card>
 
           {/* 任务列表 */}

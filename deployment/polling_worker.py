@@ -376,6 +376,9 @@ class PollingWorker:
                     break
                 self._process_postprocess_job(job)
 
+            # 检查等待 QC 任务完成的去溶剂化任务
+            self._check_waiting_desolvation_jobs()
+
         except Exception as e:
             self.logger.error(f"获取新任务失败: {e}", exc_info=True)
     
@@ -793,6 +796,92 @@ class PollingWorker:
                 self.logger.error(f"去溶剂化能任务 {job_id} 失败: {result.get('error')}")
         finally:
             db.close()
+
+    def _check_waiting_desolvation_jobs(self):
+        """
+        检查等待 QC 任务完成的去溶剂化任务
+
+        去溶剂化能计算分两个阶段：
+        - Phase 1: 创建 QC 任务（cluster, ligands, cluster_minus）
+        - Phase 2: 等待 QC 完成后计算去溶剂化能
+
+        此函数检查处于 POSTPROCESSING 状态且 phase=2 的任务，
+        如果其 QC 任务已完成，则继续执行 Phase 2 计算。
+        """
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent / 'backend'))
+
+            from app.database import SessionLocal
+            from app.models.job import PostprocessJob, JobStatus
+            from app.tasks.desolvation import run_desolvation_job
+
+            db = SessionLocal()
+            try:
+                # 查找处于 POSTPROCESSING 状态的去溶剂化任务
+                waiting_jobs = db.query(PostprocessJob).filter(
+                    PostprocessJob.job_type == 'DESOLVATION_ENERGY',
+                    PostprocessJob.status == JobStatus.POSTPROCESSING
+                ).all()
+
+                if waiting_jobs:
+                    self.logger.info(f"发现 {len(waiting_jobs)} 个等待中的去溶剂化任务")
+
+                for job in waiting_jobs:
+                    config = job.config or {}
+                    phase = config.get('phase', 1)
+
+                    if phase == 2:
+                        # 检查是否所有 QC 任务已完成
+                        qc_job_ids = config.get('qc_job_ids', [])
+                        if not qc_job_ids:
+                            continue
+
+                        # 检查 QC 任务状态
+                        from app.models.qc_job import QCJob, QCJobStatus
+                        all_completed = True
+                        any_failed = False
+
+                        for qc_job_id in qc_job_ids:
+                            qc_job = db.query(QCJob).filter(QCJob.id == qc_job_id).first()
+                            if not qc_job:
+                                all_completed = False
+                                break
+                            if qc_job.status == QCJobStatus.FAILED:
+                                any_failed = True
+                                break
+                            if qc_job.status != QCJobStatus.COMPLETED:
+                                all_completed = False
+                                break
+
+                        if any_failed:
+                            self.logger.warning(f"去溶剂化任务 {job.id} 的 QC 任务失败")
+                            job.status = JobStatus.FAILED
+                            job.error_message = "One or more QC jobs failed"
+                            db.commit()
+                            continue
+
+                        if all_completed:
+                            self.logger.info(f"去溶剂化任务 {job.id} 的所有 QC 任务已完成，开始 Phase 2 计算")
+                            try:
+                                result = run_desolvation_job(job, db)
+                                if result['success']:
+                                    self.logger.info(f"去溶剂化任务 {job.id} Phase 2 完成")
+                                else:
+                                    self.logger.error(f"去溶剂化任务 {job.id} Phase 2 失败: {result.get('error')}")
+                            except Exception as e:
+                                self.logger.error(f"去溶剂化任务 {job.id} Phase 2 异常: {e}", exc_info=True)
+                                job.status = JobStatus.FAILED
+                                job.error_message = str(e)
+                                db.commit()
+                        else:
+                            self.logger.debug(f"去溶剂化任务 {job.id} 仍在等待 QC 任务完成")
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            self.logger.error(f"检查等待中的去溶剂化任务失败: {e}", exc_info=True)
 
     def _sanitize_filename(self, name: str) -> str:
         """清理文件名，去除不安全字符"""
