@@ -1245,9 +1245,9 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                               disabled: p.state !== 'up',
                             }))
                           : [
-                              { label: 'cpu', value: 'cpu' },
-                              { label: 'gpu', value: 'gpu' },
-                              { label: 'debug', value: 'debug' },
+                              { label: 'cpu', value: 'cpu', disabled: false },
+                              { label: 'gpu', value: 'gpu', disabled: false },
+                              { label: 'debug', value: 'debug', disabled: false },
                             ]
                         }
                       />
