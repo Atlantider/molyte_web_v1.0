@@ -141,8 +141,8 @@ export default function JobCreate() {
         nsteps_npt: undefined,
         nsteps_nvt: undefined,
         timestep: undefined,
-        temperature: undefined,
-        pressure: undefined,
+        temperature: 298.15, // 默认常温
+        pressure: 1.0,       // 默认常压
         freq_trj_npt: undefined,
         freq_trj_nvt: undefined,
         thermo_freq: undefined,
@@ -365,8 +365,6 @@ export default function JobCreate() {
         <Descriptions bordered column={2}>
           <Descriptions.Item label="配方名称">{electrolyte.name}</Descriptions.Item>
           <Descriptions.Item label="配方 ID">#{electrolyte.id}</Descriptions.Item>
-          <Descriptions.Item label="温度">{electrolyte.temperature} K</Descriptions.Item>
-          <Descriptions.Item label="压力">{electrolyte.pressure} atm</Descriptions.Item>
           <Descriptions.Item label="盒子大小">
             {electrolyte.box_size ? Number(electrolyte.box_size).toFixed(1) : '-'} Å
           </Descriptions.Item>
@@ -416,13 +414,12 @@ export default function JobCreate() {
                     thermo_freq: customDefaults.thermo_freq,
                   });
                 } else {
-                  // 切换到其他模式时，清空这些字段，让后端使用默认值
+                  // 切换到其他模式时，清空模拟参数（但保留温度和压力）
                   form.setFieldsValue({
                     nsteps_npt: undefined,
                     nsteps_nvt: undefined,
                     timestep: undefined,
-                    temperature: undefined,
-                    pressure: undefined,
+                    // 温度和压力保持用户设置，不清空
                     freq_trj_npt: undefined,
                     freq_trj_nvt: undefined,
                     thermo_freq: undefined,
@@ -472,12 +469,6 @@ export default function JobCreate() {
                 <Descriptions.Item label="时间步长">
                   {getCurrentDefaults().timestep || '-'} fs
                 </Descriptions.Item>
-                <Descriptions.Item label="温度">
-                  {getCurrentDefaults().temperature || '-'} K
-                </Descriptions.Item>
-                <Descriptions.Item label="压力">
-                  {getCurrentDefaults().pressure || '-'} atm
-                </Descriptions.Item>
                 <Descriptions.Item label="NPT 轨迹输出频率">
                   {formatStepsWithTime(getCurrentDefaults().freq_trj_npt, getCurrentDefaults().timestep)}
                 </Descriptions.Item>
@@ -488,6 +479,45 @@ export default function JobCreate() {
                   {formatStepsWithTime(getCurrentDefaults().thermo_freq, getCurrentDefaults().timestep)}
                 </Descriptions.Item>
               </Descriptions>
+
+              {/* 温度和压力 - 所有模式都可以修改 */}
+              <Divider>温度和压力设置</Divider>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="temperature"
+                    label="温度"
+                    rules={[{ required: true, message: '请输入温度' }]}
+                    initialValue={getCurrentDefaults().temperature || 298.15}
+                    tooltip="模拟温度，常温为 298.15 K (25°C)"
+                  >
+                    <InputNumber
+                      min={200}
+                      max={500}
+                      step={1}
+                      style={{ width: '100%' }}
+                      addonAfter="K"
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="pressure"
+                    label="压力"
+                    rules={[{ required: true, message: '请输入压力' }]}
+                    initialValue={getCurrentDefaults().pressure || 1.0}
+                    tooltip="模拟压力，常压为 1 atm"
+                  >
+                    <InputNumber
+                      min={0.1}
+                      max={100}
+                      step={0.1}
+                      style={{ width: '100%' }}
+                      addonAfter="atm"
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
             </>
           )}
 
