@@ -6,6 +6,20 @@ from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 
 
+class SolventConfigSchema(BaseModel):
+    """溶剂配置（用于去溶剂化能计算的隐式溶剂模型）"""
+    model: Literal["gas", "pcm", "smd", "custom"] = Field(default="gas", description="溶剂模型")
+    solvent_name: Optional[str] = Field(default=None, description="预定义溶剂名称")
+    # 自定义溶剂参数（SMD模型需要）
+    eps: Optional[float] = Field(default=None, description="介电常数 ε")
+    eps_inf: Optional[float] = Field(default=None, description="光学介电常数 n²")
+    hbond_acidity: Optional[float] = Field(default=None, description="Abraham氢键酸度 α")
+    hbond_basicity: Optional[float] = Field(default=None, description="Abraham氢键碱度 β")
+    surface_tension: Optional[float] = Field(default=None, description="表面张力 γ (cal/mol·Å²)")
+    carbon_aromaticity: Optional[float] = Field(default=None, description="芳香碳原子比例 φ")
+    halogenicity: Optional[float] = Field(default=None, description="卤素原子比例 ψ")
+
+
 class DesolvationJobCreate(BaseModel):
     """创建去溶剂化能任务"""
     md_job_id: int = Field(..., description="MD job ID")
@@ -14,6 +28,11 @@ class DesolvationJobCreate(BaseModel):
     desolvation_mode: Literal["stepwise", "full"] = Field(
         default="stepwise",
         description="Desolvation mode: stepwise (remove one ligand at a time) or full (remove all ligands at once)"
+    )
+    # 溶剂配置（可选，默认气相计算）
+    solvent_config: Optional[SolventConfigSchema] = Field(
+        default=None,
+        description="Solvent configuration for implicit solvent model. If not provided, gas phase calculation is used."
     )
 
 

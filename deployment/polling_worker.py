@@ -686,15 +686,28 @@ class PollingWorker:
             slurm_cpus = config.get('slurm_cpus', 16)
             slurm_time = config.get('slurm_time', 7200)
 
+            # 获取 xyz_content（来自 desolvation 任务创建的 QC 任务）
+            xyz_content = config.get('xyz_content', '')
+
+            # 检测是否是 desolvation 任务创建的 QC 任务
+            desolvation_job_type = config.get('desolvation_job_type', '')
+            is_desolvation_qc = bool(desolvation_job_type)
+
             # 获取溶剂配置（支持自定义溶剂参数）
             solvent_config = config.get('solvent_config', {})
             if solvent_config:
                 solvent_model = solvent_config.get('model', solvent_model)
                 solvent_name = solvent_config.get('solvent_name', solvent_name)
 
-            # 3. 创建工作目录 - 使用独立的QC工作目录
-            qc_work_base = Path(self.config['local']['qc_work_base_path'])
-            work_dir = qc_work_base / f"QC-{job_id}-{molecule_name}"
+            # 3. 创建工作目录
+            # 如果是 desolvation 任务的 cluster/ligand 计算，使用 cluster_work 目录
+            if is_desolvation_qc:
+                cluster_work_base = Path(self.config['local'].get('cluster_work_base_path',
+                                         self.config['local']['qc_work_base_path']))
+                work_dir = cluster_work_base / f"Cluster-{job_id}-{molecule_name}"
+            else:
+                qc_work_base = Path(self.config['local']['qc_work_base_path'])
+                work_dir = qc_work_base / f"QC-{job_id}-{molecule_name}"
             work_dir.mkdir(parents=True, exist_ok=True)
 
             # 4. 生成安全的文件名
@@ -707,7 +720,8 @@ class PollingWorker:
                 charge, spin_multiplicity,
                 functional, basis_set,
                 solvent_model, solvent_name,
-                solvent_config
+                solvent_config,
+                xyz_content=xyz_content  # 传递 xyz 坐标
             )
             self.logger.info(f"生成 Gaussian 输入文件: {gjf_path}")
 
@@ -913,8 +927,24 @@ class PollingWorker:
                                    charge: int, spin_multiplicity: int,
                                    functional: str, basis_set: str,
                                    solvent_model: str, solvent_name: str,
-                                   solvent_config: Dict = None):
-        """生成 Gaussian 输入文件"""
+                                   solvent_config: Dict = None,
+                                   xyz_content: str = None):
+        """
+        生成 Gaussian 输入文件
+
+        Args:
+            gjf_path: 输出文件路径
+            molecule_name: 分子名称
+            smiles: SMILES 字符串（用于普通 QC 任务）
+            charge: 电荷
+            spin_multiplicity: 自旋多重度
+            functional: 泛函
+            basis_set: 基组
+            solvent_model: 溶剂模型 (gas/pcm/smd/custom)
+            solvent_name: 溶剂名称
+            solvent_config: 自定义溶剂参数
+            xyz_content: XYZ 坐标内容（用于 desolvation 创建的 QC 任务）
+        """
         # 构建计算关键字
         keywords = f"opt freq {functional}/{basis_set}"
 
@@ -955,21 +985,31 @@ class PollingWorker:
 
         safe_name = self._sanitize_filename(molecule_name)
 
-        # 尝试从 SMILES 生成 3D 坐标
-        coords = self._get_3d_coordinates(smiles, molecule_name)
+        # 获取坐标：优先使用 xyz_content（来自 desolvation），否则从 SMILES 生成
+        coords = None
+        if xyz_content:
+            # 解析 xyz_content 获取坐标
+            coords = self._parse_xyz_content(xyz_content)
+            if coords:
+                self.logger.info(f"从 xyz_content 解析坐标: {len(coords)} 个原子")
 
-        # 验证和纠正自旋多重度
-        corrected_charge, corrected_spin = self._validate_and_correct_spin(
-            smiles, charge, spin_multiplicity, coords
-        )
+        if not coords:
+            # 降级：尝试从 SMILES 生成 3D 坐标
+            coords = self._get_3d_coordinates(smiles, molecule_name)
 
-        if corrected_charge != charge or corrected_spin != spin_multiplicity:
-            self.logger.warning(
-                f"自旋多重度已纠正: charge {charge}->{corrected_charge}, "
-                f"spin {spin_multiplicity}->{corrected_spin} for {molecule_name}"
+        # 验证和纠正自旋多重度（只对有有效坐标的情况）
+        if coords:
+            corrected_charge, corrected_spin = self._validate_and_correct_spin(
+                smiles, charge, spin_multiplicity, coords
             )
-            charge = corrected_charge
-            spin_multiplicity = corrected_spin
+
+            if corrected_charge != charge or corrected_spin != spin_multiplicity:
+                self.logger.warning(
+                    f"自旋多重度已纠正: charge {charge}->{corrected_charge}, "
+                    f"spin {spin_multiplicity}->{corrected_spin} for {molecule_name}"
+                )
+                charge = corrected_charge
+                spin_multiplicity = corrected_spin
 
         # 生成 gjf 内容
         gjf_content = f"""%nprocshared=16
@@ -1083,6 +1123,72 @@ class PollingWorker:
             self.logger.warning(f"从 SMILES 生成坐标失败: {e}")
 
         return None
+
+    def _parse_xyz_content(self, xyz_content: str) -> list:
+        """
+        解析 XYZ 格式的坐标内容
+
+        XYZ 格式:
+        第一行: 原子数
+        第二行: 注释（可选）
+        后续行: 元素符号 x y z
+
+        Args:
+            xyz_content: XYZ 格式的字符串
+
+        Returns:
+            坐标列表 [(element, x, y, z), ...]
+        """
+        if not xyz_content or not xyz_content.strip():
+            return None
+
+        try:
+            lines = xyz_content.strip().split('\n')
+            if len(lines) < 3:
+                self.logger.warning(f"XYZ 内容行数不足: {len(lines)}")
+                return None
+
+            # 第一行是原子数
+            try:
+                num_atoms = int(lines[0].strip())
+            except ValueError:
+                self.logger.warning(f"无法解析原子数: {lines[0]}")
+                return None
+
+            # 跳过第一行（原子数）和第二行（注释），从第三行开始解析坐标
+            coords = []
+            for i, line in enumerate(lines[2:], start=1):
+                line = line.strip()
+                if not line:
+                    continue
+
+                parts = line.split()
+                if len(parts) < 4:
+                    self.logger.warning(f"坐标行格式错误 (行 {i+2}): {line}")
+                    continue
+
+                element = parts[0]
+                try:
+                    x = float(parts[1])
+                    y = float(parts[2])
+                    z = float(parts[3])
+                    coords.append((element, x, y, z))
+                except ValueError as e:
+                    self.logger.warning(f"坐标解析错误 (行 {i+2}): {e}")
+                    continue
+
+            if len(coords) != num_atoms:
+                self.logger.warning(f"解析的原子数 ({len(coords)}) 与声明的原子数 ({num_atoms}) 不匹配")
+
+            if coords:
+                self.logger.info(f"成功解析 XYZ 坐标: {len(coords)} 个原子")
+                return coords
+            else:
+                return None
+
+        except Exception as e:
+            self.logger.error(f"解析 XYZ 内容失败: {e}")
+            return None
 
     def _validate_and_correct_spin(self, smiles: str, charge: int, spin_multiplicity: int,
                                      coords: list = None) -> tuple:

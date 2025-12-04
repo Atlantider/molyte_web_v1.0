@@ -141,9 +141,15 @@ def _phase1_create_qc_jobs(
     核心改进：
     - 从 ResultSummary.molecule_structures 获取分子 PDB
     - 单分子能量使用标准 PDB 结构，可复用
+    - 支持隐式溶剂模型（gas/pcm/smd/custom）
     """
     config = job.config or {}
     desolvation_mode = config.get("desolvation_mode", "stepwise")
+
+    # 获取溶剂配置
+    solvent_config = config.get("solvent_config", {})
+    solvent_model = solvent_config.get("model", "gas") if solvent_config else "gas"
+    solvent_name = solvent_config.get("solvent_name") if solvent_config else None
 
     logger.info(f"Phase 1: Creating QC jobs for desolvation job {job.id} (mode={desolvation_mode})")
 
@@ -190,10 +196,13 @@ def _phase1_create_qc_jobs(
         charge=cluster_data['total_charge'],
         basis_set=basis_set,
         functional=functional,
-        job_type="cluster"
+        job_type="cluster",
+        solvent_model=solvent_model,
+        solvent_name=solvent_name,
+        solvent_config=solvent_config
     )
     created_qc_jobs.append(cluster_qc_job.id)
-    logger.info(f"Created cluster QC job {cluster_qc_job.id}")
+    logger.info(f"Created cluster QC job {cluster_qc_job.id} (solvent={solvent_model})")
 
     # 2. 创建每种配体的 QC 任务（去重，支持跨任务复用）
     ligand_qc_jobs = {}
@@ -221,7 +230,10 @@ def _phase1_create_qc_jobs(
                 ligand_charge=ligand_charge,
                 ligand_xyz=ligand_xyz,
                 basis_set=basis_set,
-                functional=functional
+                functional=functional,
+                solvent_model=solvent_model,
+                solvent_name=solvent_name,
+                solvent_config=solvent_config
             )
 
             ligand_qc_jobs[ligand_key] = qc_job_id
@@ -251,7 +263,10 @@ def _phase1_create_qc_jobs(
                 charge=cluster_minus_charge,
                 basis_set=basis_set,
                 functional=functional,
-                job_type="cluster_minus"
+                job_type="cluster_minus",
+                solvent_model=solvent_model,
+                solvent_name=solvent_name,
+                solvent_config=solvent_config
             )
             cluster_minus_job_ids.append(cluster_minus_qc_job.id)
             created_qc_jobs.append(cluster_minus_qc_job.id)
@@ -272,7 +287,10 @@ def _phase1_create_qc_jobs(
             ligand_charge=center_ion_charge,
             ligand_xyz=center_ion_xyz,
             basis_set=basis_set,
-            functional=functional
+            functional=functional,
+            solvent_model=solvent_model,
+            solvent_name=solvent_name,
+            solvent_config=solvent_config
         )
 
         if is_reused:
@@ -677,11 +695,42 @@ def create_qc_job_for_structure(
     job_type: str,
     spin_multiplicity: int = 1,
     solvent_model: str = "gas",
-    solvent_name: Optional[str] = None
+    solvent_name: Optional[str] = None,
+    solvent_config: Optional[Dict[str, Any]] = None
 ) -> QCJob:
-    """创建 QC 任务"""
+    """
+    创建 QC 任务
+
+    Args:
+        db: 数据库会话
+        user_id: 用户 ID
+        md_job_id: MD 任务 ID
+        molecule_name: 分子名称
+        xyz_content: XYZ 格式的分子坐标
+        charge: 电荷
+        basis_set: 基组
+        functional: 泛函
+        job_type: 任务类型 (cluster/ligand/cluster_minus/center_ion)
+        spin_multiplicity: 自旋多重度
+        solvent_model: 溶剂模型 (gas/pcm/smd/custom)
+        solvent_name: 溶剂名称
+        solvent_config: 完整的溶剂配置（包含自定义参数）
+    """
     # 从 XYZ 生成 SMILES（简化版，实际应该用 RDKit）
     smiles = "C"  # 占位符
+
+    # 构建 config
+    job_config = {
+        "xyz_content": xyz_content,
+        "desolvation_job_type": job_type,
+        "accuracy_level": "standard",
+        "solvent_model": solvent_model,
+        "solvent_name": solvent_name
+    }
+
+    # 如果有自定义溶剂配置，添加到 config
+    if solvent_config:
+        job_config["solvent_config"] = solvent_config
 
     qc_job = QCJob(
         user_id=user_id,
@@ -696,11 +745,7 @@ def create_qc_job_for_structure(
         solvent_model=solvent_model,
         solvent_name=solvent_name,
         status=QCJobStatus.CREATED,
-        config={
-            "xyz_content": xyz_content,
-            "desolvation_job_type": job_type,
-            "accuracy_level": "standard"
-        }
+        config=job_config
     )
 
     db.add(qc_job)
@@ -721,7 +766,8 @@ def find_or_create_ligand_qc_job(
     functional: str,
     spin_multiplicity: int = 1,
     solvent_model: str = "gas",
-    solvent_name: Optional[str] = None
+    solvent_name: Optional[str] = None,
+    solvent_config: Optional[Dict[str, Any]] = None
 ) -> Tuple[int, bool]:
     """
     查找或创建配体分子的 QC 任务（支持跨任务复用）
@@ -738,8 +784,9 @@ def find_or_create_ligand_qc_job(
         basis_set: 基组
         functional: 泛函
         spin_multiplicity: 自旋多重度
-        solvent_model: 溶剂模型 (gas/pcm/smd)
+        solvent_model: 溶剂模型 (gas/pcm/smd/custom)
         solvent_name: 隐式溶剂名称
+        solvent_config: 完整的溶剂配置（包含自定义参数）
 
     Returns:
         (qc_job_id, is_reused): QC 任务 ID 和是否复用标志
@@ -776,7 +823,8 @@ def find_or_create_ligand_qc_job(
         job_type="ligand",
         spin_multiplicity=spin_multiplicity,
         solvent_model=solvent_model,
-        solvent_name=solvent_name
+        solvent_name=solvent_name,
+        solvent_config=solvent_config
     )
 
     logger.info(f"Created new ligand QC job {new_job.id} for {ligand_type}")
