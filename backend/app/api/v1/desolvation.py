@@ -467,3 +467,118 @@ def _build_job_response(job: PostprocessJob, db: Session) -> DesolvationJobRespo
         qc_progress=qc_progress
     )
 
+
+@router.get("/preview/{structure_id}")
+async def preview_desolvation_structures(
+    structure_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """
+    预览去溶剂化结构（不创建任务）
+
+    返回完整 cluster 和每个 cluster_minus 的 XYZ 结构，
+    用于用户在提交前检查结构是否正确。
+    """
+    from app.tasks.desolvation import (
+        parse_solvation_cluster,
+        generate_cluster_minus_xyz,
+        generate_center_ion_xyz
+    )
+    from app.models.result import ResultSummary
+
+    # 获取溶剂化结构
+    solvation_structure = db.query(SolvationStructure).filter(
+        SolvationStructure.id == structure_id
+    ).first()
+
+    if not solvation_structure:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Solvation structure {structure_id} not found"
+        )
+
+    # 获取 molecule_structures
+    result_summary = db.query(ResultSummary).filter(
+        ResultSummary.md_job_id == solvation_structure.md_job_id
+    ).first()
+
+    molecule_structures = []
+    if result_summary and result_summary.molecule_structures:
+        molecule_structures = result_summary.molecule_structures
+
+    # 解析 cluster
+    try:
+        cluster_data = parse_solvation_cluster(solvation_structure, molecule_structures)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to parse cluster structure: {str(e)}"
+        )
+
+    # 生成配位组成名称
+    composition = solvation_structure.composition or {}
+    composition_str = "".join([
+        f"{name}{count}" for name, count in sorted(composition.items()) if count > 0
+    ])
+    cluster_name = f"{cluster_data['center_ion']}_{composition_str}_{structure_id}"
+
+    # 构建响应
+    response = {
+        "structure_id": structure_id,
+        "cluster_name": cluster_name,
+        "center_ion": cluster_data['center_ion'],
+        "total_charge": cluster_data['total_charge'],
+        "composition": composition,
+        # 完整 cluster
+        "cluster": {
+            "name": cluster_name,
+            "xyz_content": cluster_data['xyz_content'],
+            "atom_count": len(cluster_data['all_atoms']),
+            "charge": cluster_data['total_charge']
+        },
+        # 每个配体
+        "ligands": [],
+        # 每个 cluster_minus
+        "cluster_minus_structures": [],
+        # 中心离子（用于 full 模式）
+        "center_ion_structure": {
+            "name": cluster_data['center_ion'],
+            "xyz_content": generate_center_ion_xyz(cluster_data),
+            "atom_count": 1,
+            "charge": cluster_data['center_ion_charge']
+        }
+    }
+
+    # 添加配体信息
+    for ligand in cluster_data['ligands']:
+        response["ligands"].append({
+            "ligand_id": ligand['ligand_id'],
+            "ligand_type": ligand['ligand_type'],
+            "ligand_label": ligand['ligand_label'],
+            "xyz_content": ligand['xyz_content'],
+            "atom_count": len(ligand['atom_indices']),
+            "charge": ligand['charge']
+        })
+
+    # 生成每个 cluster_minus 结构
+    for ligand in cluster_data['ligands']:
+        cluster_minus_xyz = generate_cluster_minus_xyz(cluster_data, ligand)
+        cluster_minus_name = f"{cluster_name}_minus_{ligand['ligand_label']}"
+        cluster_minus_charge = cluster_data['total_charge'] - ligand['charge']
+
+        # 计算原子数
+        xyz_lines = cluster_minus_xyz.strip().split('\n')
+        atom_count = int(xyz_lines[0]) if xyz_lines else 0
+
+        response["cluster_minus_structures"].append({
+            "name": cluster_minus_name,
+            "removed_ligand": ligand['ligand_label'],
+            "removed_ligand_type": ligand['ligand_type'],
+            "xyz_content": cluster_minus_xyz,
+            "atom_count": atom_count,
+            "charge": cluster_minus_charge
+        })
+
+    return response
+

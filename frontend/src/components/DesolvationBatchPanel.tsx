@@ -6,8 +6,9 @@
  * 2. 多维度筛选：配位数、阴离子数、溶剂类型
  * 3. 批量提交计算任务
  * 4. 显示任务进度和结果
+ * 5. 结构预览功能（提交前检查 cluster minus 结构）
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card,
   Table,
@@ -29,6 +30,8 @@ import {
   Divider,
   theme,
   Alert,
+  Modal,
+  Tabs,
 } from 'antd';
 import {
   ThunderboltOutlined,
@@ -40,6 +43,7 @@ import {
   BulbOutlined,
   FilterOutlined,
   PlusOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { autoSelectSolvationStructures, type AutoSelectedStructure } from '../api/jobs';
@@ -47,8 +51,11 @@ import {
   batchCreateDesolvationJobs,
   getDesolvationOverview,
   getDesolvationQCTasks,
+  previewDesolvationStructures,
   type QCTaskInfo,
   type DesolvationQCTasksResponse,
+  type DesolvationPreviewResponse,
+  type ClusterMinusPreview,
 } from '../api/desolvation';
 import type {
   DesolvationJobResponse,
@@ -58,6 +65,13 @@ import type {
 } from '../types/desolvation';
 import { useThemeStore } from '../stores/themeStore';
 import DesolvationResultView from './DesolvationResultView';
+
+// 3Dmol.js 类型声明
+declare global {
+  interface Window {
+    $3Dmol: any;
+  }
+}
 
 const { Text } = Typography;
 
@@ -149,6 +163,14 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
 
   // 待提交队列
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
+
+  // 结构预览相关状态
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewData, setPreviewData] = useState<DesolvationPreviewResponse | null>(null);
+  const [selectedPreviewTab, setSelectedPreviewTab] = useState<string>('cluster');
+  const previewViewerRef = useRef<HTMLDivElement>(null);
+  const previewViewerInstance = useRef<any>(null);
 
   // 多维度筛选条件
   const [cnFilter, setCnFilter] = useState<number[]>([]);  // 配位数筛选
@@ -414,6 +436,94 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
     loadOverview();
     setSubmitting(false);
   };
+
+  // 加载 3Dmol.js
+  useEffect(() => {
+    if (!window.$3Dmol) {
+      const script = document.createElement('script');
+      script.src = 'https://3Dmol.csb.pitt.edu/build/3Dmol-min.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  // 打开结构预览
+  const handlePreview = async (structureId: number) => {
+    setPreviewLoading(true);
+    setPreviewVisible(true);
+    setSelectedPreviewTab('cluster');
+    try {
+      const data = await previewDesolvationStructures(structureId);
+      setPreviewData(data);
+    } catch (error: any) {
+      message.error(`加载预览失败: ${error.message || '未知错误'}`);
+      setPreviewVisible(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // 渲染 3D 预览
+  const renderMolecule = useCallback((xyzContent: string) => {
+    if (!previewViewerRef.current || !window.$3Dmol || !xyzContent) return;
+
+    // 清除旧的 viewer
+    if (previewViewerInstance.current) {
+      previewViewerInstance.current.clear();
+      previewViewerInstance.current = null;
+    }
+
+    const container = previewViewerRef.current;
+    const viewer = window.$3Dmol.createViewer(container, {
+      backgroundColor: isDark ? '#1a1a1a' : '#f8f9fa',
+    });
+    previewViewerInstance.current = viewer;
+
+    viewer.addModel(xyzContent, 'xyz');
+    viewer.setStyle({}, {
+      stick: { radius: 0.15, colorscheme: 'Jmol' },
+      sphere: { scale: 0.3, colorscheme: 'Jmol' },
+    });
+    // 高亮中心离子（第一个原子）
+    viewer.setStyle({ serial: 0 }, {
+      sphere: { scale: 0.5, color: '#e74c3c' },
+    });
+    viewer.zoomTo(0.85);
+    viewer.rotate(-15, 'x');
+    viewer.rotate(10, 'y');
+    viewer.render();
+  }, [isDark]);
+
+  // 当预览 Tab 变化或数据变化时重新渲染
+  useEffect(() => {
+    if (!previewData || !previewVisible) return;
+
+    let xyzContent = '';
+    if (selectedPreviewTab === 'cluster') {
+      xyzContent = previewData.cluster.xyz_content;
+    } else if (selectedPreviewTab === 'center_ion') {
+      xyzContent = previewData.center_ion_structure.xyz_content;
+    } else if (selectedPreviewTab.startsWith('minus_')) {
+      const idx = parseInt(selectedPreviewTab.replace('minus_', ''), 10);
+      const clusterMinus = previewData.cluster_minus_structures[idx];
+      if (clusterMinus) {
+        xyzContent = clusterMinus.xyz_content;
+      }
+    } else if (selectedPreviewTab.startsWith('ligand_')) {
+      const idx = parseInt(selectedPreviewTab.replace('ligand_', ''), 10);
+      const ligand = previewData.ligands[idx];
+      if (ligand) {
+        xyzContent = ligand.xyz_content;
+      }
+    }
+
+    // 延迟渲染，确保 Modal 已完全展开
+    const timer = setTimeout(() => {
+      renderMolecule(xyzContent);
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [previewData, previewVisible, selectedPreviewTab, renderMolecule]);
 
   // 加载 QC 子任务
   const loadQCTasks = useCallback(async (jobId: number) => {
@@ -1219,9 +1329,16 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
               {
                 title: '操作',
                 key: 'action',
-                width: 120,
+                width: 160,
                 render: (_, task) => (
                   <Space size={4}>
+                    <Tooltip title="预览结构">
+                      <Button
+                        icon={<EyeOutlined />}
+                        size="small"
+                        onClick={() => handlePreview(task.structureId)}
+                      />
+                    </Tooltip>
                     <Button
                       type="primary"
                       size="small"
@@ -1244,6 +1361,174 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
           />
         </Card>
       )}
+
+      {/* 结构预览弹窗 */}
+      <Modal
+        title={
+          <Space>
+            <EyeOutlined />
+            <span>结构预览</span>
+            {previewData && (
+              <Tag color="blue">{previewData.cluster_name}</Tag>
+            )}
+          </Space>
+        }
+        open={previewVisible}
+        onCancel={() => {
+          setPreviewVisible(false);
+          setPreviewData(null);
+        }}
+        width={900}
+        footer={null}
+        destroyOnClose
+      >
+        {previewLoading ? (
+          <div style={{ textAlign: 'center', padding: 60 }}>
+            <Spin tip="正在加载结构..." />
+          </div>
+        ) : previewData ? (
+          <div>
+            {/* 结构信息摘要 */}
+            <Alert
+              type="info"
+              style={{ marginBottom: 16 }}
+              message={
+                <Space split={<Divider type="vertical" />}>
+                  <span>中心离子: <strong>{previewData.center_ion}</strong></span>
+                  <span>配位数: <strong>{previewData.ligands.length}</strong></span>
+                  <span>总电荷: <strong>{previewData.total_charge}</strong></span>
+                  <span>
+                    配位组成: {Object.entries(previewData.composition)
+                      .filter(([, v]) => v > 0)
+                      .map(([k, v]) => `${k}×${v}`)
+                      .join(', ')}
+                  </span>
+                </Space>
+              }
+            />
+
+            <Row gutter={16}>
+              {/* 左侧：结构列表 */}
+              <Col span={8}>
+                <Card size="small" title="结构列表" style={{ height: 500, overflow: 'auto' }}>
+                  <Tabs
+                    tabPosition="left"
+                    activeKey={selectedPreviewTab}
+                    onChange={setSelectedPreviewTab}
+                    size="small"
+                    style={{ height: '100%' }}
+                    items={[
+                      {
+                        key: 'cluster',
+                        label: (
+                          <Space>
+                            <Badge status="success" />
+                            完整 Cluster ({previewData.cluster.atom_count}原子)
+                          </Space>
+                        ),
+                      },
+                      ...previewData.cluster_minus_structures.map((cm, idx) => ({
+                        key: `minus_${idx}`,
+                        label: (
+                          <Space>
+                            <Badge status="warning" />
+                            <span style={{ fontSize: 12 }}>
+                              减 {cm.removed_ligand} ({cm.atom_count}原子)
+                            </span>
+                          </Space>
+                        ),
+                      })),
+                      {
+                        key: 'divider',
+                        label: <Divider style={{ margin: '8px 0' }} />,
+                        disabled: true,
+                      },
+                      ...previewData.ligands.map((lig, idx) => ({
+                        key: `ligand_${idx}`,
+                        label: (
+                          <Space>
+                            <Badge status="processing" />
+                            <span style={{ fontSize: 12 }}>
+                              {lig.ligand_label} ({lig.atom_count}原子)
+                            </span>
+                          </Space>
+                        ),
+                      })),
+                      {
+                        key: 'center_ion',
+                        label: (
+                          <Space>
+                            <Badge status="error" />
+                            中心离子 {previewData.center_ion}
+                          </Space>
+                        ),
+                      },
+                    ]}
+                  />
+                </Card>
+              </Col>
+
+              {/* 右侧：3D 预览 */}
+              <Col span={16}>
+                <Card
+                  size="small"
+                  title={
+                    <Space>
+                      <span>3D 预览</span>
+                      {selectedPreviewTab === 'cluster' && (
+                        <Tag color="green">完整 Cluster</Tag>
+                      )}
+                      {selectedPreviewTab.startsWith('minus_') && (
+                        <Tag color="orange">
+                          Cluster minus {previewData.cluster_minus_structures[
+                            parseInt(selectedPreviewTab.replace('minus_', ''), 10)
+                          ]?.removed_ligand}
+                        </Tag>
+                      )}
+                      {selectedPreviewTab.startsWith('ligand_') && (
+                        <Tag color="blue">
+                          配体 {previewData.ligands[
+                            parseInt(selectedPreviewTab.replace('ligand_', ''), 10)
+                          ]?.ligand_label}
+                        </Tag>
+                      )}
+                      {selectedPreviewTab === 'center_ion' && (
+                        <Tag color="red">中心离子</Tag>
+                      )}
+                    </Space>
+                  }
+                >
+                  <div
+                    ref={previewViewerRef}
+                    style={{
+                      width: '100%',
+                      height: 400,
+                      background: isDark ? '#1a1a1a' : '#f8f9fa',
+                      borderRadius: 8,
+                    }}
+                  />
+                  <div style={{
+                    marginTop: 8,
+                    textAlign: 'center',
+                    color: token.colorTextSecondary,
+                    fontSize: 12,
+                  }}>
+                    拖动旋转 | 滚轮缩放 | 右键平移 | 红色球体为中心离子
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+
+            {/* 底部说明 */}
+            <Alert
+              type="warning"
+              style={{ marginTop: 16 }}
+              message="请检查每个 'Cluster minus' 结构是否正确移除了对应的配体分子。如果结构有问题，请勿提交。"
+              showIcon
+            />
+          </div>
+        ) : null}
+      </Modal>
 
       {/* 第四步：任务监控 */}
       {overview && overview.total_jobs > 0 && (

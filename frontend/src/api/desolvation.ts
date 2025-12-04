@@ -107,3 +107,53 @@ export const getDesolvationQCTasks = async (
   const response = await client.get(`/desolvation/jobs/${jobId}/qc-tasks`);
   return response.data;
 };
+
+/**
+ * 结构预览数据类型
+ */
+export interface StructurePreview {
+  name: string;
+  xyz_content: string;
+  atom_count: number;
+  charge: number;
+}
+
+export interface LigandPreview {
+  ligand_id: string;
+  ligand_type: string;
+  ligand_label: string;
+  xyz_content: string;
+  atom_count: number;
+  charge: number;
+}
+
+export interface ClusterMinusPreview {
+  name: string;
+  removed_ligand: string;
+  removed_ligand_type: string;
+  xyz_content: string;
+  atom_count: number;
+  charge: number;
+}
+
+export interface DesolvationPreviewResponse {
+  structure_id: number;
+  cluster_name: string;
+  center_ion: string;
+  total_charge: number;
+  composition: Record<string, number>;
+  cluster: StructurePreview;
+  ligands: LigandPreview[];
+  cluster_minus_structures: ClusterMinusPreview[];
+  center_ion_structure: StructurePreview;
+}
+
+/**
+ * 预览去溶剂化结构（不创建任务）
+ */
+export const previewDesolvationStructures = async (
+  structureId: number
+): Promise<DesolvationPreviewResponse> => {
+  const response = await client.get(`/desolvation/preview/${structureId}`);
+  return response.data;
+};
