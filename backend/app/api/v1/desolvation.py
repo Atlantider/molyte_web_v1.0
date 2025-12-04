@@ -561,6 +561,15 @@ async def preview_desolvation_structures(
             "charge": ligand['charge']
         })
 
+    # 统计每种配体类型的数量，用于标记等价配体
+    ligand_type_counts = {}
+    for ligand in cluster_data['ligands']:
+        ltype = ligand['ligand_type']
+        ligand_type_counts[ltype] = ligand_type_counts.get(ltype, 0) + 1
+
+    # 记录已处理的配体类型（用于标记等价配体）
+    processed_types = set()
+
     # 生成每个 cluster_minus 结构
     for ligand in cluster_data['ligands']:
         cluster_minus_xyz = generate_cluster_minus_xyz(cluster_data, ligand)
@@ -571,14 +580,26 @@ async def preview_desolvation_structures(
         xyz_lines = cluster_minus_xyz.strip().split('\n')
         atom_count = int(xyz_lines[0]) if xyz_lines else 0
 
+        # 判断是否是等价配体（同类型配体超过1个）
+        ltype = ligand['ligand_type']
+        is_equivalent = ligand_type_counts.get(ltype, 0) > 1
+        is_representative = ltype not in processed_types  # 第一个作为代表
+        processed_types.add(ltype)
+
         response["cluster_minus_structures"].append({
             "name": cluster_minus_name,
             "removed_ligand": ligand['ligand_label'],
             "removed_ligand_type": ligand['ligand_type'],
             "xyz_content": cluster_minus_xyz,
             "atom_count": atom_count,
-            "charge": cluster_minus_charge
+            "charge": cluster_minus_charge,
+            "is_equivalent": is_equivalent,  # 是否有等价配体
+            "is_representative": is_representative,  # 是否是该类型的代表（第一个）
+            "equivalent_count": ligand_type_counts.get(ltype, 1)  # 该类型的配体数量
         })
+
+    # 添加配体类型统计到响应
+    response["ligand_type_summary"] = ligand_type_counts
 
     return response
 

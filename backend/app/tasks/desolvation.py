@@ -255,10 +255,29 @@ def _phase1_create_qc_jobs(
     # 3. 根据模式创建额外的 QC 任务
     cluster_minus_job_ids = []
     center_ion_job_id = None
+    ligand_type_mapping = {}  # 配体类型到 cluster_minus job ID 的映射
 
     if desolvation_mode == "stepwise":
         # 逐级模式：创建每个 cluster_minus_i 的 QC 任务
+        # 重要优化：对于等价配体（同类型），只为第一个创建 QC 任务
+        # 因为 QC 优化后结构一致，能量相同
+        processed_ligand_types = set()  # 已处理的配体类型
+        ligand_type_mapping = {}  # 记录每种配体类型对应的 QC job ID
+
         for i, ligand in enumerate(cluster_data['ligands']):
+            ligand_type = ligand['ligand_type']
+
+            # 检查是否已处理过该类型的配体
+            if ligand_type in processed_ligand_types:
+                # 等价配体，复用已有的 QC 任务
+                existing_job_id = ligand_type_mapping.get(ligand_type)
+                if existing_job_id:
+                    # 记录映射关系，但不创建新任务
+                    logger.info(f"Skipping equivalent ligand {ligand['ligand_label']} (same type as processed, will use job {existing_job_id})")
+                continue
+
+            processed_ligand_types.add(ligand_type)
+
             cluster_minus_xyz = generate_cluster_minus_xyz(cluster_data, ligand)
             cluster_minus_charge = cluster_data['total_charge'] - ligand['charge']
 
@@ -281,7 +300,8 @@ def _phase1_create_qc_jobs(
             )
             cluster_minus_job_ids.append(cluster_minus_qc_job.id)
             created_qc_jobs.append(cluster_minus_qc_job.id)
-            logger.info(f"Created cluster_minus QC job {cluster_minus_qc_job.id}: {cluster_minus_name}")
+            ligand_type_mapping[ligand_type] = cluster_minus_qc_job.id
+            logger.info(f"Created cluster_minus QC job {cluster_minus_qc_job.id}: {cluster_minus_name} (representative for {ligand_type})")
 
     elif desolvation_mode == "full":
         # 全部去溶剂模式：只需要计算中心离子的能量
@@ -319,6 +339,7 @@ def _phase1_create_qc_jobs(
     new_config['cluster_qc_job_id'] = cluster_qc_job.id
     new_config['ligand_qc_jobs'] = ligand_qc_jobs
     new_config['cluster_minus_job_ids'] = cluster_minus_job_ids  # 逐级模式使用
+    new_config['cluster_minus_type_mapping'] = ligand_type_mapping if desolvation_mode == "stepwise" else {}  # 配体类型到 cluster_minus job 的映射
     new_config['center_ion_job_id'] = center_ion_job_id  # 全部去溶剂模式使用
     new_config['desolvation_mode'] = desolvation_mode
     new_config['phase'] = 2  # 下次进入阶段 2
@@ -447,6 +468,9 @@ def _phase2_calculate_desolvation(
 
     if desolvation_mode == "stepwise":
         # 逐级模式：计算每个配体的去溶剂化能
+        # 注意：等价配体（同类型）共享同一个 cluster_minus 能量
+        cluster_minus_type_mapping = config.get('cluster_minus_type_mapping', {})
+
         for i, ligand_info in enumerate(cluster_data['ligands']):
             ligand_type = ligand_info['ligand_type']
             ligand_label = ligand_info['ligand_label']
@@ -468,12 +492,16 @@ def _phase2_calculate_desolvation(
 
             e_ligand = ligand_result.total_energy
 
-            # 获取 E_cluster_minus（使用明确的索引）
-            if i < len(cluster_minus_job_ids):
-                cluster_minus_qc_job_id = cluster_minus_job_ids[i]
-            else:
-                # 兼容旧格式
-                cluster_minus_qc_job_id = qc_job_ids[1 + len(ligand_qc_jobs) + i]
+            # 获取 E_cluster_minus
+            # 优先使用类型映射（等价配体优化）
+            cluster_minus_qc_job_id = cluster_minus_type_mapping.get(ligand_type)
+
+            if not cluster_minus_qc_job_id:
+                # 兼容旧格式：使用索引
+                if i < len(cluster_minus_job_ids):
+                    cluster_minus_qc_job_id = cluster_minus_job_ids[i]
+                else:
+                    cluster_minus_qc_job_id = qc_job_ids[1 + len(ligand_qc_jobs) + i]
 
             cluster_minus_result = db.query(QCResult).filter(
                 QCResult.qc_job_id == cluster_minus_qc_job_id

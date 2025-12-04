@@ -1427,13 +1427,27 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                           </Space>
                         ),
                       },
-                      ...previewData.cluster_minus_structures.map((cm, idx) => ({
+                      ...previewData.cluster_minus_structures.map((cm: any, idx: number) => ({
                         key: `minus_${idx}`,
                         label: (
-                          <Space>
-                            <Badge status="warning" />
-                            <span style={{ fontSize: 12 }}>
+                          <Space size={4}>
+                            <Badge status={cm.is_representative ? "warning" : "default"} />
+                            <span style={{
+                              fontSize: 12,
+                              color: cm.is_representative ? undefined : token.colorTextSecondary,
+                              textDecoration: !cm.is_representative ? 'line-through' : undefined,
+                            }}>
                               减 {cm.removed_ligand} ({cm.atom_count}原子)
+                              {cm.is_equivalent && cm.is_representative && (
+                                <Tag color="blue" style={{ marginLeft: 4, fontSize: 10 }}>
+                                  ×{cm.equivalent_count}等价
+                                </Tag>
+                              )}
+                              {cm.is_equivalent && !cm.is_representative && (
+                                <span style={{ marginLeft: 4, fontSize: 10, color: token.colorTextSecondary }}>
+                                  (等价, 跳过)
+                                </span>
+                              )}
                             </span>
                           </Space>
                         ),
