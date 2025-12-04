@@ -10,6 +10,7 @@ export type ThemeMode = 'light' | 'dark';
 
 interface ThemeState {
   mode: ThemeMode;
+  isDark: boolean;
   toggleTheme: () => void;
   setTheme: (mode: ThemeMode) => void;
 }
@@ -77,10 +78,12 @@ export const useThemeStore = create<ThemeState>()(
   persist(
     (set) => ({
       mode: 'light',
-      toggleTheme: () => set((state) => ({ 
-        mode: state.mode === 'light' ? 'dark' : 'light' 
+      isDark: false,
+      toggleTheme: () => set((state) => ({
+        mode: state.mode === 'light' ? 'dark' : 'light',
+        isDark: state.mode === 'light',
       })),
-      setTheme: (mode) => set({ mode }),
+      setTheme: (mode) => set({ mode, isDark: mode === 'dark' }),
     }),
     {
       name: 'molyte-theme',
