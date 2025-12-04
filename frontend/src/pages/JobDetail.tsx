@@ -455,23 +455,19 @@ export default function JobDetail() {
         </Row>
       </Card>
 
-      {/* 错误信息 - 简洁显示 */}
+      {/* 错误信息 - 简洁一句话 */}
       {job.error_message && job.status !== JobStatus.COMPLETED && (() => {
         const translatedError = translateError(job.error_message);
         return (
-          <Alert
-            message={
-              <Tooltip title={translatedError?.originalError || job.error_message}>
-                <span style={{ cursor: 'pointer' }}>
-                  {translatedError?.title || '计算失败'} - {translatedError?.suggestion || '请查看日志或联系管理员'}
-                </span>
-              </Tooltip>
-            }
-            type="error"
-            showIcon
-            style={{ marginBottom: 12, borderRadius: 8 }}
-            banner
-          />
+          <Tooltip title={job.error_message}>
+            <Alert
+              message={translatedError?.description || '任务运行过程中发生错误'}
+              type="error"
+              showIcon
+              style={{ marginBottom: 12, borderRadius: 8 }}
+              banner
+            />
+          </Tooltip>
         );
       })()}
 
