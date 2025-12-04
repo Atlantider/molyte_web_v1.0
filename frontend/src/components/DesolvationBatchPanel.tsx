@@ -39,6 +39,7 @@ import {
   ExclamationCircleOutlined,
   BulbOutlined,
   FilterOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { autoSelectSolvationStructures, type AutoSelectedStructure } from '../api/jobs';
@@ -66,6 +67,15 @@ const ANION_PATTERNS = ['PF6', 'TFSI', 'FSI', 'BF4', 'ClO4', 'NO3', 'OTf', 'BOB'
 // 隐式溶剂选项（按介电常数分组）
 const SOLVENT_OPTIONS = [
   {
+    label: '📌 电池电解液常用',
+    options: [
+      { value: 'DiMethylCarbonate', label: 'DMC 碳酸二甲酯 ε=3.1' },
+      { value: 'EthyleneCarbonate', label: 'EC 碳酸乙烯酯 ε=89.8' },
+      { value: 'PropyleneCarbonate', label: 'PC 碳酸丙烯酯 ε=64.9' },
+      { value: 'TetraHydroFuran', label: 'THF 四氢呋喃 ε=7.4' },
+    ],
+  },
+  {
     label: '📌 高介电常数 (ε>40)',
     options: [
       { value: 'Water', label: '水 (Water) ε=78.4' },
@@ -92,12 +102,9 @@ const SOLVENT_OPTIONS = [
     ],
   },
   {
-    label: '📌 电池电解液常用',
+    label: '📌 自定义',
     options: [
-      { value: 'DiMethylCarbonate', label: 'DMC 碳酸二甲酯 ε=3.1' },
-      { value: 'EthyleneCarbonate', label: 'EC 碳酸乙烯酯 ε=89.8' },
-      { value: 'PropyleneCarbonate', label: 'PC 碳酸丙烯酯 ε=64.9' },
-      { value: 'TetraHydroFuran', label: 'THF 四氢呋喃 ε=7.4' },
+      { value: 'custom', label: '自定义溶剂 (手动输入介电常数)' },
     ],
   },
 ];
@@ -109,6 +116,21 @@ interface DesolvationBatchPanelProps {
 
 interface SelectedStructure extends AutoSelectedStructure {
   selected: boolean;
+}
+
+// 待提交任务项
+interface PendingTask {
+  structureId: number;
+  structureName: string;  // 显示名称
+  compositionKey: string;
+  methodLevel: 'fast' | 'standard' | 'accurate';
+  desolvationMode: 'stepwise' | 'full';
+  solventModel: SolventModel;
+  solventName?: string;
+  customEps?: number;
+  slurmPartition: string;
+  slurmCpus: number;
+  slurmTime: number;
 }
 
 export default function DesolvationBatchPanel({ jobId, onStructureSelect }: DesolvationBatchPanelProps) {
@@ -124,6 +146,9 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
   const [expandedRowKeys, setExpandedRowKeys] = useState<number[]>([]);
   const [qcTasksCache, setQcTasksCache] = useState<Record<number, DesolvationQCTasksResponse>>({});
+
+  // 待提交队列
+  const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
 
   // 多维度筛选条件
   const [cnFilter, setCnFilter] = useState<number[]>([]);  // 配位数筛选
@@ -141,6 +166,7 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
     setCnFilter([]);
     setAnionCountFilter([]);
     setSolventTypeFilter([]);
+    setPendingTasks([]);  // 清空待提交队列
   }, [jobId]);
 
   // 计算参数
@@ -148,12 +174,18 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
   const [methodLevel, setMethodLevel] = useState<'fast' | 'standard' | 'accurate'>('standard');
   const [solventModel, setSolventModel] = useState<SolventModel>('gas');
   const [solventName, setSolventName] = useState<string>('Water');
+  const [customEps, setCustomEps] = useState<number>(80.0);  // 自定义介电常数
 
-  // 辅助函数：计算结构中的阴离子数量
+  // Slurm 资源配置
+  const [slurmPartition, setSlurmPartition] = useState<string>('cpu');
+  const [slurmCpus, setSlurmCpus] = useState<number>(16);
+  const [slurmTime, setSlurmTime] = useState<number>(7200);  // 分钟
+
+  // 辅助函数：计算结构中的阴离子数量（只计算 count > 0 的）
   const getAnionCount = (composition: Record<string, number>): number => {
     let count = 0;
     Object.entries(composition).forEach(([mol, num]) => {
-      if (ANION_PATTERNS.some(anion => mol.toUpperCase().includes(anion.toUpperCase()))) {
+      if (num > 0 && ANION_PATTERNS.some(anion => mol.toUpperCase().includes(anion.toUpperCase()))) {
         count += num;
       }
     });
@@ -260,35 +292,127 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
     loadOverview();
   }, [loadOverview]);
 
-  // 批量提交
-  const handleBatchSubmit = async () => {
+  // 添加到待提交队列
+  const handleAddToQueue = () => {
     if (selectedKeys.length === 0) {
       message.warning('请选择要计算的溶剂化结构');
       return;
     }
-    
+
+    // 获取选中结构的信息
+    const newTasks: PendingTask[] = selectedKeys.map(structureId => {
+      const structure = structures.find(s => s.id === structureId);
+      return {
+        structureId,
+        structureName: structure?.electrolyte_name || `结构 #${structureId}`,
+        compositionKey: structure?.composition_key || '',
+        methodLevel,
+        desolvationMode,
+        solventModel,
+        solventName: solventModel !== 'gas' ? solventName : undefined,
+        customEps: solventName === 'custom' ? customEps : undefined,
+        slurmPartition,
+        slurmCpus,
+        slurmTime,
+      };
+    });
+
+    // 过滤掉已存在的任务
+    const existingIds = new Set(pendingTasks.map(t => t.structureId));
+    const uniqueNewTasks = newTasks.filter(t => !existingIds.has(t.structureId));
+
+    if (uniqueNewTasks.length === 0) {
+      message.warning('所选结构已在待提交队列中');
+      return;
+    }
+
+    setPendingTasks(prev => [...prev, ...uniqueNewTasks]);
+    setSelectedKeys([]);  // 清空选择
+    message.success(`已添加 ${uniqueNewTasks.length} 个任务到待提交队列`);
+  };
+
+  // 从队列中移除任务
+  const handleRemoveFromQueue = (structureId: number) => {
+    setPendingTasks(prev => prev.filter(t => t.structureId !== structureId));
+  };
+
+  // 提交单个任务
+  const handleSubmitSingle = async (task: PendingTask) => {
     setSubmitting(true);
     try {
-      const solventConfig: SolventConfig | undefined = solventModel === 'gas' ? undefined : {
-        model: solventModel,
-        solvent_name: solventName || undefined,
-      };
-      
-      const result = await batchCreateDesolvationJobs({
+      let solventConfig: SolventConfig | undefined;
+      if (task.solventModel !== 'gas') {
+        if (task.solventName === 'custom') {
+          solventConfig = { model: 'custom', eps: task.customEps };
+        } else {
+          solventConfig = { model: task.solventModel, solvent_name: task.solventName };
+        }
+      }
+
+      await batchCreateDesolvationJobs({
         md_job_id: jobId,
-        structure_ids: selectedKeys,
-        method_level: methodLevel,
-        desolvation_mode: desolvationMode,
+        structure_ids: [task.structureId],
+        method_level: task.methodLevel,
+        desolvation_mode: task.desolvationMode,
         solvent_config: solventConfig,
+        slurm_partition: task.slurmPartition,
+        slurm_cpus: task.slurmCpus,
+        slurm_time: task.slurmTime,
       });
-      
-      message.success(`已创建 ${result.created_count} 个任务，跳过 ${result.skipped_count} 个已存在任务`);
+
+      // 从队列中移除
+      setPendingTasks(prev => prev.filter(t => t.structureId !== task.structureId));
+      message.success(`任务 ${task.structureName} 已提交`);
       loadOverview();
     } catch (error: any) {
       message.error(`提交失败: ${error.message || '未知错误'}`);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // 批量提交所有待提交任务
+  const handleSubmitAll = async () => {
+    if (pendingTasks.length === 0) {
+      message.warning('待提交队列为空');
+      return;
+    }
+
+    setSubmitting(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const task of pendingTasks) {
+      try {
+        let solventConfig: SolventConfig | undefined;
+        if (task.solventModel !== 'gas') {
+          if (task.solventName === 'custom') {
+            solventConfig = { model: 'custom', eps: task.customEps };
+          } else {
+            solventConfig = { model: task.solventModel, solvent_name: task.solventName };
+          }
+        }
+
+        await batchCreateDesolvationJobs({
+          md_job_id: jobId,
+          structure_ids: [task.structureId],
+          method_level: task.methodLevel,
+          desolvation_mode: task.desolvationMode,
+          solvent_config: solventConfig,
+          slurm_partition: task.slurmPartition,
+          slurm_cpus: task.slurmCpus,
+          slurm_time: task.slurmTime,
+        });
+        successCount++;
+      } catch {
+        failCount++;
+      }
+    }
+
+    setPendingTasks([]);  // 清空队列
+    message.success(`已提交 ${successCount} 个任务${failCount > 0 ? `，${failCount} 个失败` : ''}`);
+    loadOverview();
+    setSubmitting(false);
   };
 
   // 加载 QC 子任务
@@ -500,7 +624,7 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
     {
       title: '计算方法',
       key: 'method',
-      width: 180,
+      width: 200,
       render: (_, record) => {
         const methodConfig: Record<string, { functional: string; basis: string; color: string }> = {
           fast: { functional: 'B3LYP', basis: '6-31G(d)', color: 'green' },
@@ -508,14 +632,26 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
           accurate: { functional: 'ωB97XD', basis: '6-311++G(2d,2p)', color: 'purple' },
         };
         const m = methodConfig[record.method_level] || { functional: '?', basis: '?', color: 'default' };
+
+        // 溶剂模型显示
+        let solventDisplay = '气相';
+        if (record.solvent_config) {
+          const model = record.solvent_config.model?.toUpperCase() || '';
+          if (record.solvent_config.model === 'custom') {
+            solventDisplay = `${model} (ε=${record.solvent_config.eps || '?'})`;
+          } else if (record.solvent_config.solvent_name) {
+            solventDisplay = `${model}: ${record.solvent_config.solvent_name}`;
+          } else {
+            solventDisplay = model;
+          }
+        }
+
         return (
           <Space direction="vertical" size={0}>
             <Text style={{ fontSize: 12 }}>{m.functional}/{m.basis}</Text>
-            {record.solvent_config && (
-              <Text type="secondary" style={{ fontSize: 10 }}>
-                {record.solvent_config.model?.toUpperCase()}: {record.solvent_config.solvent_name || ''}
-              </Text>
-            )}
+            <Text type="secondary" style={{ fontSize: 10 }}>
+              溶剂: {solventDisplay}
+            </Text>
           </Space>
         );
       },
@@ -884,7 +1020,7 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                 {/* 隐式溶剂选择 */}
                 {solventModel !== 'gas' && (
                   <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-                    <Col span={12}>
+                    <Col span={8}>
                       <Text style={{ fontSize: 12, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
                         隐式溶剂
                       </Text>
@@ -898,7 +1034,23 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                         options={SOLVENT_OPTIONS}
                       />
                     </Col>
-                    <Col span={12}>
+                    {solventName === 'custom' && (
+                      <Col span={8}>
+                        <Text style={{ fontSize: 12, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
+                          介电常数 ε
+                        </Text>
+                        <InputNumber
+                          value={customEps}
+                          onChange={(v) => setCustomEps(v || 80)}
+                          min={1}
+                          max={200}
+                          step={0.1}
+                          style={{ width: '100%' }}
+                          placeholder="输入介电常数"
+                        />
+                      </Col>
+                    )}
+                    <Col span={solventName === 'custom' ? 8 : 16}>
                       <div style={{
                         padding: '8px 12px',
                         background: isDark ? 'rgba(24, 144, 255, 0.1)' : '#e6f4ff',
@@ -913,16 +1065,67 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                   </Row>
                 )}
 
+                {/* 计算资源配置 */}
+                <Card
+                  size="small"
+                  title="计算资源配置"
+                  style={{ marginTop: 16, background: isDark ? 'rgba(0,0,0,0.2)' : '#fafafa' }}
+                >
+                  <Row gutter={16}>
+                    <Col span={8}>
+                      <Text style={{ fontSize: 12, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
+                        队列/分区
+                      </Text>
+                      <Select
+                        value={slurmPartition}
+                        onChange={setSlurmPartition}
+                        style={{ width: '100%' }}
+                        options={[
+                          { label: 'cpu', value: 'cpu' },
+                          { label: 'gpu', value: 'gpu' },
+                          { label: 'debug', value: 'debug' },
+                        ]}
+                      />
+                    </Col>
+                    <Col span={8}>
+                      <Text style={{ fontSize: 12, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
+                        CPU 核心数
+                      </Text>
+                      <InputNumber
+                        value={slurmCpus}
+                        onChange={(v) => setSlurmCpus(v || 16)}
+                        min={1}
+                        max={64}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+                    <Col span={8}>
+                      <Text style={{ fontSize: 12, color: token.colorTextSecondary, display: 'block', marginBottom: 4 }}>
+                        最大时间 (分钟)
+                      </Text>
+                      <InputNumber
+                        value={slurmTime}
+                        onChange={(v) => setSlurmTime(v || 7200)}
+                        min={10}
+                        max={43200}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+                  </Row>
+                  <Text type="secondary" style={{ fontSize: 11, marginTop: 8, display: 'block' }}>
+                    💡 QC计算通常使用 16 核，标准基组需要 30分钟~数小时，大基组可能需要更长时间
+                  </Text>
+                </Card>
+
                 <div style={{ marginTop: 20 }}>
                   <Button
                     type="primary"
-                    icon={<ThunderboltOutlined />}
-                    onClick={handleBatchSubmit}
-                    loading={submitting}
+                    icon={<PlusOutlined />}
+                    onClick={handleAddToQueue}
                     disabled={selectedKeys.length === 0}
                     size="large"
                   >
-                    批量创建计算任务 ({selectedKeys.length} 个)
+                    添加到待提交队列 ({selectedKeys.length} 个)
                   </Button>
                 </div>
               </div>
@@ -931,7 +1134,118 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
         />
       )}
 
-      {/* 第三步：任务监控 */}
+      {/* 第三步：待提交队列 */}
+      {pendingTasks.length > 0 && (
+        <Card
+          size="small"
+          title={
+            <Space>
+              <span>待提交队列</span>
+              <Tag color="orange">{pendingTasks.length} 个任务</Tag>
+            </Space>
+          }
+          style={{ marginTop: 16 }}
+          extra={
+            <Space>
+              <Button
+                danger
+                size="small"
+                onClick={() => setPendingTasks([])}
+              >
+                清空队列
+              </Button>
+              <Button
+                type="primary"
+                icon={<ThunderboltOutlined />}
+                onClick={handleSubmitAll}
+                loading={submitting}
+              >
+                全部提交
+              </Button>
+            </Space>
+          }
+        >
+          <Table
+            dataSource={pendingTasks}
+            rowKey="structureId"
+            size="small"
+            pagination={false}
+            columns={[
+              {
+                title: '结构',
+                key: 'structure',
+                render: (_, task) => (
+                  <Space direction="vertical" size={0}>
+                    <Text strong style={{ fontSize: 12 }}>{task.structureName}</Text>
+                    <Text type="secondary" style={{ fontSize: 10 }}>{task.compositionKey}</Text>
+                  </Space>
+                ),
+              },
+              {
+                title: '计算方法',
+                key: 'method',
+                width: 180,
+                render: (_, task) => {
+                  const methodConfig: Record<string, string> = {
+                    fast: 'B3LYP/6-31G(d)',
+                    standard: 'B3LYP/6-31++G(d,p)',
+                    accurate: 'ωB97XD/6-311++G(2d,2p)',
+                  };
+                  return <Text style={{ fontSize: 12 }}>{methodConfig[task.methodLevel]}</Text>;
+                },
+              },
+              {
+                title: '溶剂模型',
+                key: 'solvent',
+                width: 120,
+                render: (_, task) => {
+                  if (task.solventModel === 'gas') return <Text style={{ fontSize: 12 }}>气相</Text>;
+                  if (task.solventName === 'custom') {
+                    return <Text style={{ fontSize: 12 }}>{task.solventModel.toUpperCase()} (ε={task.customEps})</Text>;
+                  }
+                  return <Text style={{ fontSize: 12 }}>{task.solventModel.toUpperCase()}: {task.solventName}</Text>;
+                },
+              },
+              {
+                title: '资源',
+                key: 'resource',
+                width: 140,
+                render: (_, task) => (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {task.slurmPartition} / {task.slurmCpus}核 / {task.slurmTime}分钟
+                  </Text>
+                ),
+              },
+              {
+                title: '操作',
+                key: 'action',
+                width: 120,
+                render: (_, task) => (
+                  <Space size={4}>
+                    <Button
+                      type="primary"
+                      size="small"
+                      onClick={() => handleSubmitSingle(task)}
+                      loading={submitting}
+                    >
+                      提交
+                    </Button>
+                    <Button
+                      danger
+                      size="small"
+                      onClick={() => handleRemoveFromQueue(task.structureId)}
+                    >
+                      移除
+                    </Button>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        </Card>
+      )}
+
+      {/* 第四步：任务监控 */}
       {overview && overview.total_jobs > 0 && (
         <div style={{ marginTop: 16 }}>
           <Divider orientation="left">

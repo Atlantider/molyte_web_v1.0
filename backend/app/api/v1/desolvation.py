@@ -166,7 +166,11 @@ async def batch_create_desolvation_jobs(
         config = {
             "solvation_structure_id": structure_id,
             "method_level": batch_data.method_level,
-            "desolvation_mode": batch_data.desolvation_mode
+            "desolvation_mode": batch_data.desolvation_mode,
+            # Slurm 资源配置
+            "slurm_partition": batch_data.slurm_partition or "cpu",
+            "slurm_cpus": batch_data.slurm_cpus or 16,
+            "slurm_time": batch_data.slurm_time or 7200,
         }
         if batch_data.solvent_config:
             config["solvent_config"] = batch_data.solvent_config.model_dump()

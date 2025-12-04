@@ -108,6 +108,10 @@ export interface BatchDesolvationJobCreate {
   method_level: string;
   desolvation_mode?: DesolvationMode;
   solvent_config?: SolventConfig;
+  // Slurm 资源配置
+  slurm_partition?: string;
+  slurm_cpus?: number;
+  slurm_time?: number;
 }
 
 export interface BatchDesolvationJobResponse {

@@ -104,6 +104,10 @@ class BatchDesolvationJobCreate(BaseModel):
     method_level: str = Field(default="standard", description="计算方法级别")
     desolvation_mode: Literal["stepwise", "full"] = Field(default="stepwise")
     solvent_config: Optional[SolventConfigSchema] = None
+    # Slurm 资源配置
+    slurm_partition: Optional[str] = Field(default="cpu", description="Slurm队列/分区")
+    slurm_cpus: Optional[int] = Field(default=16, ge=1, le=64, description="CPU核心数")
+    slurm_time: Optional[int] = Field(default=7200, ge=10, description="最大运行时间（分钟）")
 
 
 class BatchDesolvationJobResponse(BaseModel):
