@@ -397,6 +397,13 @@ class PollingWorker:
                     break
                 self._process_reorg_energy_job(job)
 
+            # 获取待处理的 Cluster 高级计算任务
+            cluster_analysis_jobs = self._fetch_pending_jobs('cluster_analysis')
+            for job in cluster_analysis_jobs:
+                if len(self.running_jobs) >= self.config['worker']['max_concurrent_jobs']:
+                    break
+                self._process_cluster_analysis_job(job)
+
             # 检查等待 QC 任务完成的去溶剂化任务
             # 注意：在 API 架构下，这个功能由后端处理，worker 不需要直接访问数据库
             # self._check_waiting_desolvation_jobs()
@@ -4678,14 +4685,17 @@ echo "QC calculation completed"
         result_files: Optional[List[str]] = None,
         progress: Optional[float] = None,
         cpu_hours: Optional[float] = None,
-        resp_cpu_hours: Optional[float] = None
+        resp_cpu_hours: Optional[float] = None,
+        qc_job_ids: Optional[List[int]] = None,
+        result: Optional[Dict] = None
     ):
         """更新任务状态到阿里云"""
         try:
             endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/status"
 
-            # 确保状态值有效
-            valid_statuses = ["CREATED", "SUBMITTED", "QUEUED", "RUNNING", "POSTPROCESSING", "COMPLETED", "FAILED", "CANCELLED"]
+            # 确保状态值有效（包括 Cluster Analysis 特有的状态）
+            valid_statuses = ["CREATED", "SUBMITTED", "QUEUED", "RUNNING", "POSTPROCESSING",
+                            "COMPLETED", "FAILED", "CANCELLED", "WAITING_QC", "CALCULATING"]
             if status not in valid_statuses:
                 self.logger.error(f"无效的状态值: {status}，有效值: {valid_statuses}")
                 return
@@ -4711,6 +4721,10 @@ echo "QC calculation completed"
                 data['cpu_hours'] = cpu_hours
             if resp_cpu_hours is not None:
                 data['resp_cpu_hours'] = resp_cpu_hours
+            if qc_job_ids is not None:
+                data['qc_job_ids'] = qc_job_ids
+            if result is not None:
+                data['result'] = result
 
             response = requests.put(
                 endpoint,
@@ -4726,6 +4740,116 @@ echo "QC calculation completed"
 
         except Exception as e:
             self.logger.error(f"更新任务 {job_id} 状态失败: {e}", exc_info=True)
+
+    def _process_cluster_analysis_job(self, job: Dict):
+        """
+        处理 Cluster 高级计算任务
+
+        统一处理多种计算类型：
+        - BINDING_TOTAL: 总 Binding Energy
+        - BINDING_PAIRWISE: 分子-Li Binding
+        - DESOLVATION_STEPWISE: 逐级去溶剂化
+        - DESOLVATION_FULL: 完全去溶剂化
+        - REDOX: 氧化还原电位
+        - REORGANIZATION: Marcus 重组能
+        """
+        job_id = job['id']
+        config = job.get('config', {})
+        md_job_id = config.get('md_job_id')
+        calc_types = config.get('calc_types', [])
+        qc_task_plan = config.get('qc_task_plan', {})
+
+        self.logger.info(f"开始处理 Cluster 高级计算任务 {job_id} (MD job: {md_job_id})")
+        self.logger.info(f"计算类型: {calc_types}")
+
+        try:
+            # 1. 更新状态为 RUNNING
+            self._update_job_status(job_id, 'RUNNING', 'cluster_analysis', progress=0)
+
+            # 2. 获取需要创建的 QC 任务
+            planned_tasks = qc_task_plan.get('planned_qc_tasks', [])
+            new_tasks = [t for t in planned_tasks if t.get('status') == 'new']
+            reused_tasks = [t for t in planned_tasks if t.get('status') == 'reused']
+
+            self.logger.info(f"Cluster 任务 {job_id}: 需要新建 {len(new_tasks)} 个 QC 任务, "
+                           f"复用 {len(reused_tasks)} 个已有任务")
+
+            # 3. 创建新的 QC 任务
+            created_qc_job_ids = []
+            for i, task in enumerate(new_tasks):
+                try:
+                    qc_job_id = self._create_qc_job_for_cluster_analysis(
+                        job_id, md_job_id, task, config.get('qc_config', {})
+                    )
+                    if qc_job_id:
+                        created_qc_job_ids.append(qc_job_id)
+                        progress = (i + 1) / len(new_tasks) * 30  # 创建 QC 任务占 30%
+                        self._update_job_status(job_id, 'RUNNING', 'cluster_analysis',
+                                              progress=progress)
+                except Exception as e:
+                    self.logger.error(f"创建 QC 任务失败: {e}")
+
+            # 4. 更新状态为 WAITING_QC
+            self._update_job_status(
+                job_id, 'WAITING_QC', 'cluster_analysis',
+                progress=30,
+                qc_job_ids=created_qc_job_ids
+            )
+
+            self.logger.info(f"Cluster 任务 {job_id}: 已创建 {len(created_qc_job_ids)} 个 QC 任务，"
+                           f"等待 QC 计算完成")
+
+        except Exception as e:
+            self.logger.error(f"处理 Cluster 高级计算任务 {job_id} 失败: {e}", exc_info=True)
+            self._update_job_status(job_id, 'FAILED', 'cluster_analysis', error_message=str(e))
+
+    def _create_qc_job_for_cluster_analysis(self, cluster_job_id: int, md_job_id: int,
+                                            task: Dict, qc_config: Dict) -> Optional[int]:
+        """为 Cluster 高级计算创建 QC 任务"""
+        task_type = task.get('task_type', '')
+        smiles = task.get('smiles', '')
+        structure_id = task.get('structure_id')
+        charge = task.get('charge', 0)
+        multiplicity = task.get('multiplicity', 1)
+
+        # 构建 QC 任务配置
+        qc_job_config = {
+            'molecule_name': f"cluster_{cluster_job_id}_{task_type}",
+            'smiles': smiles,
+            'charge': charge,
+            'spin_multiplicity': multiplicity,
+            'functional': qc_config.get('functional', 'B3LYP'),
+            'basis_set': qc_config.get('basis_set', '6-31G*'),
+            'solvent_model': qc_config.get('solvent_model'),
+            'solvent_name': qc_config.get('solvent'),
+            'md_job_id': md_job_id,
+            'cluster_analysis_job_id': cluster_job_id,
+            'task_type': task_type,
+            'structure_id': structure_id,
+        }
+
+        # 调用 API 创建 QC 任务
+        try:
+            endpoint = f"{self.api_base_url}/qc/jobs"
+            response = requests.post(
+                endpoint,
+                headers=self.api_headers,
+                json=qc_job_config,
+                timeout=30
+            )
+
+            if response.status_code in [200, 201]:
+                result = response.json()
+                qc_job_id = result.get('id')
+                self.logger.info(f"创建 QC 任务成功: {qc_job_id} (type={task_type})")
+                return qc_job_id
+            else:
+                self.logger.error(f"创建 QC 任务失败: {response.status_code} - {response.text}")
+                return None
+
+        except Exception as e:
+            self.logger.error(f"创建 QC 任务异常: {e}")
+            return None
 
 
 def main():

@@ -71,7 +71,7 @@ class WorkerHeartbeat(BaseModel):
 class JobStatusUpdate(BaseModel):
     """任务状态更新"""
     status: str
-    job_type: str  # MD, QC, POSTPROCESS, BINDING, REDOX, or REORG
+    job_type: str  # MD, QC, POSTPROCESS, BINDING, REDOX, REORG, or CLUSTER_ANALYSIS
     worker_name: str
     slurm_job_id: Optional[str] = None
     work_dir: Optional[str] = None
@@ -81,10 +81,9 @@ class JobStatusUpdate(BaseModel):
     progress: Optional[float] = None  # 任务进度 0-100
     cpu_hours: Optional[float] = None  # MD/QC 计算消耗的 CPU 核时数
     resp_cpu_hours: Optional[float] = None  # RESP 电荷计算消耗的 CPU 核时数
-    # Binding/Redox/Reorg 任务专用字段
+    # Binding/Redox/Reorg/ClusterAnalysis 任务专用字段
     result: Optional[Dict[str, Any]] = None  # 分析结果
     qc_job_ids: Optional[List[int]] = None  # 关联的 QC 任务 ID 列表
-    qc_job_ids: Optional[List[int]] = None  # 关联的 QC 任务 ID
 
 
 class PendingJobResponse(BaseModel):
@@ -367,6 +366,30 @@ async def get_pending_jobs(
                 id=job.id,
                 type="REORG",
                 config=job.config or {},
+                created_at=job.created_at
+            )
+            for job in jobs
+        ]
+
+    elif job_type == "CLUSTER_ANALYSIS":
+        # 获取 SUBMITTED 状态的 Cluster 高级计算任务
+        from app.models.job import AdvancedClusterJob, AdvancedClusterJobStatus
+
+        jobs = db.query(AdvancedClusterJob).filter(
+            AdvancedClusterJob.status == AdvancedClusterJobStatus.SUBMITTED
+        ).order_by(AdvancedClusterJob.created_at).limit(limit).all()
+
+        return [
+            PendingJobResponse(
+                id=job.id,
+                type="CLUSTER_ANALYSIS",
+                config={
+                    "md_job_id": job.md_job_id,
+                    "calc_types": job.calc_types,
+                    "selected_structures": job.selected_structures,
+                    "qc_config": job.qc_config,
+                    "qc_task_plan": job.qc_task_plan,
+                },
                 created_at=job.created_at
             )
             for job in jobs
@@ -799,6 +822,58 @@ async def update_job_status(
 
         logger.info(
             f"Reorganization Energy Job {job_id} status updated to {mapped_status} "
+            f"by worker {status_update.worker_name}"
+        )
+
+        return {"status": "ok", "job_id": job_id, "new_status": mapped_status}
+
+    elif job_type == "CLUSTER_ANALYSIS":
+        from app.models.job import AdvancedClusterJob, AdvancedClusterJobStatus
+
+        valid_statuses = [s.value for s in AdvancedClusterJobStatus]
+        if mapped_status not in valid_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status for CLUSTER_ANALYSIS job: {mapped_status}"
+            )
+
+        job = db.query(AdvancedClusterJob).filter(AdvancedClusterJob.id == job_id).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Advanced Cluster Job {job_id} not found"
+            )
+
+        job.status = AdvancedClusterJobStatus(mapped_status)
+
+        if status_update.progress is not None:
+            job.progress = status_update.progress
+
+        if status_update.error_message:
+            job.error_message = status_update.error_message
+
+        if mapped_status == "RUNNING" and not job.started_at:
+            job.started_at = datetime.now()
+
+        if mapped_status in ["COMPLETED", "FAILED"]:
+            job.finished_at = datetime.now()
+            if mapped_status == "COMPLETED":
+                job.progress = 100.0
+
+        # 更新结果
+        if status_update.result:
+            job.results = status_update.result
+
+        # 更新 QC 任务计划
+        if status_update.qc_job_ids:
+            if not job.qc_task_plan:
+                job.qc_task_plan = {}
+            job.qc_task_plan["new_qc_jobs"] = status_update.qc_job_ids
+
+        db.commit()
+
+        logger.info(
+            f"Advanced Cluster Job {job_id} status updated to {mapped_status} "
             f"by worker {status_update.worker_name}"
         )
 
