@@ -1155,8 +1155,8 @@ def get_molecule_charge(
     获取分子电荷
 
     优先级：
-    1. 从 SMILES 计算（最准确）
-    2. 从 molecule_structures 中查找
+    1. 从 molecule_structures 中查找 total_charge（最准确，因为是从 RESP 电荷计算的）
+    2. 从 SMILES 计算
     3. 使用硬编码映射（后备）
 
     Args:
@@ -1165,9 +1165,20 @@ def get_molecule_charge(
         molecule_structures: 来自 ResultSummary 的分子结构列表（可选）
 
     Returns:
-        分子电荷
+        分子电荷（整数）
     """
-    # 1. 尝试从 SMILES 计算电荷（最准确）
+    # 1. 优先从 molecule_structures 获取（最准确，来自 Worker 端 RESP 电荷计算）
+    if molecule_structures:
+        for mol_struct in molecule_structures:
+            if mol_struct.get('name') == molecule_type:
+                total_charge = mol_struct.get('total_charge')
+                if total_charge is not None:
+                    # 四舍五入到整数（total_charge 可能是浮点数）
+                    charge = round(total_charge)
+                    logger.debug(f"Got charge {charge} for {molecule_type} from molecule_structures (raw: {total_charge})")
+                    return charge
+
+    # 2. 尝试从 SMILES 计算电荷
     if smiles:
         try:
             from rdkit import Chem
@@ -1179,21 +1190,8 @@ def get_molecule_charge(
         except Exception as e:
             logger.debug(f"Failed to calculate charge from SMILES for {molecule_type}: {e}")
 
-    # 2. 尝试从 molecule_structures 获取
-    if molecule_structures:
-        for mol_struct in molecule_structures:
-            if mol_struct.get('name') == molecule_type:
-                charge = mol_struct.get('total_charge')
-                if charge is not None:
-                    logger.debug(f"Got charge {charge} for {molecule_type} from molecule_structures")
-                    return charge
-                # 如果有 SMILES，递归尝试计算
-                mol_smiles = mol_struct.get('smiles')
-                if mol_smiles:
-                    return get_molecule_charge(molecule_type, smiles=mol_smiles)
-
     # 3. 后备：使用硬编码映射（常见分子）
-    # 注意：这只是后备方案，新分子应该通过 SMILES 或 molecule_structures 获取电荷
+    # 注意：这只是后备方案，新分子应该通过 molecule_structures 获取电荷
     charge_map = {
         # 阴离子 (charge = -1)
         'FSI': -1,
@@ -1223,7 +1221,7 @@ def get_molecule_charge(
     charge = charge_map.get(molecule_type, 0)
     if molecule_type not in charge_map:
         logger.warning(f"Unknown molecule type '{molecule_type}', assuming charge=0. "
-                       f"Consider providing SMILES for accurate charge calculation.")
+                       f"Ensure molecule_structures contains this molecule for accurate charge.")
     return charge
 
 
