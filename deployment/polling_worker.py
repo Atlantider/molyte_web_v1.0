@@ -404,6 +404,9 @@ class PollingWorker:
                     break
                 self._process_cluster_analysis_job(job)
 
+            # 检查等待 QC 任务完成的 Cluster 高级计算任务
+            self._check_waiting_cluster_analysis_jobs()
+
             # 检查等待 QC 任务完成的去溶剂化任务
             # 注意：在 API 架构下，这个功能由后端处理，worker 不需要直接访问数据库
             # self._check_waiting_desolvation_jobs()
@@ -4801,6 +4804,109 @@ echo "QC calculation completed"
 
         except Exception as e:
             self.logger.error(f"处理 Cluster 高级计算任务 {job_id} 失败: {e}", exc_info=True)
+            self._update_job_status(job_id, 'FAILED', 'cluster_analysis', error_message=str(e))
+
+    def _check_waiting_cluster_analysis_jobs(self):
+        """检查等待 QC 任务完成的 Cluster 高级计算任务"""
+        try:
+            # 获取 WAITING_QC 状态的任务
+            endpoint = f"{self.api_base_url}/workers/jobs/pending"
+            params = {
+                'job_type': 'CLUSTER_ANALYSIS',
+                'status': 'WAITING_QC',
+                'limit': 10
+            }
+
+            response = requests.get(
+                endpoint,
+                headers=self.api_headers,
+                params=params,
+                timeout=self.config['api']['timeout']
+            )
+
+            if response.status_code != 200:
+                return
+
+            waiting_jobs = response.json()
+
+            for job in waiting_jobs:
+                job_id = job['id']
+
+                # 检查 QC 任务状态
+                qc_status = self._check_cluster_analysis_qc_status(job_id)
+
+                if qc_status.get('all_completed'):
+                    self.logger.info(f"Cluster 任务 {job_id}: 所有 QC 任务已完成，开始计算结果")
+                    self._calculate_cluster_analysis_results(job)
+                elif qc_status.get('failed', 0) > 0:
+                    self.logger.error(f"Cluster 任务 {job_id}: 有 QC 任务失败")
+                    self._update_job_status(
+                        job_id, 'FAILED', 'cluster_analysis',
+                        error_message=f"{qc_status.get('failed')} 个 QC 任务失败"
+                    )
+                else:
+                    # 更新进度
+                    total = qc_status.get('total_qc_jobs', 1)
+                    completed = qc_status.get('completed', 0)
+                    progress = 30 + (completed / total) * 60  # QC 完成占 30%-90%
+                    self._update_job_status(job_id, 'WAITING_QC', 'cluster_analysis', progress=progress)
+
+        except Exception as e:
+            self.logger.error(f"检查 WAITING_QC 任务失败: {e}", exc_info=True)
+
+    def _check_cluster_analysis_qc_status(self, job_id: int) -> Dict:
+        """检查 Cluster 高级计算的 QC 任务状态"""
+        try:
+            endpoint = f"{self.api_base_url}/cluster-analysis/jobs/{job_id}/qc-status"
+            response = requests.get(
+                endpoint,
+                headers=self.api_headers,
+                timeout=self.config['api']['timeout']
+            )
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                self.logger.warning(f"获取 QC 状态失败: {response.status_code}")
+                return {}
+
+        except Exception as e:
+            self.logger.error(f"检查 QC 状态异常: {e}")
+            return {}
+
+    def _calculate_cluster_analysis_results(self, job: Dict):
+        """计算 Cluster 高级计算结果"""
+        job_id = job['id']
+
+        try:
+            # 更新状态为 CALCULATING
+            self._update_job_status(job_id, 'CALCULATING', 'cluster_analysis', progress=90)
+
+            # 调用 API 计算结果
+            endpoint = f"{self.api_base_url}/cluster-analysis/jobs/{job_id}/calculate"
+            response = requests.post(
+                endpoint,
+                headers=self.api_headers,
+                timeout=120  # 计算可能需要较长时间
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                self.logger.info(f"Cluster 任务 {job_id}: 结果计算完成")
+                self._update_job_status(
+                    job_id, 'COMPLETED', 'cluster_analysis',
+                    progress=100,
+                    result=result.get('results', {})
+                )
+            else:
+                self.logger.error(f"计算结果失败: {response.status_code} - {response.text}")
+                self._update_job_status(
+                    job_id, 'FAILED', 'cluster_analysis',
+                    error_message=f"计算结果失败: {response.text[:200]}"
+                )
+
+        except Exception as e:
+            self.logger.error(f"计算 Cluster 任务 {job_id} 结果失败: {e}", exc_info=True)
             self._update_job_status(job_id, 'FAILED', 'cluster_analysis', error_message=str(e))
 
     def _create_qc_job_for_cluster_analysis(self, cluster_job_id: int, md_job_id: int,

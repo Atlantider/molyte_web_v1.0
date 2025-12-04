@@ -610,3 +610,394 @@ def add_calc_types_to_job(
         details=new_requirements
     )
 
+
+# ============================================================================
+# 结果计算和查询 API
+# ============================================================================
+
+@router.post("/jobs/{job_id}/calculate")
+def calculate_cluster_analysis_results(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    计算 Cluster 高级计算结果
+
+    当所有 QC 任务完成后，计算各种能量结果
+    """
+    job = db.query(AdvancedClusterJobModel).filter(AdvancedClusterJobModel.id == job_id).first()
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"任务 {job_id} 不存在")
+
+    if job.user_id != current_user.id and current_user.role.value != 'admin':
+        raise HTTPException(status_code=403, detail="无权访问此任务")
+
+    # 获取所有相关的 QC 结果
+    qc_task_plan = job.qc_task_plan or {}
+    all_qc_job_ids = (
+        qc_task_plan.get("reused_qc_jobs", []) +
+        qc_task_plan.get("new_qc_jobs", [])
+    )
+
+    # 查询 QC 结果
+    qc_results = {}
+    if all_qc_job_ids:
+        from app.models.qc import QCResult
+        results = db.query(QCResult).filter(QCResult.qc_job_id.in_(all_qc_job_ids)).all()
+        for r in results:
+            qc_results[r.qc_job_id] = {
+                "energy_au": r.energy_au,
+                "energy_ev": r.energy_au * 27.2114 if r.energy_au else None,
+                "homo": r.homo,
+                "lumo": r.lumo,
+                "homo_lumo_gap": r.homo_lumo_gap,
+            }
+
+    # 计算各类型结果
+    results = {}
+    calc_types = job.calc_types or []
+
+    for calc_type in calc_types:
+        try:
+            if calc_type == "BINDING_TOTAL":
+                results["BINDING_TOTAL"] = _calculate_binding_total(job, qc_results, db)
+            elif calc_type == "BINDING_PAIRWISE":
+                results["BINDING_PAIRWISE"] = _calculate_binding_pairwise(job, qc_results, db)
+            elif calc_type == "DESOLVATION_STEPWISE":
+                results["DESOLVATION_STEPWISE"] = _calculate_desolvation_stepwise(job, qc_results, db)
+            elif calc_type == "DESOLVATION_FULL":
+                results["DESOLVATION_FULL"] = _calculate_desolvation_full(job, qc_results, db)
+            elif calc_type == "REDOX":
+                results["REDOX"] = _calculate_redox(job, qc_results, db)
+            elif calc_type == "REORGANIZATION":
+                results["REORGANIZATION"] = _calculate_reorganization(job, qc_results, db)
+        except Exception as e:
+            logger.error(f"计算 {calc_type} 结果失败: {e}")
+            results[calc_type] = {"error": str(e)}
+
+    # 更新任务结果
+    job.results = results
+    job.status = AdvancedClusterJobStatusModel.COMPLETED
+    job.progress = 100.0
+    job.finished_at = datetime.now()
+    db.commit()
+
+    return {"status": "ok", "results": results}
+
+
+def _calculate_binding_total(job, qc_results: Dict, db: Session) -> Dict:
+    """计算总 Binding Energy"""
+    # E_bind = E_cluster - (E_ion + Σ n_j × E_ligand_j)
+    planned_tasks = job.qc_task_plan.get("planned_qc_tasks", [])
+
+    # 找到 cluster 和 ion 的能量
+    e_cluster = None
+    e_ion = None
+    ligand_energies = {}
+
+    for task in planned_tasks:
+        if task.get("calc_type") != "BINDING_TOTAL":
+            continue
+
+        qc_job_id = task.get("existing_qc_job_id")
+        if not qc_job_id or qc_job_id not in qc_results:
+            continue
+
+        energy = qc_results[qc_job_id].get("energy_au")
+        if energy is None:
+            continue
+
+        task_type = task.get("task_type", "")
+        if task_type == "cluster":
+            e_cluster = energy
+        elif task_type == "ion":
+            e_ion = energy
+        elif task_type.startswith("ligand_"):
+            ligand_name = task_type.replace("ligand_", "")
+            ligand_energies[ligand_name] = energy
+
+    if e_cluster is None:
+        return {"error": "缺少 cluster 能量"}
+    if e_ion is None:
+        return {"error": "缺少 ion 能量"}
+
+    # 计算 binding energy（需要知道配体数量）
+    total_ligand_energy = sum(ligand_energies.values())
+    e_bind_au = e_cluster - (e_ion + total_ligand_energy)
+    e_bind_ev = e_bind_au * 27.2114
+    e_bind_kcal = e_bind_au * 627.509
+
+    return {
+        "e_cluster_au": e_cluster,
+        "e_ion_au": e_ion,
+        "ligand_energies_au": ligand_energies,
+        "e_bind_au": e_bind_au,
+        "e_bind_ev": e_bind_ev,
+        "e_bind_kcal_mol": e_bind_kcal,
+    }
+
+
+def _calculate_binding_pairwise(job, qc_results: Dict, db: Session) -> Dict:
+    """计算分子-Li Pairwise Binding Energy"""
+    # E_bind = E(Li-X) - E(Li) - E(X)
+    planned_tasks = job.qc_task_plan.get("planned_qc_tasks", [])
+
+    pairwise_results = []
+
+    # 按 dimer 分组
+    dimers = {}
+    for task in planned_tasks:
+        if task.get("calc_type") != "BINDING_PAIRWISE":
+            continue
+
+        task_type = task.get("task_type", "")
+        smiles = task.get("smiles", "")
+        qc_job_id = task.get("existing_qc_job_id")
+
+        if qc_job_id and qc_job_id in qc_results:
+            energy = qc_results[qc_job_id].get("energy_au")
+            if task_type == "ion":
+                dimers["ion"] = energy
+            elif task_type.startswith("ligand_"):
+                ligand_name = task_type.replace("ligand_", "")
+                if "ligands" not in dimers:
+                    dimers["ligands"] = {}
+                dimers["ligands"][ligand_name] = energy
+            elif task_type.startswith("dimer_"):
+                ligand_name = task_type.replace("dimer_", "")
+                if "dimers" not in dimers:
+                    dimers["dimers"] = {}
+                dimers["dimers"][ligand_name] = energy
+
+    e_ion = dimers.get("ion")
+    ligands = dimers.get("ligands", {})
+    dimer_energies = dimers.get("dimers", {})
+
+    for ligand_name, e_dimer in dimer_energies.items():
+        e_ligand = ligands.get(ligand_name)
+        if e_dimer is not None and e_ligand is not None and e_ion is not None:
+            e_bind = e_dimer - e_ion - e_ligand
+            pairwise_results.append({
+                "ligand": ligand_name,
+                "e_dimer_au": e_dimer,
+                "e_ligand_au": e_ligand,
+                "e_ion_au": e_ion,
+                "e_bind_au": e_bind,
+                "e_bind_ev": e_bind * 27.2114,
+                "e_bind_kcal_mol": e_bind * 627.509,
+            })
+
+    return {"pairwise_bindings": pairwise_results}
+
+
+def _calculate_desolvation_stepwise(job, qc_results: Dict, db: Session) -> Dict:
+    """计算逐级去溶剂化能"""
+    # ΔE_i = E_cluster - (E_minus_i + E_ligand_i)
+    planned_tasks = job.qc_task_plan.get("planned_qc_tasks", [])
+
+    e_cluster = None
+    ligand_energies = {}
+    minus_energies = {}
+
+    for task in planned_tasks:
+        if task.get("calc_type") != "DESOLVATION_STEPWISE":
+            continue
+
+        qc_job_id = task.get("existing_qc_job_id")
+        if not qc_job_id or qc_job_id not in qc_results:
+            continue
+
+        energy = qc_results[qc_job_id].get("energy_au")
+        if energy is None:
+            continue
+
+        task_type = task.get("task_type", "")
+        if task_type == "cluster":
+            e_cluster = energy
+        elif task_type.startswith("ligand_"):
+            ligand_name = task_type.replace("ligand_", "")
+            ligand_energies[ligand_name] = energy
+        elif task_type.startswith("cluster_minus_"):
+            ligand_name = task_type.replace("cluster_minus_", "")
+            minus_energies[ligand_name] = energy
+
+    stepwise_results = []
+    for ligand_name, e_minus in minus_energies.items():
+        e_ligand = ligand_energies.get(ligand_name)
+        if e_cluster is not None and e_ligand is not None:
+            delta_e = e_cluster - (e_minus + e_ligand)
+            stepwise_results.append({
+                "ligand": ligand_name,
+                "e_cluster_au": e_cluster,
+                "e_minus_au": e_minus,
+                "e_ligand_au": e_ligand,
+                "delta_e_au": delta_e,
+                "delta_e_ev": delta_e * 27.2114,
+                "delta_e_kcal_mol": delta_e * 627.509,
+            })
+
+    return {"stepwise_desolvation": stepwise_results}
+
+
+def _calculate_desolvation_full(job, qc_results: Dict, db: Session) -> Dict:
+    """计算完全去溶剂化能"""
+    # ΔE = E_cluster - (E_ion + Σ E_ligand_i)
+    # 实际上与 BINDING_TOTAL 相同
+    return _calculate_binding_total(job, qc_results, db)
+
+
+def _calculate_redox(job, qc_results: Dict, db: Session) -> Dict:
+    """计算氧化还原电位"""
+    # 需要 4 个单点：neutral_gas, charged_gas, neutral_sol, charged_sol
+    planned_tasks = job.qc_task_plan.get("planned_qc_tasks", [])
+
+    species_results = {}
+
+    for task in planned_tasks:
+        if task.get("calc_type") != "REDOX":
+            continue
+
+        qc_job_id = task.get("existing_qc_job_id")
+        if not qc_job_id or qc_job_id not in qc_results:
+            continue
+
+        energy = qc_results[qc_job_id].get("energy_au")
+        if energy is None:
+            continue
+
+        task_type = task.get("task_type", "")
+        smiles = task.get("smiles", "")
+
+        if smiles not in species_results:
+            species_results[smiles] = {}
+        species_results[smiles][task_type] = energy
+
+    # 计算电位
+    redox_results = []
+    for smiles, energies in species_results.items():
+        e_neutral_gas = energies.get("neutral_gas")
+        e_charged_gas = energies.get("charged_gas")
+        e_neutral_sol = energies.get("neutral_sol")
+        e_charged_sol = energies.get("charged_sol")
+
+        if all([e_neutral_gas, e_charged_gas, e_neutral_sol, e_charged_sol]):
+            # 简化计算（实际需要更复杂的热力学校正）
+            delta_g_sol = (e_charged_sol - e_neutral_sol) * 27.2114  # eV
+            # 氧化电位 (vs SHE, 假设 SHE = 4.44 V)
+            ox_potential = delta_g_sol - 4.44
+
+            redox_results.append({
+                "smiles": smiles,
+                "e_neutral_gas_au": e_neutral_gas,
+                "e_charged_gas_au": e_charged_gas,
+                "e_neutral_sol_au": e_neutral_sol,
+                "e_charged_sol_au": e_charged_sol,
+                "delta_g_sol_ev": delta_g_sol,
+                "oxidation_potential_v": ox_potential,
+            })
+
+    return {"redox_potentials": redox_results}
+
+
+def _calculate_reorganization(job, qc_results: Dict, db: Session) -> Dict:
+    """计算 Marcus 重组能"""
+    # λ = (λ_ox + λ_red) / 2
+    # λ_ox = E(N|N+) - E(N+|N+)
+    # λ_red = E(N+|N) - E(N|N)
+    planned_tasks = job.qc_task_plan.get("planned_qc_tasks", [])
+
+    # 这里简化处理，实际需要更复杂的几何优化和单点计算
+    return {
+        "message": "重组能计算需要多步优化，请使用专门的重组能计算功能",
+        "status": "not_implemented"
+    }
+
+
+@router.get("/jobs/{job_id}/results")
+def get_cluster_analysis_results(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """获取 Cluster 高级计算结果"""
+    job = db.query(AdvancedClusterJobModel).filter(AdvancedClusterJobModel.id == job_id).first()
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"任务 {job_id} 不存在")
+
+    if job.user_id != current_user.id and current_user.role.value != 'admin':
+        raise HTTPException(status_code=403, detail="无权访问此任务")
+
+    return {
+        "job_id": job_id,
+        "status": job.status.value,
+        "progress": job.progress,
+        "calc_types": job.calc_types,
+        "results": job.results,
+        "qc_task_plan": job.qc_task_plan,
+    }
+
+
+@router.get("/jobs/{job_id}/qc-status")
+def get_cluster_analysis_qc_status(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """获取 Cluster 高级计算的 QC 任务状态"""
+    job = db.query(AdvancedClusterJobModel).filter(AdvancedClusterJobModel.id == job_id).first()
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"任务 {job_id} 不存在")
+
+    if job.user_id != current_user.id and current_user.role.value != 'admin':
+        raise HTTPException(status_code=403, detail="无权访问此任务")
+
+    qc_task_plan = job.qc_task_plan or {}
+    all_qc_job_ids = (
+        qc_task_plan.get("reused_qc_jobs", []) +
+        qc_task_plan.get("new_qc_jobs", [])
+    )
+
+    if not all_qc_job_ids:
+        return {
+            "job_id": job_id,
+            "total_qc_jobs": 0,
+            "completed": 0,
+            "running": 0,
+            "pending": 0,
+            "failed": 0,
+            "all_completed": True,
+        }
+
+    # 查询 QC 任务状态
+    from app.models.qc import QCJob
+    qc_jobs = db.query(QCJob).filter(QCJob.id.in_(all_qc_job_ids)).all()
+
+    status_counts = {"COMPLETED": 0, "RUNNING": 0, "SUBMITTED": 0, "CREATED": 0, "FAILED": 0}
+    for qc_job in qc_jobs:
+        status = qc_job.status.value if hasattr(qc_job.status, 'value') else str(qc_job.status)
+        if status in status_counts:
+            status_counts[status] += 1
+
+    all_completed = status_counts["COMPLETED"] == len(qc_jobs) and status_counts["FAILED"] == 0
+
+    return {
+        "job_id": job_id,
+        "total_qc_jobs": len(qc_jobs),
+        "completed": status_counts["COMPLETED"],
+        "running": status_counts["RUNNING"],
+        "pending": status_counts["SUBMITTED"] + status_counts["CREATED"],
+        "failed": status_counts["FAILED"],
+        "all_completed": all_completed,
+        "qc_jobs": [
+            {
+                "id": qc.id,
+                "status": qc.status.value if hasattr(qc.status, 'value') else str(qc.status),
+                "molecule_name": qc.molecule_name,
+            }
+            for qc in qc_jobs
+        ]
+    }

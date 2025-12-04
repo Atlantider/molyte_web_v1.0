@@ -49,11 +49,15 @@ import {
   planClusterAnalysis,
   submitClusterAnalysis,
   listClusterAnalysisJobs,
+  getClusterAnalysisResults,
+  getClusterAnalysisQCStatus,
   CALC_TYPE_INFO,
   type ClusterCalcType,
   type ClusterAnalysisPlanResponse,
   type AdvancedClusterJob,
   type CalcTypeRequirements,
+  type ClusterAnalysisResults,
+  type QCStatus,
 } from '../api/clusterAnalysis';
 
 const { Text, Title, Paragraph } = Typography;
@@ -378,6 +382,9 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
     );
   };
 
+  // 查看结果的任务 ID
+  const [viewingJobId, setViewingJobId] = useState<number | null>(null);
+
   // 渲染已有任务列表
   const renderExistingJobs = () => {
     if (existingJobs.length === 0) return null;
@@ -433,8 +440,39 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
               width: 150,
               render: (t: string) => new Date(t).toLocaleString()
             },
+            {
+              title: '操作',
+              key: 'action',
+              width: 100,
+              render: (_: unknown, record: AdvancedClusterJob) => (
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => setViewingJobId(record.id)}
+                >
+                  查看结果
+                </Button>
+              )
+            },
           ]}
         />
+
+        {/* 结果查看模态框 */}
+        <Modal
+          title={`计算结果 #${viewingJobId}`}
+          open={viewingJobId !== null}
+          onCancel={() => setViewingJobId(null)}
+          footer={null}
+          width={900}
+          destroyOnClose
+        >
+          {viewingJobId && (
+            <ClusterAnalysisResultsView
+              jobId={viewingJobId}
+              onClose={() => setViewingJobId(null)}
+            />
+          )}
+        </Modal>
       </Card>
     );
   };
@@ -544,3 +582,203 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
   );
 }
 
+// ============================================================================
+// 内联结果查看组件
+// ============================================================================
+
+interface ResultsViewProps {
+  jobId: number;
+  onClose: () => void;
+}
+
+function ClusterAnalysisResultsView({ jobId, onClose }: ResultsViewProps) {
+  const [loading, setLoading] = useState(true);
+  const [results, setResults] = useState<ClusterAnalysisResults | null>(null);
+  const [qcStatus, setQcStatus] = useState<QCStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [resultsData, qcData] = await Promise.all([
+          getClusterAnalysisResults(jobId),
+          getClusterAnalysisQCStatus(jobId),
+        ]);
+        setResults(resultsData);
+        setQcStatus(qcData);
+      } catch (err) {
+        setError((err as Error).message || '获取结果失败');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [jobId]);
+
+  if (loading) {
+    return <Spin tip="加载中..." style={{ display: 'block', textAlign: 'center', padding: 40 }} />;
+  }
+
+  if (error) {
+    return <Alert type="error" message={error} />;
+  }
+
+  if (!results) {
+    return <Empty description="暂无结果" />;
+  }
+
+  return (
+    <div>
+      {/* QC 任务进度 */}
+      {qcStatus && qcStatus.total_qc_jobs > 0 && (
+        <Card size="small" style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col span={6}>
+              <Statistic title="已完成" value={qcStatus.completed} valueStyle={{ color: '#52c41a' }} />
+            </Col>
+            <Col span={6}>
+              <Statistic title="运行中" value={qcStatus.running} valueStyle={{ color: '#1890ff' }} />
+            </Col>
+            <Col span={6}>
+              <Statistic title="等待中" value={qcStatus.pending} valueStyle={{ color: '#faad14' }} />
+            </Col>
+            <Col span={6}>
+              <Statistic title="失败" value={qcStatus.failed} valueStyle={{ color: qcStatus.failed > 0 ? '#ff4d4f' : undefined }} />
+            </Col>
+          </Row>
+          <Progress percent={Math.round((qcStatus.completed / qcStatus.total_qc_jobs) * 100)} style={{ marginTop: 16 }} />
+        </Card>
+      )}
+
+      {/* 各类型结果 */}
+      {results.calc_types.map((calcType) => {
+        const info = CALC_TYPE_INFO[calcType as ClusterCalcType];
+        const calcResult = results.results?.[calcType] as Record<string, unknown>;
+
+        return (
+          <Card
+            key={calcType}
+            size="small"
+            title={<span>{info?.icon} {info?.label || calcType}</span>}
+            style={{ marginBottom: 16 }}
+            extra={
+              calcResult?.error ? (
+                <Tag color="red">失败</Tag>
+              ) : calcResult && Object.keys(calcResult).length > 0 ? (
+                <Tag color="green">完成</Tag>
+              ) : (
+                <Tag>等待</Tag>
+              )
+            }
+          >
+            <Text type="secondary">{info?.description}</Text>
+            <div style={{ marginTop: 8 }}>
+              <Text code>{info?.formula}</Text>
+            </div>
+
+            {calcResult?.error && (
+              <Alert type="error" message={calcResult.error as string} style={{ marginTop: 8 }} />
+            )}
+
+            {calcResult && !calcResult.error && Object.keys(calcResult).length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                {renderResultContent(calcType as ClusterCalcType, calcResult)}
+              </div>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function renderResultContent(calcType: ClusterCalcType, result: Record<string, unknown>): React.ReactNode {
+  switch (calcType) {
+    case 'BINDING_TOTAL':
+    case 'DESOLVATION_FULL':
+      return (
+        <Row gutter={16}>
+          <Col span={8}>
+            <Statistic
+              title="Binding Energy"
+              value={(result.e_bind_kcal_mol as number)?.toFixed(2)}
+              suffix="kcal/mol"
+              precision={2}
+            />
+          </Col>
+          <Col span={8}>
+            <Statistic
+              title="eV"
+              value={(result.e_bind_ev as number)?.toFixed(4)}
+              precision={4}
+            />
+          </Col>
+          <Col span={8}>
+            <Statistic
+              title="Hartree"
+              value={(result.e_bind_au as number)?.toFixed(6)}
+              precision={6}
+            />
+          </Col>
+        </Row>
+      );
+
+    case 'BINDING_PAIRWISE':
+      const pairBindings = (result.pairwise_bindings as Array<Record<string, unknown>>) || [];
+      return (
+        <Table
+          size="small"
+          dataSource={pairBindings}
+          rowKey={(_, i) => i?.toString() || '0'}
+          pagination={false}
+          columns={[
+            { title: '配体', dataIndex: 'ligand' },
+            { title: 'E_bind (kcal/mol)', dataIndex: 'e_bind_kcal_mol', render: (v: number) => v?.toFixed(2) },
+            { title: 'E_bind (eV)', dataIndex: 'e_bind_ev', render: (v: number) => v?.toFixed(4) },
+          ]}
+        />
+      );
+
+    case 'DESOLVATION_STEPWISE':
+      const steps = (result.stepwise_desolvation as Array<Record<string, unknown>>) || [];
+      return (
+        <Table
+          size="small"
+          dataSource={steps}
+          rowKey={(_, i) => i?.toString() || '0'}
+          pagination={false}
+          columns={[
+            { title: '移除配体', dataIndex: 'ligand' },
+            { title: 'ΔE (kcal/mol)', dataIndex: 'delta_e_kcal_mol', render: (v: number) => v?.toFixed(2) },
+            { title: 'ΔE (eV)', dataIndex: 'delta_e_ev', render: (v: number) => v?.toFixed(4) },
+          ]}
+        />
+      );
+
+    case 'REDOX':
+      const potentials = (result.redox_potentials as Array<Record<string, unknown>>) || [];
+      return (
+        <Table
+          size="small"
+          dataSource={potentials}
+          rowKey={(_, i) => i?.toString() || '0'}
+          pagination={false}
+          columns={[
+            { title: 'SMILES', dataIndex: 'smiles', render: (s: string) => <Text code>{s}</Text> },
+            { title: 'ΔG (eV)', dataIndex: 'delta_g_sol_ev', render: (v: number) => v?.toFixed(4) },
+            { title: 'E° (V vs SHE)', dataIndex: 'oxidation_potential_v', render: (v: number) => v?.toFixed(3) },
+          ]}
+        />
+      );
+
+    case 'REORGANIZATION':
+      if (result.status === 'not_implemented') {
+        return <Alert type="info" message={result.message as string} />;
+      }
+      return <pre style={{ fontSize: 12 }}>{JSON.stringify(result, null, 2)}</pre>;
+
+    default:
+      return <pre style={{ fontSize: 12 }}>{JSON.stringify(result, null, 2)}</pre>;
+  }
+}

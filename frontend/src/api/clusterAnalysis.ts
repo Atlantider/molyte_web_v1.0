@@ -210,3 +210,95 @@ export async function planAddCalcTypes(
   return response.data;
 }
 
+// ============================================================================
+// 结果查询 API
+// ============================================================================
+
+export interface QCStatus {
+  job_id: number;
+  total_qc_jobs: number;
+  completed: number;
+  running: number;
+  pending: number;
+  failed: number;
+  all_completed: boolean;
+  qc_jobs?: Array<{
+    id: number;
+    status: string;
+    molecule_name: string;
+  }>;
+}
+
+export interface ClusterAnalysisResults {
+  job_id: number;
+  status: string;
+  progress: number;
+  calc_types: string[];
+  results: Record<string, unknown>;
+  qc_task_plan: Record<string, unknown>;
+}
+
+// Binding Total 结果
+export interface BindingTotalResult {
+  e_cluster_au: number;
+  e_ion_au: number;
+  ligand_energies_au: Record<string, number>;
+  e_bind_au: number;
+  e_bind_ev: number;
+  e_bind_kcal_mol: number;
+  error?: string;
+}
+
+// Binding Pairwise 结果
+export interface BindingPairwiseResult {
+  pairwise_bindings: Array<{
+    ligand: string;
+    e_dimer_au: number;
+    e_ligand_au: number;
+    e_ion_au: number;
+    e_bind_au: number;
+    e_bind_ev: number;
+    e_bind_kcal_mol: number;
+  }>;
+}
+
+// Desolvation Stepwise 结果
+export interface DesolvationStepwiseResult {
+  stepwise_desolvation: Array<{
+    ligand: string;
+    e_cluster_au: number;
+    e_minus_au: number;
+    e_ligand_au: number;
+    delta_e_au: number;
+    delta_e_ev: number;
+    delta_e_kcal_mol: number;
+  }>;
+}
+
+// Redox 结果
+export interface RedoxResult {
+  redox_potentials: Array<{
+    smiles: string;
+    e_neutral_gas_au: number;
+    e_charged_gas_au: number;
+    e_neutral_sol_au: number;
+    e_charged_sol_au: number;
+    delta_g_sol_ev: number;
+    oxidation_potential_v: number;
+  }>;
+}
+
+export async function getClusterAnalysisResults(jobId: number): Promise<ClusterAnalysisResults> {
+  const response = await apiClient.get(`/cluster-analysis/jobs/${jobId}/results`);
+  return response.data;
+}
+
+export async function getClusterAnalysisQCStatus(jobId: number): Promise<QCStatus> {
+  const response = await apiClient.get(`/cluster-analysis/jobs/${jobId}/qc-status`);
+  return response.data;
+}
+
+export async function calculateClusterAnalysisResults(jobId: number): Promise<{ status: string; results: Record<string, unknown> }> {
+  const response = await apiClient.post(`/cluster-analysis/jobs/${jobId}/calculate`);
+  return response.data;
+}
