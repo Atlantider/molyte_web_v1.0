@@ -304,7 +304,7 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
       const structure = structures.find(s => s.id === structureId);
       return {
         structureId,
-        structureName: structure?.electrolyte_name || `结构 #${structureId}`,
+        structureName: structure?.composition_key || `结构 #${structureId}`,
         compositionKey: structure?.composition_key || '',
         methodLevel,
         desolvationMode,
