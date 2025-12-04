@@ -1174,75 +1174,148 @@ def _identify_ligands_legacy(
     molecule_structures: Optional[List[Dict]] = None
 ) -> List[Dict[str, Any]]:
     """
-    旧版配体识别方法（基于 composition 顺序，可能不准确）
+    基于连通性分析的分子识别方法
 
-    Args:
-        atoms: 配体原子列表
-        composition: 分子组成
-        molecule_structures: 分子结构信息
-
-    Returns:
-        配体列表
+    使用原子间距离判断化学键，然后通过图的连通分量识别独立分子。
+    这比基于顺序的方法更可靠。
     """
+    import math
+
+    # 共价半径表 (Angstrom)
+    COVALENT_RADII = {
+        'H': 0.31, 'C': 0.76, 'N': 0.71, 'O': 0.66, 'F': 0.57,
+        'P': 1.07, 'S': 1.05, 'Cl': 1.02, 'Br': 1.20, 'I': 1.39,
+        'Li': 1.28, 'Na': 1.66, 'K': 2.03, 'Mg': 1.41, 'Ca': 1.76,
+        'B': 0.84, 'Si': 1.11, 'Se': 1.20, 'Te': 1.38,
+    }
+    BOND_TOLERANCE = 0.4  # 键长容差
+
+    def get_distance(atom1, atom2):
+        """计算两个原子间的距离"""
+        _, x1, y1, z1 = atom1
+        _, x2, y2, z2 = atom2
+        return math.sqrt((x2-x1)**2 + (y2-y1)**2 + (z2-z1)**2)
+
+    def are_bonded(atom1, atom2):
+        """判断两个原子是否成键"""
+        elem1, _, _, _ = atom1
+        elem2, _, _, _ = atom2
+        r1 = COVALENT_RADII.get(elem1, 1.5)
+        r2 = COVALENT_RADII.get(elem2, 1.5)
+        max_bond_length = r1 + r2 + BOND_TOLERANCE
+        return get_distance(atom1, atom2) < max_bond_length
+
+    # 使用 Union-Find 算法识别连通分量
+    n = len(atoms)
+    parent = list(range(n))
+
+    def find(x):
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(x, y):
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    # 检查所有原子对
+    for i in range(n):
+        for j in range(i + 1, n):
+            if are_bonded(atoms[i], atoms[j]):
+                union(i, j)
+
+    # 按连通分量分组
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for i in range(n):
+        groups[find(i)].append(i)
+
+    # 将分组转换为配体列表
+    molecules = list(groups.values())
+    logger.info(f"Connectivity analysis found {len(molecules)} molecules")
+
     # 构建分子类型 -> 原子数的映射
     mol_atom_counts = {}
-
     if molecule_structures:
         for mol in molecule_structures:
             mol_name = mol.get('name', '')
             mol_atoms = mol.get('atoms', [])
             if mol_name and mol_atoms:
                 mol_atom_counts[mol_name] = len(mol_atoms)
-                logger.debug(f"Molecule {mol_name}: {len(mol_atoms)} atoms from molecule_structures")
 
-    # 如果没有从 molecule_structures 获取到，使用预定义的原子数
     for mol_type in composition.keys():
         if mol_type not in mol_atom_counts:
             mol_atom_counts[mol_type] = MOLECULE_ATOM_COUNTS.get(mol_type, 15)
-            logger.debug(f"Molecule {mol_type}: {mol_atom_counts[mol_type]} atoms from MOLECULE_ATOM_COUNTS")
 
+    # 根据原子数匹配分子类型
+    def identify_molecule_type(mol_atoms_list, atom_indices):
+        """根据原子数和组成识别分子类型"""
+        n_atoms = len(atom_indices)
+
+        # 计算分子的元素组成
+        elements = {}
+        for idx in atom_indices:
+            elem = mol_atoms_list[idx][0]
+            elements[elem] = elements.get(elem, 0) + 1
+
+        # 尝试匹配已知分子类型
+        candidates = []
+        for mol_type, expected_atoms in mol_atom_counts.items():
+            if expected_atoms == n_atoms:
+                candidates.append(mol_type)
+
+        if len(candidates) == 1:
+            return candidates[0]
+        elif len(candidates) > 1:
+            # 多个候选，基于元素组成进一步判断
+            # 优先选择在 composition 中有需求的
+            for mol_type in candidates:
+                if composition.get(mol_type, 0) > 0:
+                    return mol_type
+            return candidates[0]
+
+        # 没有精确匹配，找最接近的
+        best_match = None
+        min_diff = float('inf')
+        for mol_type, expected_atoms in mol_atom_counts.items():
+            diff = abs(expected_atoms - n_atoms)
+            if diff < min_diff:
+                min_diff = diff
+                best_match = mol_type
+
+        return best_match or 'Unknown'
+
+    # 构建配体列表
     ligands = []
-    ligand_id = 0
-    atom_idx = 0
     type_counters = defaultdict(int)
 
-    for mol_type, count in composition.items():
-        if count == 0:
-            continue
+    for mol_indices in molecules:
+        mol_indices = sorted(mol_indices)  # 按索引排序
 
-        atoms_per_mol = mol_atom_counts.get(mol_type, 15)
+        # 识别分子类型
+        mol_type = identify_molecule_type(atoms, mol_indices)
+        type_counters[mol_type] += 1
 
-        for i in range(count):
-            ligand_id += 1
-            type_counters[mol_type] += 1
+        # 提取原子
+        ligand_atoms = [atoms[i] for i in mol_indices]
 
-            # 确定该配体的原子范围
-            start_idx = atom_idx
-            end_idx = min(atom_idx + atoms_per_mol, len(atoms))
-            ligand_atoms = atoms[start_idx:end_idx]
+        # 生成 XYZ 内容
+        xyz_lines = [str(len(ligand_atoms)), f"{mol_type}_{type_counters[mol_type]}"]
+        for element, x, y, z in ligand_atoms:
+            xyz_lines.append(f"{element} {x:.6f} {y:.6f} {z:.6f}")
+        xyz_content = '\n'.join(xyz_lines)
 
-            if len(ligand_atoms) == 0:
-                logger.warning(f"No atoms left for ligand {mol_type}_{type_counters[mol_type]}")
-                continue
+        ligands.append({
+            'ligand_id': len(ligands) + 1,
+            'ligand_type': mol_type,
+            'ligand_label': f"{mol_type}_{type_counters[mol_type]}",
+            'atom_indices': mol_indices,
+            'xyz_content': xyz_content,
+            'charge': get_molecule_charge(mol_type)
+        })
 
-            # 生成 XYZ 内容
-            xyz_lines = [str(len(ligand_atoms)), f"{mol_type}_{type_counters[mol_type]}"]
-            for element, x, y, z in ligand_atoms:
-                xyz_lines.append(f"{element} {x:.6f} {y:.6f} {z:.6f}")
-            xyz_content = '\n'.join(xyz_lines)
-
-            ligands.append({
-                'ligand_id': ligand_id,
-                'ligand_type': mol_type,
-                'ligand_label': f"{mol_type}_{type_counters[mol_type]}",
-                'atom_indices': list(range(start_idx, end_idx)),
-                'xyz_content': xyz_content,
-                'charge': get_molecule_charge(mol_type)
-            })
-
-            atom_idx = end_idx
-
-    logger.info(f"Identified {len(ligands)} ligands (legacy): {dict(type_counters)}")
+    logger.info(f"Identified {len(ligands)} ligands by connectivity: {dict(type_counters)}")
     return ligands
 
 
