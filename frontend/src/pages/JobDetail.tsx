@@ -455,36 +455,24 @@ export default function JobDetail() {
         </Row>
       </Card>
 
-      {/* 错误信息 - 紧凑显示 */}
+      {/* 错误信息 - 简洁显示 */}
       {job.error_message && job.status !== JobStatus.COMPLETED && (() => {
         const translatedError = translateError(job.error_message);
-        return translatedError ? (
+        return (
           <Alert
             message={
-              <span style={{ fontSize: 13 }}>
-                {translatedError.title}
-                <Text type="secondary" style={{ marginLeft: 12, fontSize: 12 }}>
-                  {translatedError.description}
-                </Text>
-              </span>
+              <Tooltip title={translatedError?.originalError || job.error_message}>
+                <span style={{ cursor: 'pointer' }}>
+                  {translatedError?.title || '计算失败'} - {translatedError?.suggestion || '请查看日志或联系管理员'}
+                </span>
+              </Tooltip>
             }
-            description={
-              <span style={{ fontSize: 12 }}>
-                💡 {translatedError.suggestion}
-                {translatedError.originalError && (
-                  <Tooltip title={<pre style={{ fontSize: 11, margin: 0, maxWidth: 400, overflow: 'auto' }}>{translatedError.originalError}</pre>}>
-                    <Text type="secondary" style={{ marginLeft: 8, cursor: 'pointer', fontSize: 11 }}>
-                      查看详情
-                    </Text>
-                  </Tooltip>
-                )}
-              </span>
-            }
-            type={translatedError.severity}
+            type="error"
             showIcon
-            style={{ marginBottom: 12, borderRadius: 8, padding: '8px 12px' }}
+            style={{ marginBottom: 12, borderRadius: 8 }}
+            banner
           />
-        ) : null;
+        );
       })()}
 
       {/* 结果锁定警告 */}
