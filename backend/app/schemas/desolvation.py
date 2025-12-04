@@ -79,6 +79,7 @@ class DesolvationJobResponse(BaseModel):
     status: str
     method_level: str
     desolvation_mode: str = "stepwise"  # stepwise or full
+    solvent_config: Optional[SolventConfigSchema] = None  # 溶剂模型配置
     created_at: datetime
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None

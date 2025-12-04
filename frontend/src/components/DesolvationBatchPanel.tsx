@@ -201,10 +201,11 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
       if (anionCountFilter.length > 0 && !anionCountFilter.includes(getAnionCount(s.composition))) {
         return false;
       }
-      // 溶剂类型筛选
+      // 溶剂类型筛选 - 结构必须包含所有选中的溶剂类型
       if (solventTypeFilter.length > 0) {
         const solvents = getSolventTypes(s.composition);
-        if (!solventTypeFilter.some(type => solvents.includes(type))) {
+        // 结构的溶剂必须包含所有筛选的溶剂类型
+        if (!solventTypeFilter.every(type => solvents.includes(type))) {
           return false;
         }
       }
@@ -369,20 +370,21 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
         {clusterMinusTasks.length > 0 && (
           <div style={{ marginBottom: 8 }}>
             <Text strong style={{ fontSize: 12 }}>去配体 Cluster ({clusterMinusTasks.length}):</Text>
-            <div style={{ marginLeft: 16, marginTop: 4, maxHeight: 120, overflowY: 'auto' }}>
+            <div style={{ marginLeft: 16, marginTop: 4, maxHeight: 150, overflowY: 'auto' }}>
               {clusterMinusTasks.map(task => (
-                <div key={task.id} style={{ marginBottom: 4 }}>
-                  <Space size={8}>
-                    <Text style={{ fontSize: 11, fontFamily: 'monospace' }}>
-                      {task.molecule_name.replace('Cluster_', '').replace(/_/g, ' ')}
-                    </Text>
-                    {getStatusTag(task.status, task.is_reused)}
-                    {task.error_message && (
-                      <Tooltip title={task.error_message}>
-                        <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 11 }} />
-                      </Tooltip>
-                    )}
-                  </Space>
+                <div key={task.id} style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 11, fontFamily: 'monospace', minWidth: 200 }}>
+                    {task.molecule_name}
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 10 }}>
+                    {task.functional}/{task.basis_set}
+                  </Text>
+                  {getStatusTag(task.status, task.is_reused)}
+                  {task.error_message && (
+                    <Tooltip title={task.error_message}>
+                      <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 11 }} />
+                    </Tooltip>
+                  )}
                 </div>
               ))}
             </div>
@@ -460,35 +462,43 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
   // 任务表格列
   const jobColumns: ColumnsType<DesolvationJobResponse> = [
     {
-      title: '结构',
+      title: '任务名称',
       key: 'structure',
-      width: 200,
+      width: 240,
       render: (_, record) => (
         <Space direction="vertical" size={0}>
-          <Text strong style={{ fontSize: 12 }}>
-            {record.composition_key || `结构 #${record.solvation_structure_id}`}
+          <Text strong style={{ fontSize: 12, fontFamily: 'monospace' }}>
+            {record.electrolyte_name || record.composition_key || `结构 #${record.solvation_structure_id}`}
           </Text>
-          {record.electrolyte_name && (
-            <Text type="secondary" style={{ fontSize: 11 }}>
-              {record.electrolyte_name}
+          {record.composition_key && record.electrolyte_name && (
+            <Text type="secondary" style={{ fontSize: 10 }}>
+              配位: {record.composition_key}
             </Text>
           )}
         </Space>
       ),
     },
     {
-      title: '方法',
-      dataIndex: 'method_level',
-      key: 'method_level',
-      width: 100,
-      render: (level: string) => {
-        const config: Record<string, { color: string; text: string }> = {
-          fast: { color: 'green', text: '快速' },
-          standard: { color: 'blue', text: '标准' },
-          accurate: { color: 'purple', text: '精确' },
+      title: '计算方法',
+      key: 'method',
+      width: 180,
+      render: (_, record) => {
+        const methodConfig: Record<string, { functional: string; basis: string; color: string }> = {
+          fast: { functional: 'B3LYP', basis: '6-31G(d)', color: 'green' },
+          standard: { functional: 'B3LYP', basis: '6-31++G(d,p)', color: 'blue' },
+          accurate: { functional: 'ωB97XD', basis: '6-311++G(2d,2p)', color: 'purple' },
         };
-        const c = config[level] || { color: 'default', text: level };
-        return <Tag color={c.color}>{c.text}</Tag>;
+        const m = methodConfig[record.method_level] || { functional: '?', basis: '?', color: 'default' };
+        return (
+          <Space direction="vertical" size={0}>
+            <Text style={{ fontSize: 12 }}>{m.functional}/{m.basis}</Text>
+            {record.solvent_config && (
+              <Text type="secondary" style={{ fontSize: 10 }}>
+                {record.solvent_config.model?.toUpperCase()}: {record.solvent_config.solvent_name || ''}
+              </Text>
+            )}
+          </Space>
+        );
       },
     },
     {

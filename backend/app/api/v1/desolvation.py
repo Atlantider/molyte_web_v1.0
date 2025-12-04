@@ -403,6 +403,7 @@ def _build_job_response(job: PostprocessJob, db: Session) -> DesolvationJobRespo
         status=job.status.value,
         method_level=job.config.get("method_level", "fast_xtb"),
         desolvation_mode=job.config.get("desolvation_mode", "stepwise"),
+        solvent_config=job.config.get("solvent_config"),
         created_at=job.created_at,
         started_at=job.started_at,
         finished_at=job.finished_at,

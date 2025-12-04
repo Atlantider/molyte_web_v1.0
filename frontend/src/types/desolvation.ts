@@ -87,6 +87,7 @@ export interface DesolvationJobResponse {
   status: string;
   method_level: string;
   desolvation_mode: DesolvationMode;
+  solvent_config?: SolventConfig;  // 溶剂模型配置
   created_at: string;
   started_at?: string;
   finished_at?: string;
