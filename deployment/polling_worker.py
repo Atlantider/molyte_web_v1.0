@@ -1073,6 +1073,61 @@ class PollingWorker:
     # Redox 热力学循环计算
     # =========================================================================
 
+    def _get_qc_job_structure(self, qc_job_id: int) -> Optional[Dict]:
+        """
+        从 API 获取 QC 任务的结构信息
+
+        返回:
+            {
+                'xyz_content': str,  # XYZ 格式的结构
+                'smiles': str,
+                'charge': int,
+                'multiplicity': int,
+                'molecule_name': str
+            }
+        """
+        try:
+            endpoint = f"{self.api_base_url}/qc/jobs/{qc_job_id}"
+            response = requests.get(
+                endpoint,
+                headers=self.api_headers,
+                timeout=self.config['api']['timeout']
+            )
+
+            if response.status_code == 200:
+                job_data = response.json()
+
+                # 尝试从 COS 获取优化后的结构
+                xyz_content = None
+                result = job_data.get('result', {})
+                if result and result.get('optimized_xyz_url'):
+                    try:
+                        xyz_response = requests.get(result['optimized_xyz_url'], timeout=30)
+                        if xyz_response.status_code == 200:
+                            xyz_content = xyz_response.text
+                    except Exception as e:
+                        self.logger.warning(f"获取优化结构失败: {e}")
+
+                # 如果没有优化结构，尝试获取输入结构
+                if not xyz_content:
+                    input_data = job_data.get('input_data', {})
+                    xyz_content = input_data.get('xyz_content', '')
+
+                return {
+                    'xyz_content': xyz_content,
+                    'smiles': job_data.get('smiles', ''),
+                    'charge': job_data.get('charge', 0),
+                    'multiplicity': job_data.get('spin_multiplicity', 1),
+                    'molecule_name': job_data.get('molecule_name', 'unknown')
+                }
+            else:
+                self.logger.error(f"获取 QC 任务 {qc_job_id} 失败: {response.status_code}")
+                return None
+
+        except Exception as e:
+            self.logger.error(f"获取 QC 任务结构失败: {e}")
+            return None
+
     def _process_redox_job(self, job: Dict):
         """
         处理 Redox 热力学循环任务
@@ -1177,11 +1232,25 @@ class PollingWorker:
                                   use_dispersion: bool, li_ref_potential: float) -> Dict:
         """计算单个物种的氧化还原电位"""
         name = species.get('name', 'unknown')
+        qc_job_id = species.get('qc_job_id')  # 优先使用已有 QC 任务
         smiles = species.get('smiles', '')
         xyz_content = species.get('xyz_content', '')
         charge = species.get('charge', 0)
         multiplicity = species.get('multiplicity', 1)
         redox_type = species.get('redox_type', 'oxidation')
+
+        # 如果提供了 qc_job_id，从已有 QC 任务获取结构
+        if qc_job_id:
+            self.logger.info(f"从 QC 任务 {qc_job_id} 获取物种 {name} 的结构")
+            qc_structure = self._get_qc_job_structure(qc_job_id)
+            if qc_structure:
+                xyz_content = qc_structure.get('xyz_content', xyz_content)
+                smiles = qc_structure.get('smiles', smiles)
+                charge = qc_structure.get('charge', charge)
+                multiplicity = qc_structure.get('multiplicity', multiplicity)
+                self.logger.info(f"成功获取结构: charge={charge}, mult={multiplicity}")
+            else:
+                self.logger.warning(f"无法从 QC 任务 {qc_job_id} 获取结构，使用默认值")
 
         self.logger.info(f"计算物种 {name} 的 {redox_type} 电位")
 
@@ -1603,12 +1672,25 @@ class PollingWorker:
         λ_total = (λ_ox + λ_red) / 2
         """
         name = species.get('name', 'unknown')
+        qc_job_id = species.get('qc_job_id')  # 优先使用已有 QC 任务
         smiles = species.get('smiles', '')
         xyz_content = species.get('xyz_content', '')
         charge_neutral = species.get('charge_neutral', 0)
         charge_oxidized = species.get('charge_oxidized', 1)
         mult_neutral = species.get('multiplicity_neutral', 1)
         mult_oxidized = species.get('multiplicity_oxidized', 2)
+
+        # 如果提供了 qc_job_id，从已有 QC 任务获取结构
+        if qc_job_id:
+            self.logger.info(f"从 QC 任务 {qc_job_id} 获取物种 {name} 的结构")
+            qc_structure = self._get_qc_job_structure(qc_job_id)
+            if qc_structure:
+                xyz_content = qc_structure.get('xyz_content', xyz_content)
+                smiles = qc_structure.get('smiles', smiles)
+                # 注意：重组能使用用户指定的电荷/多重度，不从 QC 任务获取
+                self.logger.info(f"成功获取结构，使用用户指定的电荷: neutral={charge_neutral}, oxidized={charge_oxidized}")
+            else:
+                self.logger.warning(f"无法从 QC 任务 {qc_job_id} 获取结构，使用默认值")
 
         self.logger.info(f"计算物种 {name} 的重组能 (4点方案)")
         self.logger.warning(f"⚠️ 重组能计算极其耗时，物种: {name}")

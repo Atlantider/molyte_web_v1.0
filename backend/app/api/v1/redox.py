@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.database import get_db
 from app.dependencies import get_current_active_user
@@ -19,6 +20,7 @@ from app.models.job import (
     RedoxPotentialJob, RedoxJobStatus,
     ReorganizationEnergyJob, ReorgEnergyJobStatus
 )
+from app.models.qc import QCJob, QCJobStatus
 from app.schemas.redox import (
     RedoxJobCreate, RedoxJobResponse, RedoxJobListResponse,
     ReorgEnergyJobCreate, ReorgEnergyJobResponse
@@ -57,12 +59,27 @@ def create_redox_job(
         # 警告但允许
         pass
 
+    # 为每个物种查找对应的 QC 任务 ID（如果没有提供）
+    config_dict = job_data.config.model_dump()
+    if job_data.md_job_id:
+        for species in config_dict.get('species_list', []):
+            if not species.get('qc_job_id') and species.get('name'):
+                # 根据 cluster 类型名称查找已完成的 QC 任务
+                qc_job = db.query(QCJob).filter(
+                    QCJob.md_job_id == job_data.md_job_id,
+                    QCJob.molecule_name == species['name'],
+                    QCJob.status == QCJobStatus.COMPLETED
+                ).order_by(QCJob.id.desc()).first()
+
+                if qc_job:
+                    species['qc_job_id'] = qc_job.id
+
     # 创建任务
     job = RedoxPotentialJob(
         md_job_id=job_data.md_job_id,
         user_id=current_user.id,
         status=RedoxJobStatus.CREATED,
-        config=job_data.config.model_dump(),
+        config=config_dict,
     )
 
     db.add(job)
@@ -200,11 +217,26 @@ def create_reorg_energy_job(
         # 警告但允许（风险由用户承担）
         pass
 
+    # 为每个物种查找对应的 QC 任务 ID（如果没有提供）
+    config_dict = job_data.config.model_dump()
+    if job_data.md_job_id:
+        for species in config_dict.get('species_list', []):
+            if not species.get('qc_job_id') and species.get('name'):
+                # 根据 cluster 类型名称查找已完成的 QC 任务
+                qc_job = db.query(QCJob).filter(
+                    QCJob.md_job_id == job_data.md_job_id,
+                    QCJob.molecule_name == species['name'],
+                    QCJob.status == QCJobStatus.COMPLETED
+                ).order_by(QCJob.id.desc()).first()
+
+                if qc_job:
+                    species['qc_job_id'] = qc_job.id
+
     job = ReorganizationEnergyJob(
         md_job_id=job_data.md_job_id,
         user_id=current_user.id,
         status=ReorgEnergyJobStatus.CREATED,
-        config=job_data.config.model_dump(),
+        config=config_dict,
     )
 
     db.add(job)
