@@ -69,8 +69,8 @@ const DASHBOARD_STYLES = {
   titleFontWeight: 600,
 };
 
-// 响应式CSS样式
-const RESPONSIVE_STYLES = `
+// 响应式CSS样式 - 支持暗色模式
+const getResponsiveStyles = (isDark: boolean) => `
   .mol-stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -101,16 +101,16 @@ const RESPONSIVE_STYLES = `
     transition: all 0.3s ease;
   }
   .dashboard-card:hover {
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    box-shadow: ${isDark ? '0 8px 24px rgba(0, 0, 0, 0.4)' : '0 8px 24px rgba(15, 23, 42, 0.12)'};
     transform: translateY(-2px);
   }
   .molecule-card {
-    border: 1px solid #e8e8e8 !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+    border: 1px solid ${isDark ? '#333' : '#e8e8e8'} !important;
+    box-shadow: ${isDark ? '0 2px 8px rgba(0, 0, 0, 0.2)' : '0 2px 8px rgba(0, 0, 0, 0.06)'} !important;
     transition: all 0.3s ease !important;
   }
   .molecule-card:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+    box-shadow: ${isDark ? '0 4px 16px rgba(0, 0, 0, 0.3)' : '0 4px 16px rgba(0, 0, 0, 0.12)'} !important;
     border-color: #1890ff !important;
   }
   .molecule-card.selected {
@@ -119,18 +119,18 @@ const RESPONSIVE_STYLES = `
     box-shadow: 0 4px 16px rgba(24, 144, 255, 0.2) !important;
   }
   .ant-table-small .ant-table-thead > tr > th {
-    background: #f8fafc !important;
+    background: ${isDark ? 'rgba(255, 255, 255, 0.04)' : '#f8fafc'} !important;
     font-weight: 600 !important;
     font-size: 11px !important;
     padding: 8px 8px !important;
-    color: #475569 !important;
+    color: ${isDark ? 'rgba(255, 255, 255, 0.85)' : '#475569'} !important;
   }
   .ant-table-small .ant-table-tbody > tr > td {
     padding: 6px 8px !important;
     font-size: 12px !important;
   }
   .ant-table-small .ant-table-tbody > tr:hover > td {
-    background: #f0f9ff !important;
+    background: ${isDark ? 'rgba(24, 144, 255, 0.1)' : '#f0f9ff'} !important;
   }
 `;
 
@@ -531,7 +531,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
       minHeight: '100%',
       borderRadius: 8,
     }}>
-      <style>{RESPONSIVE_STYLES}</style>
+      <style>{getResponsiveStyles(isDark)}</style>
 
       <Space direction="vertical" size={DASHBOARD_STYLES.gutter} style={{ width: '100%' }}>
         {/* 统计卡片网格 */}
@@ -722,28 +722,21 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
                     </Space>
                   }
                 >
-                  <div style={{
-                    background: 'linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%)',
-                    border: '1px solid #e8e8e8',
-                    borderRadius: 8,
-                    padding: 8,
-                  }}>
-                    <div
-                      ref={viewerRef}
-                      style={{
-                        width: '100%',
-                        height: '400px',
-                        position: 'relative',
-                        background: 'white',
-                        borderRadius: 6,
-                      }}
-                    />
-                  </div>
+                  <div
+                    ref={viewerRef}
+                    style={{
+                      width: '100%',
+                      height: '400px',
+                      position: 'relative',
+                      background: isDark ? '#1a1a1a' : 'white',
+                      borderRadius: 6,
+                    }}
+                  />
                   <div style={{
                     marginTop: 12,
                     padding: 8,
                     textAlign: 'center',
-                    background: '#f8fafc',
+                    background: isDark ? 'rgba(255,255,255,0.04)' : '#f8fafc',
                     borderRadius: 6,
                   }}>
                     <Text type="secondary" style={{ fontSize: 11 }}>
