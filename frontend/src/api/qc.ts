@@ -526,6 +526,21 @@ export interface ElectrochemicalWindowEstimate {
 }
 
 /**
+ * VIP/VEA 统计
+ */
+export interface VipVeaStatistics {
+  count: number;
+  vip_mean_ev?: number;
+  vip_std_ev?: number;
+  vea_mean_ev?: number;
+  vea_std_ev?: number;
+  oxidation_potential_mean_v?: number;
+  oxidation_potential_std_v?: number;
+  reduction_potential_mean_v?: number;
+  reduction_potential_std_v?: number;
+}
+
+/**
  * Cluster 统计响应
  */
 export interface ClusterStatisticsResponse {
@@ -561,6 +576,9 @@ export interface ClusterStatisticsResponse {
 
   // 电化学窗口估计
   electrochemical_window_estimate: ElectrochemicalWindowEstimate | null;
+
+  // VIP/VEA 统计（如果有计算）
+  vip_vea_statistics?: VipVeaStatistics | null;
 }
 
 /**

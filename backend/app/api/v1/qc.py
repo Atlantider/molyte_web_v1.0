@@ -1986,6 +1986,12 @@ def get_cluster_statistics(
     gap_values = []
     energy_values = []
 
+    # VIP/VEA 数据
+    vip_values = []
+    vea_values = []
+    ox_potential_values = []
+    red_potential_values = []
+
     # 按分子类型分组
     type_data = defaultdict(lambda: {"homo": [], "lumo": [], "gap": [], "energy": [], "count": 0})
 
@@ -2033,6 +2039,16 @@ def get_cluster_statistics(
             target["homo"].append(homo_ev)
             target["lumo"].append(lumo_ev)
             target["gap"].append(gap_ev)
+
+        # 收集 VIP/VEA 数据（如果有）
+        if hasattr(result, 'vip_ev') and result.vip_ev is not None:
+            vip_values.append(result.vip_ev)
+        if hasattr(result, 'vea_ev') and result.vea_ev is not None:
+            vea_values.append(result.vea_ev)
+        if hasattr(result, 'oxidation_potential_v') and result.oxidation_potential_v is not None:
+            ox_potential_values.append(result.oxidation_potential_v)
+        if hasattr(result, 'reduction_potential_v') and result.reduction_potential_v is not None:
+            red_potential_values.append(result.reduction_potential_v)
 
     # 统计函数
     def calc_stats(values):
@@ -2085,7 +2101,10 @@ def get_cluster_statistics(
         } if without_li_data["homo"] else None,
 
         # 简化的电化学窗口估计（基于 HOMO/LUMO）
-        "electrochemical_window_estimate": None
+        "electrochemical_window_estimate": None,
+
+        # VIP/VEA 统计（如果有计算）
+        "vip_vea_statistics": None
     }
 
     # 计算简化的电化学窗口估计
@@ -2101,5 +2120,31 @@ def get_cluster_statistics(
             "window_ev": float(-homo_5th - (-lumo_95th)),
             "note": "简化估计，基于 HOMO/LUMO 能级，未做热力学循环校正。仅供参考。"
         }
+
+    # 添加 VIP/VEA 统计（如果有数据）
+    if vip_values or vea_values or ox_potential_values or red_potential_values:
+        vip_vea_stats = {"count": max(len(vip_values), len(vea_values), len(ox_potential_values), len(red_potential_values))}
+
+        if vip_values:
+            vip_arr = np.array(vip_values)
+            vip_vea_stats["vip_mean_ev"] = float(np.mean(vip_arr))
+            vip_vea_stats["vip_std_ev"] = float(np.std(vip_arr)) if len(vip_arr) > 1 else 0.0
+
+        if vea_values:
+            vea_arr = np.array(vea_values)
+            vip_vea_stats["vea_mean_ev"] = float(np.mean(vea_arr))
+            vip_vea_stats["vea_std_ev"] = float(np.std(vea_arr)) if len(vea_arr) > 1 else 0.0
+
+        if ox_potential_values:
+            ox_arr = np.array(ox_potential_values)
+            vip_vea_stats["oxidation_potential_mean_v"] = float(np.mean(ox_arr))
+            vip_vea_stats["oxidation_potential_std_v"] = float(np.std(ox_arr)) if len(ox_arr) > 1 else 0.0
+
+        if red_potential_values:
+            red_arr = np.array(red_potential_values)
+            vip_vea_stats["reduction_potential_mean_v"] = float(np.mean(red_arr))
+            vip_vea_stats["reduction_potential_std_v"] = float(np.std(red_arr)) if len(red_arr) > 1 else 0.0
+
+        result["vip_vea_statistics"] = vip_vea_stats
 
     return result

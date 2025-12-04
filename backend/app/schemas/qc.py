@@ -177,6 +177,12 @@ class QCJobCreate(QCJobBase):
     auto_spin: bool = Field(default=True, description="自动计算自旋多重度")
     config: Optional[Dict[str, Any]] = Field(default={}, description="额外配置")
 
+    # VIP/VEA 计算选项（用于电化学窗口估计）
+    compute_vip_vea: bool = Field(
+        default=False,
+        description="是否计算 VIP/VEA（垂直电离势/电子亲和能），用于估计电化学窗口"
+    )
+
     # Slurm 资源配置
     slurm_partition: Optional[str] = Field(default="cpu", description="Slurm队列/分区")
     slurm_cpus: Optional[int] = Field(default=16, ge=1, le=64, description="CPU核心数")
@@ -304,6 +310,11 @@ class QCResultBase(BaseModel):
     esp_max_kcal: Optional[float] = Field(default=None, description="ESP最大值 (kcal/mol)")
     dipole_moment: Optional[float] = Field(default=None, description="偶极矩")
     polarizability: Optional[float] = Field(default=None, description="极化率")
+    # VIP/VEA 相关字段（用于电化学窗口估计）
+    vip_ev: Optional[float] = Field(default=None, description="垂直电离势 VIP (eV)")
+    vea_ev: Optional[float] = Field(default=None, description="垂直电子亲和能 VEA (eV)")
+    oxidation_potential_v: Optional[float] = Field(default=None, description="氧化电位 vs Li/Li+ (V)")
+    reduction_potential_v: Optional[float] = Field(default=None, description="还原电位 vs Li/Li+ (V)")
 
 
 class QCResultCreate(QCResultBase):

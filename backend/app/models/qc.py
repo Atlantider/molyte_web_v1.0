@@ -180,22 +180,28 @@ class QCResult(Base):
     dipole_moment = Column(Float)
     polarizability = Column(Float)
     additional_properties = Column(JSONB, default={})
-    
+
+    # VIP/VEA 相关字段（用于电化学窗口估计）
+    vip_ev = Column(Float)  # 垂直电离势 VIP (eV)
+    vea_ev = Column(Float)  # 垂直电子亲和能 VEA (eV)
+    oxidation_potential_v = Column(Float)  # 氧化电位 vs Li/Li+ (V)
+    reduction_potential_v = Column(Float)  # 还原电位 vs Li/Li+ (V)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    
+
     # 关系
     qc_job = relationship("QCJob", back_populates="results")
-    
+
     def __repr__(self):
         return f"<QCResult(id={self.id}, smiles={self.smiles[:20]}...)>"
-    
+
     @property
     def homo_ev(self) -> float:
         """HOMO能量转换为eV"""
         if self.homo is None:
             return None
         return self.homo * 27.2114  # Hartree to eV
-    
+
     @property
     def lumo_ev(self) -> float:
         """LUMO能量转换为eV"""

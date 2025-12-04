@@ -856,6 +856,11 @@ class QCResultUpload(BaseModel):
     polarizability: Optional[float] = None
     esp_min_kcal: Optional[float] = None
     esp_max_kcal: Optional[float] = None
+    # VIP/VEA 相关字段（用于电化学窗口估计）
+    vip_ev: Optional[float] = None  # 垂直电离势 VIP (eV)
+    vea_ev: Optional[float] = None  # 垂直电子亲和能 VEA (eV)
+    oxidation_potential_v: Optional[float] = None  # 氧化电位 vs Li/Li+ (V)
+    reduction_potential_v: Optional[float] = None  # 还原电位 vs Li/Li+ (V)
     # 文件路径（COS/OSS 上的路径）
     fchk_file_path: Optional[str] = None
     log_file_path: Optional[str] = None
@@ -933,6 +938,12 @@ async def upload_qc_result(
             polarizability=result_data.polarizability,
             esp_min_kcal=result_data.esp_min_kcal,
             esp_max_kcal=result_data.esp_max_kcal,
+            # VIP/VEA 相关字段
+            vip_ev=result_data.vip_ev,
+            vea_ev=result_data.vea_ev,
+            oxidation_potential_v=result_data.oxidation_potential_v,
+            reduction_potential_v=result_data.reduction_potential_v,
+            # 文件路径
             fchk_file_path=result_data.fchk_file_path,
             log_file_path=result_data.log_file_path,
             cube_density_path=result_data.cube_density_path,
