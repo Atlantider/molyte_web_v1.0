@@ -4,7 +4,13 @@ SQLAlchemy ORM models
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.models.electrolyte import ElectrolyteSystem
-from app.models.job import MDJob, PostprocessJob, JobStatus, PostprocessType, RESPJob, RESPJobStatus, BindingAnalysisJob, BindingAnalysisStatus
+from app.models.job import (
+    MDJob, PostprocessJob, JobStatus, PostprocessType,
+    RESPJob, RESPJobStatus,
+    BindingAnalysisJob, BindingAnalysisStatus,
+    RedoxPotentialJob, RedoxJobStatus,
+    ReorganizationEnergyJob, ReorgEnergyJobStatus
+)
 from app.models.result import ResultSummary, RDFResult, MSDResult, SolvationStructure, SystemStructure
 from app.models.user_stats import UserUsageStats, AuditLog
 from app.models.billing import (
@@ -27,6 +33,11 @@ __all__ = [
     "RESPJobStatus",
     "BindingAnalysisJob",
     "BindingAnalysisStatus",
+    # Redox & Reorganization Energy
+    "RedoxPotentialJob",
+    "RedoxJobStatus",
+    "ReorganizationEnergyJob",
+    "ReorgEnergyJobStatus",
     "ResultSummary",
     "RDFResult",
     "MSDResult",

@@ -72,6 +72,8 @@ import DesolvationComparisonView from './DesolvationComparisonView';
 import BindingEnergyView from './BindingEnergyView';
 import ClusterStatisticsPanel from './ClusterStatisticsPanel';
 import BindingAnalysisPanel from './BindingAnalysisPanel';
+import RedoxPotentialPanel from './RedoxPotentialPanel';
+import ReorganizationEnergyPanel from './ReorganizationEnergyPanel';
 
 // 3Dmol.js 类型声明
 declare global {
@@ -1722,6 +1724,30 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                   </Space>
                 ),
                 children: <BindingAnalysisPanel mdJobId={jobId} />,
+              },
+              {
+                key: 'redox',
+                label: (
+                  <Space>
+                    <span style={{ color: '#ff4d4f' }}>热力学循环</span>
+                    <Tooltip title="⚠️ 高风险功能：计算氧化还原电位，结果对方法/基组高度敏感">
+                      <ThunderboltOutlined style={{ color: '#ff4d4f' }} />
+                    </Tooltip>
+                  </Space>
+                ),
+                children: <RedoxPotentialPanel mdJobId={jobId} />,
+              },
+              {
+                key: 'reorg',
+                label: (
+                  <Space>
+                    <span style={{ color: '#ff4d4f' }}>重组能</span>
+                    <Tooltip title="⚠️⚠️ 极高风险：Marcus理论重组能计算，极其耗时且容易失败">
+                      <ThunderboltOutlined style={{ color: '#ff4d4f' }} />
+                    </Tooltip>
+                  </Space>
+                ),
+                children: <ReorganizationEnergyPanel mdJobId={jobId} />,
               },
             ]}
           />
