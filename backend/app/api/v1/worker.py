@@ -261,9 +261,9 @@ async def get_pending_jobs(
         return result
     
     elif job_type == "QC":
-        # 获取 SUBMITTED 状态的 QC 任务（用户已提交，等待 Worker 处理）
+        # 获取 SUBMITTED 或 CREATED 状态的 QC 任务（用户已提交或由 desolvation 创建，等待 Worker 处理）
         jobs = db.query(QCJob).filter(
-            QCJob.status == QCJobStatus.SUBMITTED
+            QCJob.status.in_([QCJobStatus.SUBMITTED, QCJobStatus.CREATED])
         ).order_by(QCJob.created_at).limit(limit).all()
 
         return [
