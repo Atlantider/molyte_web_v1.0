@@ -425,56 +425,21 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
         </div>
       </div>
 
-      {/* 只有在非成功状态下才显示错误信息 */}
+      {/* 错误信息 - 简洁显示 */}
       {job.error_message && job.status !== JobStatus.COMPLETED && (() => {
         const translatedError = translateError(job.error_message);
-        return translatedError ? (
+        return (
           <div style={{
-            marginTop: 12,
-            padding: 12,
-            background: translatedError.severity === 'error'
-              ? (isDark ? 'rgba(255, 77, 79, 0.15)' : '#fff2f0')
-              : (isDark ? 'rgba(250, 173, 20, 0.15)' : '#fffbe6'),
-            borderRadius: 8,
-            border: `1px solid ${translatedError.severity === 'error' ? '#ffccc7' : '#ffe58f'}`
+            marginTop: 8,
+            padding: '6px 10px',
+            background: isDark ? 'rgba(255, 77, 79, 0.15)' : '#fff1f0',
+            borderRadius: 4,
+            fontSize: 12,
+            color: isDark ? '#ff7875' : '#cf1322',
           }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <WarningOutlined style={{
-                color: translatedError.severity === 'error' ? '#ff4d4f' : '#faad14',
-                fontSize: 16,
-                marginTop: 2
-              }} />
-              <div style={{ flex: 1 }}>
-                <Text strong style={{
-                  color: translatedError.severity === 'error' ? '#ff4d4f' : '#faad14',
-                  fontSize: 13
-                }}>
-                  {translatedError.title}
-                </Text>
-                <div style={{ marginTop: 4 }}>
-                  <Text style={{ fontSize: 12, color: token.colorTextSecondary }}>
-                    {translatedError.description}
-                  </Text>
-                </div>
-                <div style={{ marginTop: 6, padding: '6px 8px', background: 'rgba(0,0,0,0.02)', borderRadius: 4 }}>
-                  <Text style={{ fontSize: 12, color: '#52c41a' }}>
-                    💡 {translatedError.suggestion}
-                  </Text>
-                </div>
-                {translatedError.originalError && (
-                  <Tooltip title={translatedError.originalError}>
-                    <div style={{ marginTop: 6, cursor: 'pointer' }}>
-                      <Text type="secondary" style={{ fontSize: 11 }}>
-                        <QuestionCircleOutlined style={{ marginRight: 4 }} />
-                        查看技术详情
-                      </Text>
-                    </div>
-                  </Tooltip>
-                )}
-              </div>
-            </div>
+            {translatedError?.suggestion || '请查看详情'}
           </div>
-        ) : null;
+        );
       })()}
     </Card>
   );

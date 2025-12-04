@@ -18,6 +18,7 @@ import {
   Alert,
   Tooltip,
   Modal,
+  Collapse,
   theme,
 } from 'antd';
 import {
@@ -455,24 +456,43 @@ export default function JobDetail() {
         </Row>
       </Card>
 
-      {/* 错误信息 - 简洁一句话 */}
+      {/* 错误信息 - 详细显示 */}
       {job.error_message && job.status !== JobStatus.COMPLETED && (() => {
         const translatedError = translateError(job.error_message);
-        return (
-          <Tooltip title={job.error_message}>
-            <div style={{
-              padding: '8px 12px',
-              marginBottom: 12,
-              background: isDark ? 'rgba(255,77,79,0.15)' : '#fff1f0',
-              borderRadius: 6,
-              fontSize: 13,
-              color: isDark ? '#ff7875' : '#cf1322',
-              cursor: 'pointer'
-            }}>
-              {translatedError?.suggestion || '请查看日志或联系管理员'}
-            </div>
-          </Tooltip>
-        );
+        return translatedError ? (
+          <Alert
+            type={translatedError.severity}
+            showIcon
+            style={{ marginBottom: 16, borderRadius: 8 }}
+            message={translatedError.title}
+            description={
+              <div>
+                <div style={{ marginBottom: 8 }}>{translatedError.description}</div>
+                <div style={{ color: '#52c41a', marginBottom: 8 }}>💡 {translatedError.suggestion}</div>
+                {translatedError.originalError && (
+                  <Collapse
+                    ghost
+                    size="small"
+                    items={[{
+                      key: '1',
+                      label: <span style={{ fontSize: 12, color: token.colorTextSecondary }}>查看技术详情</span>,
+                      children: <pre style={{
+                        fontSize: 11,
+                        background: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.04)',
+                        padding: 8,
+                        borderRadius: 4,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-all',
+                        maxHeight: 200,
+                        overflow: 'auto'
+                      }}>{translatedError.originalError}</pre>
+                    }]}
+                  />
+                )}
+              </div>
+            }
+          />
+        ) : null;
       })()}
 
       {/* 结果锁定警告 */}
