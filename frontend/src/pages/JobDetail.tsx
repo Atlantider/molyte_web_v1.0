@@ -455,48 +455,34 @@ export default function JobDetail() {
         </Row>
       </Card>
 
-      {/* 错误信息 - 只有在非成功状态下才显示 */}
+      {/* 错误信息 - 紧凑显示 */}
       {job.error_message && job.status !== JobStatus.COMPLETED && (() => {
         const translatedError = translateError(job.error_message);
         return translatedError ? (
           <Alert
-            message={translatedError.title}
+            message={
+              <span style={{ fontSize: 13 }}>
+                {translatedError.title}
+                <Text type="secondary" style={{ marginLeft: 12, fontSize: 12 }}>
+                  {translatedError.description}
+                </Text>
+              </span>
+            }
             description={
-              <div>
-                <p style={{ marginBottom: 8 }}>{translatedError.description}</p>
-                <div style={{
-                  padding: '8px 12px',
-                  background: 'rgba(82, 196, 26, 0.1)',
-                  borderRadius: 6,
-                  marginBottom: 8
-                }}>
-                  <Text style={{ color: '#52c41a' }}>
-                    💡 <strong>建议：</strong>{translatedError.suggestion}
-                  </Text>
-                </div>
+              <span style={{ fontSize: 12 }}>
+                💡 {translatedError.suggestion}
                 {translatedError.originalError && (
-                  <details style={{ marginTop: 8 }}>
-                    <summary style={{ cursor: 'pointer', color: '#999', fontSize: 12 }}>
-                      查看技术详情
-                    </summary>
-                    <pre style={{
-                      marginTop: 8,
-                      padding: 8,
-                      background: '#f5f5f5',
-                      borderRadius: 4,
-                      fontSize: 11,
-                      overflow: 'auto',
-                      maxHeight: 100
-                    }}>
-                      {translatedError.originalError}
-                    </pre>
-                  </details>
+                  <Tooltip title={<pre style={{ fontSize: 11, margin: 0, maxWidth: 400, overflow: 'auto' }}>{translatedError.originalError}</pre>}>
+                    <Text type="secondary" style={{ marginLeft: 8, cursor: 'pointer', fontSize: 11 }}>
+                      查看详情
+                    </Text>
+                  </Tooltip>
                 )}
-              </div>
+              </span>
             }
             type={translatedError.severity}
             showIcon
-            style={{ marginBottom: 16, borderRadius: 8 }}
+            style={{ marginBottom: 12, borderRadius: 8, padding: '8px 12px' }}
           />
         ) : null;
       })()}
