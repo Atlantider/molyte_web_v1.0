@@ -1146,15 +1146,65 @@ def get_ion_charge(element: str) -> int:
     return charge_map.get(element, 0)
 
 
-def get_molecule_charge(molecule_type: str) -> int:
-    """获取分子电荷"""
+def get_molecule_charge(
+    molecule_type: str,
+    smiles: Optional[str] = None,
+    molecule_structures: Optional[List[Dict]] = None
+) -> int:
+    """
+    获取分子电荷
+
+    优先级：
+    1. 从 SMILES 计算（最准确）
+    2. 从 molecule_structures 中查找
+    3. 使用硬编码映射（后备）
+
+    Args:
+        molecule_type: 分子类型名称（如 EC, FSI）
+        smiles: 分子的 SMILES 字符串（可选）
+        molecule_structures: 来自 ResultSummary 的分子结构列表（可选）
+
+    Returns:
+        分子电荷
+    """
+    # 1. 尝试从 SMILES 计算电荷（最准确）
+    if smiles:
+        try:
+            from rdkit import Chem
+            mol = Chem.MolFromSmiles(smiles)
+            if mol:
+                charge = sum(atom.GetFormalCharge() for atom in mol.GetAtoms())
+                logger.debug(f"Got charge {charge} for {molecule_type} from SMILES")
+                return charge
+        except Exception as e:
+            logger.debug(f"Failed to calculate charge from SMILES for {molecule_type}: {e}")
+
+    # 2. 尝试从 molecule_structures 获取
+    if molecule_structures:
+        for mol_struct in molecule_structures:
+            if mol_struct.get('name') == molecule_type:
+                charge = mol_struct.get('total_charge')
+                if charge is not None:
+                    logger.debug(f"Got charge {charge} for {molecule_type} from molecule_structures")
+                    return charge
+                # 如果有 SMILES，递归尝试计算
+                mol_smiles = mol_struct.get('smiles')
+                if mol_smiles:
+                    return get_molecule_charge(molecule_type, smiles=mol_smiles)
+
+    # 3. 后备：使用硬编码映射（常见分子）
+    # 注意：这只是后备方案，新分子应该通过 SMILES 或 molecule_structures 获取电荷
     charge_map = {
+        # 阴离子 (charge = -1)
         'FSI': -1,
         'TFSI': -1,
         'PF6': -1,
         'BF4': -1,
         'ClO4': -1,
         'DCA': -1,
+        'NO3': -1,
+        'OTf': -1,   # 三氟甲磺酸根
+        # 中性溶剂 (charge = 0)
         'EC': 0,
         'DMC': 0,
         'EMC': 0,
@@ -1164,8 +1214,17 @@ def get_molecule_charge(molecule_type: str) -> int:
         'TTE': 0,
         'FEC': 0,
         'VC': 0,
+        'PC': 0,     # 碳酸丙烯酯
+        'AN': 0,     # 乙腈
+        'THF': 0,    # 四氢呋喃
+        'DMSO': 0,   # 二甲基亚砜
     }
-    return charge_map.get(molecule_type, 0)
+
+    charge = charge_map.get(molecule_type, 0)
+    if molecule_type not in charge_map:
+        logger.warning(f"Unknown molecule type '{molecule_type}', assuming charge=0. "
+                       f"Consider providing SMILES for accurate charge calculation.")
+    return charge
 
 
 def identify_ligands(
@@ -1210,7 +1269,7 @@ def identify_ligands(
 
     # 如果有 mol_order，直接使用它
     if mol_order:
-        return _identify_ligands_with_mol_order(atoms, mol_order)
+        return _identify_ligands_with_mol_order(atoms, mol_order, molecule_structures)
 
     # 否则使用旧的基于 composition 的方法（兼容旧数据）
     logger.warning("Using legacy ligand identification (may be inaccurate for existing data)")
@@ -1219,7 +1278,8 @@ def identify_ligands(
 
 def _identify_ligands_with_mol_order(
     atoms: List[Tuple],
-    mol_order: List[Dict]
+    mol_order: List[Dict],
+    molecule_structures: Optional[List[Dict]] = None
 ) -> List[Dict[str, Any]]:
     """
     使用 mol_order 精确识别配体分子
@@ -1227,6 +1287,7 @@ def _identify_ligands_with_mol_order(
     Args:
         atoms: 配体原子列表（不包含中心离子）
         mol_order: [{"mol_name": "EC", "atom_count": 10}, ...]
+        molecule_structures: 分子结构信息（用于获取电荷和 SMILES）
 
     Returns:
         配体列表
@@ -1261,13 +1322,16 @@ def _identify_ligands_with_mol_order(
             xyz_lines.append(f"{element} {x:.6f} {y:.6f} {z:.6f}")
         xyz_content = '\n'.join(xyz_lines)
 
+        # 获取电荷：优先从 molecule_structures 获取（支持新分子）
+        charge = get_molecule_charge(mol_name, molecule_structures=molecule_structures)
+
         ligands.append({
             'ligand_id': ligand_id,
             'ligand_type': mol_name,
             'ligand_label': f"{mol_name}_{type_counters[mol_name]}",
             'atom_indices': list(range(start_idx, end_idx)),
             'xyz_content': xyz_content,
-            'charge': get_molecule_charge(mol_name)
+            'charge': charge
         })
 
         atom_idx = end_idx
@@ -1422,13 +1486,16 @@ def _identify_ligands_legacy(
             xyz_lines.append(f"{element} {x:.6f} {y:.6f} {z:.6f}")
         xyz_content = '\n'.join(xyz_lines)
 
+        # 获取电荷：优先从 molecule_structures 获取（支持新分子）
+        charge = get_molecule_charge(mol_type, molecule_structures=molecule_structures)
+
         ligands.append({
             'ligand_id': len(ligands) + 1,
             'ligand_type': mol_type,
             'ligand_label': f"{mol_type}_{type_counters[mol_type]}",
             'atom_indices': mol_indices,
             'xyz_content': xyz_content,
-            'charge': get_molecule_charge(mol_type)
+            'charge': charge
         })
 
     logger.info(f"Identified {len(ligands)} ligands by connectivity: {dict(type_counters)}")
