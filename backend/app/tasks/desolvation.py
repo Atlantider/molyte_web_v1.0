@@ -181,6 +181,14 @@ def _phase1_create_qc_jobs(
     cluster_data = parse_solvation_cluster(solvation_structure, molecule_structures)
     logger.info(f"Parsed cluster: center={cluster_data['center_ion']}, ligands={len(cluster_data['ligands'])}")
 
+    # 生成更有意义的集群名称
+    # 格式: Li_EC1DMC1EMC1PF62_1004 (中心离子_配位组成_结构ID)
+    composition = solvation_structure.composition or {}
+    composition_str = "".join([
+        f"{name}{count}" for name, count in sorted(composition.items()) if count > 0
+    ])
+    cluster_base_name = f"{cluster_data['center_ion']}_{composition_str}_{solvation_structure.id}"
+
     # 获取计算参数
     basis_set, functional = get_qc_params_for_method_level(method_level)
 
@@ -191,7 +199,7 @@ def _phase1_create_qc_jobs(
         db=db,
         user_id=user_id,
         md_job_id=md_job_id,
-        molecule_name=f"Cluster_{solvation_structure.id}",
+        molecule_name=cluster_base_name,
         xyz_content=cluster_data['xyz_content'],
         charge=cluster_data['total_charge'],
         basis_set=basis_set,
@@ -202,7 +210,7 @@ def _phase1_create_qc_jobs(
         solvent_config=solvent_config
     )
     created_qc_jobs.append(cluster_qc_job.id)
-    logger.info(f"Created cluster QC job {cluster_qc_job.id} (solvent={solvent_model})")
+    logger.info(f"Created cluster QC job {cluster_qc_job.id}: {cluster_base_name} (solvent={solvent_model})")
 
     # 2. 创建每种配体的 QC 任务（去重，支持跨任务复用）
     ligand_qc_jobs = {}
@@ -254,11 +262,14 @@ def _phase1_create_qc_jobs(
             cluster_minus_xyz = generate_cluster_minus_xyz(cluster_data, ligand)
             cluster_minus_charge = cluster_data['total_charge'] - ligand['charge']
 
+            # 命名格式: Li_EC1DMC1EMC1PF62_1004_minus_EC1
+            cluster_minus_name = f"{cluster_base_name}_minus_{ligand['ligand_label']}"
+
             cluster_minus_qc_job = create_qc_job_for_structure(
                 db=db,
                 user_id=user_id,
                 md_job_id=md_job_id,
-                molecule_name=f"Cluster_{solvation_structure.id}_minus_{ligand['ligand_label']}",
+                molecule_name=cluster_minus_name,
                 xyz_content=cluster_minus_xyz,
                 charge=cluster_minus_charge,
                 basis_set=basis_set,
@@ -270,7 +281,7 @@ def _phase1_create_qc_jobs(
             )
             cluster_minus_job_ids.append(cluster_minus_qc_job.id)
             created_qc_jobs.append(cluster_minus_qc_job.id)
-            logger.info(f"Created cluster_minus QC job {cluster_minus_qc_job.id} for ligand {ligand['ligand_label']}")
+            logger.info(f"Created cluster_minus QC job {cluster_minus_qc_job.id}: {cluster_minus_name}")
 
     elif desolvation_mode == "full":
         # 全部去溶剂模式：只需要计算中心离子的能量
@@ -990,9 +1001,18 @@ def parse_solvation_cluster(
     center_ion = atoms[0][0]
     center_ion_charge = get_ion_charge(center_ion)
 
-    # 根据 composition 和 molecule_structures 识别配体
+    # 获取 mol_order（优先从数据库字段，其次从 XYZ 注释解析）
+    mol_order = getattr(solvation_structure, 'mol_order', None)
+
+    # 根据 mol_order、composition 和 molecule_structures 识别配体
     composition = solvation_structure.composition or {}
-    ligands = identify_ligands(atoms[1:], composition, molecule_structures)  # 跳过中心离子
+    ligands = identify_ligands(
+        atoms[1:],  # 跳过中心离子
+        composition,
+        molecule_structures,
+        mol_order=mol_order,
+        xyz_comment=comment
+    )
 
     # 计算总电荷
     total_charge = center_ion_charge + sum(lig['charge'] for lig in ligands)
@@ -1043,23 +1063,126 @@ def get_molecule_charge(molecule_type: str) -> int:
 def identify_ligands(
     atoms: List[Tuple],
     composition: Dict[str, int],
-    molecule_structures: Optional[List[Dict]] = None
+    molecule_structures: Optional[List[Dict]] = None,
+    mol_order: Optional[List[Dict]] = None,
+    xyz_comment: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     识别配体分子
 
-    利用平台已有资源：
-    1. 从 molecule_structures 获取每种分子的原子数
-    2. 根据 composition 和原子数确定每个配体的原子范围
-    3. XYZ 中原子是按分子分组排列的
+    支持两种模式：
+    1. 如果提供了 mol_order，直接使用它（最准确）
+    2. 否则尝试从 xyz_comment 解析 mol_order
+    3. 最后回退到按 composition 顺序（可能不准确）
 
     Args:
         atoms: 配体原子列表 [(element, x, y, z), ...]，不包含中心离子
         composition: 分子组成 {"EC": 3, "DMC": 1, "FSI": 1}
         molecule_structures: 分子结构信息 [{name, type, pdb_content, atoms, ...}]
+        mol_order: XYZ中分子的实际顺序 [{"mol_name": "EC", "atom_count": 10}, ...]
+        xyz_comment: XYZ文件的注释行，可能包含 mol_order 信息
 
     Returns:
         配体列表，每个配体包含 ligand_id, ligand_type, atom_indices, xyz_content 等
+    """
+    # 尝试从 xyz_comment 解析 mol_order
+    if mol_order is None and xyz_comment and "mol_order:" in xyz_comment:
+        try:
+            # 格式: "... | mol_order:DMC,12;PF6,7;EC,10"
+            mol_order_part = xyz_comment.split("mol_order:")[1].strip()
+            mol_order = []
+            for item in mol_order_part.split(";"):
+                if "," in item:
+                    mol_name, atom_count = item.split(",")
+                    mol_order.append({"mol_name": mol_name.strip(), "atom_count": int(atom_count.strip())})
+            logger.info(f"Parsed mol_order from xyz_comment: {mol_order}")
+        except Exception as e:
+            logger.warning(f"Failed to parse mol_order from xyz_comment: {e}")
+            mol_order = None
+
+    # 如果有 mol_order，直接使用它
+    if mol_order:
+        return _identify_ligands_with_mol_order(atoms, mol_order)
+
+    # 否则使用旧的基于 composition 的方法（兼容旧数据）
+    logger.warning("Using legacy ligand identification (may be inaccurate for existing data)")
+    return _identify_ligands_legacy(atoms, composition, molecule_structures)
+
+
+def _identify_ligands_with_mol_order(
+    atoms: List[Tuple],
+    mol_order: List[Dict]
+) -> List[Dict[str, Any]]:
+    """
+    使用 mol_order 精确识别配体分子
+
+    Args:
+        atoms: 配体原子列表（不包含中心离子）
+        mol_order: [{"mol_name": "EC", "atom_count": 10}, ...]
+
+    Returns:
+        配体列表
+    """
+    ligands = []
+    ligand_id = 0
+    atom_idx = 0
+    type_counters = defaultdict(int)
+
+    for mol_info in mol_order:
+        mol_name = mol_info['mol_name']
+        atom_count = mol_info['atom_count']
+
+        ligand_id += 1
+        type_counters[mol_name] += 1
+
+        # 确定该配体的原子范围
+        start_idx = atom_idx
+        end_idx = min(atom_idx + atom_count, len(atoms))
+        ligand_atoms = atoms[start_idx:end_idx]
+
+        if len(ligand_atoms) == 0:
+            logger.warning(f"No atoms left for ligand {mol_name}_{type_counters[mol_name]}")
+            continue
+
+        if len(ligand_atoms) != atom_count:
+            logger.warning(f"Ligand {mol_name}_{type_counters[mol_name]}: expected {atom_count} atoms, got {len(ligand_atoms)}")
+
+        # 生成 XYZ 内容
+        xyz_lines = [str(len(ligand_atoms)), f"{mol_name}_{type_counters[mol_name]}"]
+        for element, x, y, z in ligand_atoms:
+            xyz_lines.append(f"{element} {x:.6f} {y:.6f} {z:.6f}")
+        xyz_content = '\n'.join(xyz_lines)
+
+        ligands.append({
+            'ligand_id': ligand_id,
+            'ligand_type': mol_name,
+            'ligand_label': f"{mol_name}_{type_counters[mol_name]}",
+            'atom_indices': list(range(start_idx, end_idx)),
+            'xyz_content': xyz_content,
+            'charge': get_molecule_charge(mol_name)
+        })
+
+        atom_idx = end_idx
+
+    logger.info(f"Identified {len(ligands)} ligands using mol_order: {dict(type_counters)}")
+    return ligands
+
+
+def _identify_ligands_legacy(
+    atoms: List[Tuple],
+    composition: Dict[str, int],
+    molecule_structures: Optional[List[Dict]] = None
+) -> List[Dict[str, Any]]:
+    """
+    旧版配体识别方法（基于 composition 顺序，可能不准确）
+
+    Args:
+        atoms: 配体原子列表
+        composition: 分子组成
+        molecule_structures: 分子结构信息
+
+    Returns:
+        配体列表
     """
     # 构建分子类型 -> 原子数的映射
     mol_atom_counts = {}
@@ -1119,7 +1242,7 @@ def identify_ligands(
 
             atom_idx = end_idx
 
-    logger.info(f"Identified {len(ligands)} ligands: {dict(type_counters)}")
+    logger.info(f"Identified {len(ligands)} ligands (legacy): {dict(type_counters)}")
     return ligands
 
 

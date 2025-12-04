@@ -35,10 +35,13 @@ oss:
 local:
   # Molyte 工作目录
   work_base_path: "/public/home/xiaoji/molyte_web/data/md_work"
-  
+
   # QC 工作目录
   qc_work_base_path: "/public/home/xiaoji/molyte_web/data/qc_work"
-  
+
+  # Cluster 工作目录（去溶剂化能计算）
+  cluster_work_base_path: "/public/home/xiaoji/molyte_web/data/cluster_work"
+
   # 初始盐文件路径
   initial_salts_path: "/public/home/xiaoji/molyte_web/data/initial_salts"
   

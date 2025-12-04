@@ -370,62 +370,87 @@ def analyze_solvation_structures(
         # 统计该类型结构的出现次数
         solvation_counts[structure_name] += 1
 
-        # 收集完整分子的所有原子
-        complete_mol_atoms = []
+        # 收集完整分子的所有原子，按分子分组
+        mol_groups = {}  # mol_id -> {mol_name, atoms}
         for mol_id in neighbor_mols:
             mol_name = mol_id_to_name.get(mol_id, 'UNK')
             if mol_name == center_ion:  # 排除其他中心离子
                 continue
+
+            if mol_id not in mol_groups:
+                mol_groups[mol_id] = {'mol_name': mol_name, 'atoms': []}
 
             # 获取该分子的所有原子 ID
             mol_atom_ids = mol_id_to_atoms.get(mol_id, [])
             for atom_id in mol_atom_ids:
                 if atom_id in atoms:
                     atom_data = atoms[atom_id]
-                    complete_mol_atoms.append({
+                    mol_groups[mol_id]['atoms'].append({
                         'id': atom_id,
                         'element': atom_data['element'],
-                        'mol': mol_id,
-                        'mol_name': mol_name,
                         'pos': np.array([atom_data['x'], atom_data['y'], atom_data['z']]),
                     })
+
+        # 记录分子写入顺序（用于后续 cluster minus 计算）
+        mol_order = []  # [(mol_name, atom_count), ...]
+        xyz_content_lines = []
+        total_atoms = 1  # 中心离子
+
+        for mol_id, mol_data in mol_groups.items():
+            mol_name = mol_data['mol_name']
+            mol_atoms = mol_data['atoms']
+            mol_order.append({'mol_name': mol_name, 'atom_count': len(mol_atoms)})
+            total_atoms += len(mol_atoms)
+
+            # 为每个原子添加坐标（调整到最小镜像位置）
+            for atom_info in mol_atoms:
+                pos = atom_info['pos'].copy()
+                delta = pos - center_pos
+                # 应用最小镜像约定
+                for dim in range(3):
+                    if delta[dim] > box[dim] / 2:
+                        delta[dim] -= box[dim]
+                    elif delta[dim] < -box[dim] / 2:
+                        delta[dim] += box[dim]
+                xyz_content_lines.append(f"{atom_info['element']} {delta[0]:.4f} {delta[1]:.4f} {delta[2]:.4f}")
 
         # 保存结构文件
         xyz_filename = f"{center_ion}_{i+1}_{structure_name}.xyz"
         xyz_path = solvation_dir / xyz_filename
 
+        # 构建带分子顺序信息的注释行
+        # 格式: "Li+ solvation shell (CN=5) | mol_order:DMC,12;PF6,7;EC,10;EMC,15;PF6,7"
+        mol_order_str = ";".join([f"{m['mol_name']},{m['atom_count']}" for m in mol_order])
+        comment_line = f"{center_ion}+ solvation shell (CN={coord_num}) | mol_order:{mol_order_str}"
+
         try:
             # 写入 XYZ 文件 - 包含完整分子
             with open(xyz_path, 'w') as f:
-                # 写入原子数（中心离子 + 完整分子的所有原子）
-                f.write(f"{len(complete_mol_atoms) + 1}\n")
-                f.write(f"{center_ion}+ solvation shell (CN={coord_num})\n")
-
+                f.write(f"{total_atoms}\n")
+                f.write(f"{comment_line}\n")
                 # 写入中心离子（作为原点参考）
                 f.write(f"{center_atom['element']} 0.0000 0.0000 0.0000\n")
+                # 写入所有配体原子
+                for line in xyz_content_lines:
+                    f.write(f"{line}\n")
 
-                # 写入完整分子的所有原子（调整到最小镜像位置，相对于中心离子）
-                for atom_info in complete_mol_atoms:
-                    pos = atom_info['pos'].copy()
-                    delta = pos - center_pos
-                    # 应用最小镜像约定
-                    for dim in range(3):
-                        if delta[dim] > box[dim] / 2:
-                            delta[dim] -= box[dim]
-                        elif delta[dim] < -box[dim] / 2:
-                            delta[dim] += box[dim]
-                    # 将坐标相对于中心离子位置输出
-                    f.write(f"{atom_info['element']} {delta[0]:.4f} {delta[1]:.4f} {delta[2]:.4f}\n")
+            # 同时保存 xyz_content 字符串
+            xyz_content = f"{total_atoms}\n{comment_line}\n{center_atom['element']} 0.0000 0.0000 0.0000\n"
+            xyz_content += "\n".join(xyz_content_lines)
+
         except Exception as e:
             logger.warning(f"保存 XYZ 文件失败: {e}")
             xyz_path = None
+            xyz_content = None
 
         results.append({
             'center_ion': center_ion,
             'structure_type': 'first_shell',
             'coordination_num': coord_num,
             'composition': composition,
+            'mol_order': mol_order,  # 新增：分子写入顺序
             'file_path': str(xyz_path) if xyz_path else None,
+            'xyz_content': xyz_content,  # 新增：直接返回 xyz_content
             'snapshot_frame': len(atoms),  # 使用原子数作为帧标识
             'description': f"{center_ion}+ 第一溶剂化壳层结构 (CN={coord_num}): {structure_name}",
             'ion_index': i + 1,

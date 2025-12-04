@@ -61,7 +61,13 @@ class Settings:
         "QC_WORK_BASE_PATH",
         "/public/home/xiaoji/molyte_web/data/qc_work"
     ))
-    
+
+    # Cluster (desolvation) work paths
+    CLUSTER_WORK_BASE_PATH: Path = Path(os.getenv(
+        "CLUSTER_WORK_BASE_PATH",
+        "/public/home/xiaoji/molyte_web/data/cluster_work"
+    ))
+
     # Slurm settings
     SLURM_PARTITION: str = os.getenv("SLURM_PARTITION", "cpu")
     SLURM_NODES: int = int(os.getenv("SLURM_NODES", "1"))
@@ -89,6 +95,7 @@ class Settings:
         # Create work directories if they don't exist
         self.MOLYTE_WORK_BASE_PATH.mkdir(parents=True, exist_ok=True)
         self.QC_WORK_BASE_PATH.mkdir(parents=True, exist_ok=True)
+        self.CLUSTER_WORK_BASE_PATH.mkdir(parents=True, exist_ok=True)
         self.MOLYTE_CHARGE_SAVE_PATH.mkdir(parents=True, exist_ok=True)
 
 

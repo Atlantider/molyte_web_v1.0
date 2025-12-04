@@ -148,6 +148,7 @@ class SolvationStructure(Base):
     # 配位信息
     coordination_num = Column(Integer)  # 配位数
     composition = Column(JSONB)  # 溶剂壳组成，如 {"EC": 3, "DMC": 1, "FSI": 0}
+    mol_order = Column(JSONB)  # XYZ中分子的实际顺序，如 [{"mol_name": "EC", "atom_count": 10}, ...]
 
     # 文件信息
     file_path = Column(String)  # xyz/pdb 文件路径（本地路径，可选）
