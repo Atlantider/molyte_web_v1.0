@@ -162,73 +162,51 @@ def _submit_job_to_cluster(job: MDJob, electrolyte: ElectrolyteSystem, db: Sessi
 
 def generate_job_name(db: Session, electrolyte_system: "ElectrolyteSystem" = None, custom_name: str = None) -> str:
     """
-    Generate job name with format: MD-YYYYMMDD-序号-离子溶剂简称
+    Generate job name with format: {电解液配方名}-MD{配方内序号}
+
+    新命名方式（2024.12更新）:
+        - 使用电解液配方名作为基础
+        - 追加 MD 序号（该配方下的第几个 MD 任务）
 
     Examples:
-        - MD-20251203-0001-Li-PF6-EC-DMC
-        - MD-20251203-0002-Li-FSI-TTE-DME
-
-    注意：custom_name 参数不再用于生成任务名，会单独保存为备注信息
+        - EL-20251202-0014-Li-FSI-MD1 (该配方的第1个MD任务)
+        - EL-20251202-0014-Li-FSI-MD2 (该配方的第2个MD任务)
+        - EL-20251203-0001-Li-PF6-EC-DMC-MD1
 
     Args:
         db: Database session
-        electrolyte_system: ElectrolyteSystem object (used to extract ion/solvent names)
+        electrolyte_system: ElectrolyteSystem object
         custom_name: Optional note (saved separately, not in job name)
 
     Returns:
         Generated job name
     """
-    import re
+    if not electrolyte_system:
+        # 没有配方信息时，使用旧格式作为回退
+        import re
+        today = date.today()
+        date_str = today.strftime('%Y%m%d')
+        today_start = datetime.combine(today, datetime.min.time())
+        today_end = datetime.combine(today, datetime.max.time())
+        count = db.query(func.count(MDJob.id)).filter(
+            MDJob.created_at >= today_start,
+            MDJob.created_at <= today_end
+        ).scalar()
+        return f"MD-{date_str}-{count + 1:04d}"
 
-    today = date.today()
-    date_str = today.strftime('%Y%m%d')
+    # 使用配方名作为基础
+    electrolyte_name = electrolyte_system.name or f"EL-{electrolyte_system.id}"
 
-    # Count ALL jobs created today (global count, not per-user)
-    today_start = datetime.combine(today, datetime.min.time())
-    today_end = datetime.combine(today, datetime.max.time())
-
-    count = db.query(func.count(MDJob.id)).filter(
-        MDJob.created_at >= today_start,
-        MDJob.created_at <= today_end
+    # 统计该配方下已有的 MD 任务数量
+    existing_count = db.query(func.count(MDJob.id)).filter(
+        MDJob.system_id == electrolyte_system.id
     ).scalar()
 
-    # Next sequential number (starting from 1)
-    seq_number = count + 1
+    # 生成配方内序号（从1开始）
+    md_seq = existing_count + 1
 
-    # 从配方中提取离子和溶剂简称
-    formula_parts = []
-
-    if electrolyte_system:
-        # 提取阳离子名称
-        if electrolyte_system.cations:
-            for cation in electrolyte_system.cations:
-                name = cation.get("name", "")
-                if name:
-                    formula_parts.append(name)
-
-        # 提取阴离子名称
-        if electrolyte_system.anions:
-            for anion in electrolyte_system.anions:
-                name = anion.get("name", "")
-                if name:
-                    formula_parts.append(name)
-
-        # 提取溶剂名称
-        if electrolyte_system.solvents:
-            for solvent in electrolyte_system.solvents:
-                name = solvent.get("name", "")
-                if name:
-                    formula_parts.append(name)
-
-    # 生成配方简称（用连字符连接）
-    if formula_parts:
-        formula_str = "-".join(formula_parts)
-        # 清理特殊字符
-        formula_str = re.sub(r'[\s/]+', '-', formula_str)
-        formula_str = re.sub(r'[^\w\u4e00-\u9fff+-]', '', formula_str)
-        job_name = f"MD-{date_str}-{seq_number:04d}-{formula_str}"
-    else:
-        job_name = f"MD-{date_str}-{seq_number:04d}"
+    # 生成任务名: {配方名}-MD{序号}
+    job_name = f"{electrolyte_name}-MD{md_seq}"
 
     return job_name
 

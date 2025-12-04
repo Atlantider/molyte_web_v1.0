@@ -388,7 +388,7 @@ export default function JobCreate() {
             label="备注信息（可选）"
             name="job_name"
             tooltip="可选的备注信息，用于记录任务目的或特殊说明，不影响任务名称"
-            extra="任务名称自动生成：MD-日期-序号（如：MD-20251203-0001）"
+            extra={`任务名称自动生成：${electrolyte?.name || '配方名'}-MD{序号}（如：${electrolyte?.name || 'EL-xxx'}-MD1）`}
           >
             <Input placeholder="可选备注（如：高温测试、对照组等）" allowClear />
           </Form.Item>
