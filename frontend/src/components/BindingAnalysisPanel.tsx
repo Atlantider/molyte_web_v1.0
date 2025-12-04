@@ -49,7 +49,7 @@ import {
   BindingAnalysisJob,
   AvailableClustersInfo,
 } from '../api/binding';
-import { convertEnergy, getUnitOptions } from '../utils/energyUnits';
+import { convertEnergy, getUnitOptions, type EnergyUnit } from '../utils/energyUnits';
 
 const { Text, Title } = Typography;
 
@@ -74,7 +74,7 @@ const BindingAnalysisPanel: React.FC<BindingAnalysisPanelProps> = ({ mdJobId }) 
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [form] = Form.useForm();
-  const [unit, setUnit] = useState('kcal/mol');
+  const [unit, setUnit] = useState<EnergyUnit>('kcal/mol');
 
   const loadJobs = useCallback(async () => {
     try {
@@ -160,7 +160,7 @@ const BindingAnalysisPanel: React.FC<BindingAnalysisPanelProps> = ({ mdJobId }) 
     }
   };
 
-  const convert = (val: number) => convertEnergy(val, 'kcal/mol', unit);
+  const convert = (val: number) => convertEnergy(val, unit);
   const format = (val: number) => convert(val).toFixed(2);
 
   const columns = [

@@ -145,7 +145,37 @@ const RedoxPotentialPanel: React.FC<RedoxPotentialPanelProps> = ({ mdJobId }) =>
     }
   };
 
+  const handleDelete = async (jobId: number) => {
+    try {
+      await deleteRedoxJob(jobId);
+      message.success('任务已删除');
+      loadJobs();
+    } catch (error: any) {
+      message.error(error.response?.data?.detail || '删除任务失败');
+    }
+  };
 
+  const getStatusTag = (status: RedoxJobStatus) => {
+    const statusConfig: Record<RedoxJobStatus, { color: string; text: string }> = {
+      CREATED: { color: 'default', text: '已创建' },
+      SUBMITTED: { color: 'processing', text: '已提交' },
+      RUNNING: { color: 'processing', text: '运行中' },
+      COMPLETED: { color: 'success', text: '已完成' },
+      FAILED: { color: 'error', text: '失败' },
+    };
+    const config = statusConfig[status] || { color: 'default', text: status };
+    return <Tag color={config.color}>{config.text}</Tag>;
+  };
+
+  const getModeTag = (mode: RedoxCalculationMode) => {
+    const modeConfig: Record<RedoxCalculationMode, { color: string; text: string }> = {
+      cheap: { color: 'green', text: '快速' },
+      standard: { color: 'blue', text: '标准' },
+      heavy: { color: 'red', text: '精确' },
+    };
+    const config = modeConfig[mode] || { color: 'default', text: mode };
+    return <Tag color={config.color}>{config.text}</Tag>;
+  };
 
   const columns = [
     {

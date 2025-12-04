@@ -59,9 +59,9 @@ const BindingEnergyView: React.FC<BindingEnergyViewProps> = ({ mdJobId }) => {
     }
   };
 
-  // 转换能量值
-  const convert = (value: number) => convertEnergy(value, 'kcal/mol', unit);
-  const format = (value: number) => formatEnergy(convertEnergy(value, 'kcal/mol', unit), unit);
+  // 转换能量值 (数据已经是 kcal/mol)
+  const convert = (value: number) => convertEnergy(value, unit);
+  const format = (value: number) => formatEnergy(value, unit);
 
   // 按类型的柱状图配置
   const typeBarChartOption = useMemo(() => {
