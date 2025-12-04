@@ -377,7 +377,8 @@ class PollingWorker:
                 self._process_postprocess_job(job)
 
             # 检查等待 QC 任务完成的去溶剂化任务
-            self._check_waiting_desolvation_jobs()
+            # 注意：在 API 架构下，这个功能由后端处理，worker 不需要直接访问数据库
+            # self._check_waiting_desolvation_jobs()
 
         except Exception as e:
             self.logger.error(f"获取新任务失败: {e}", exc_info=True)
@@ -784,9 +785,11 @@ class PollingWorker:
 
             if response.status_code == 200:
                 result = response.json()
-                if result.get('success'):
-                    self.logger.info(f"去溶剂化能任务 {job_id} 处理成功")
-                    self._update_job_status(job_id, 'COMPLETED', 'postprocess')
+                # API 返回 {"status": "ok", ...} 表示成功
+                if result.get('status') == 'ok':
+                    self.logger.info(f"去溶剂化能任务 {job_id} 处理成功: {result}")
+                    # 注意：任务状态由后端 API 更新，worker 不需要再次更新
+                    # self._update_job_status(job_id, 'COMPLETED', 'postprocess')
                 else:
                     error_msg = result.get('error', 'Unknown error')
                     self.logger.error(f"去溶剂化能任务 {job_id} 处理失败: {error_msg}")
