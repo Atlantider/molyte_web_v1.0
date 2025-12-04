@@ -214,6 +214,31 @@ def create_reorg_energy_job(
     return job
 
 
+@router.get("/reorganization-energy/jobs", response_model=List[ReorgEnergyJobResponse])
+def list_reorg_energy_jobs(
+    md_job_id: Optional[int] = Query(None, description="按 MD 任务 ID 筛选"),
+    status: Optional[str] = Query(None, description="按状态筛选"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """列出重组能计算任务"""
+    query = db.query(ReorganizationEnergyJob).filter(
+        ReorganizationEnergyJob.user_id == current_user.id
+    )
+
+    if md_job_id:
+        query = query.filter(ReorganizationEnergyJob.md_job_id == md_job_id)
+
+    if status:
+        query = query.filter(ReorganizationEnergyJob.status == status)
+
+    jobs = query.order_by(ReorganizationEnergyJob.created_at.desc()).offset(skip).limit(limit).all()
+
+    return jobs
+
+
 @router.get("/reorganization-energy/jobs/{job_id}", response_model=ReorgEnergyJobResponse)
 def get_reorg_energy_job(
     job_id: int,

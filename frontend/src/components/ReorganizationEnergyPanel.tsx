@@ -49,8 +49,8 @@ import {
   submitReorgEnergyJob,
   deleteReorgEnergyJob,
   getReorgEnergyJob,
+  listReorgEnergyJobs,
 } from '../api/redox';
-import apiClient from '../api/client';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -73,11 +73,8 @@ const ReorganizationEnergyPanel: React.FC<ReorganizationEnergyPanelProps> = ({ m
   const loadJobs = async () => {
     setLoading(true);
     try {
-      // 暂时使用简单的列表获取
-      const response = await apiClient.get('/redox/reorganization-energy/jobs', {
-        params: { md_job_id: mdJobId }
-      });
-      setJobs(response.data.jobs || []);
+      const jobList = await listReorgEnergyJobs({ md_job_id: mdJobId });
+      setJobs(jobList || []);
     } catch (error: any) {
       // 如果 API 不存在，显示空列表
       setJobs([]);

@@ -239,6 +239,19 @@ export async function deleteRedoxJob(jobId: number): Promise<{ message: string; 
 // ============================================================================
 
 /**
+ * 获取重组能任务列表
+ */
+export async function listReorgEnergyJobs(params?: {
+  md_job_id?: number;
+  status?: ReorgEnergyJobStatus;
+  skip?: number;
+  limit?: number;
+}): Promise<ReorgEnergyJobResponse[]> {
+  const response = await apiClient.get('/redox/reorganization-energy/jobs', { params });
+  return response.data;
+}
+
+/**
  * 创建重组能任务
  */
 export async function createReorgEnergyJob(data: {
