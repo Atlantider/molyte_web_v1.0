@@ -39,6 +39,7 @@ import {
   ApartmentOutlined,
   AppstoreOutlined,
   ThunderboltOutlined,
+  BulbOutlined,
 } from '@ant-design/icons';
 
 import ReactECharts from 'echarts-for-react';
@@ -1735,6 +1736,36 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
             size="small"
             style={{ marginBottom: 16 }}
           >
+            {/* 智能推荐提示 */}
+            {(() => {
+              // 检测阴离子：常见阴离子包括 PF6, TFSI, FSI, BF4, ClO4, NO3 等
+              const ANION_PATTERNS = ['PF6', 'TFSI', 'FSI', 'BF4', 'ClO4', 'NO3', 'Cl', 'Br', 'I', 'OTf', 'BOB', 'DFOB'];
+              const composition = sideStructureContent?.composition || {};
+              const hasAnion = Object.keys(composition).some(mol =>
+                ANION_PATTERNS.some(anion => mol.toUpperCase().includes(anion.toUpperCase()))
+              );
+
+              if (hasAnion) {
+                return (
+                  <div style={{
+                    marginBottom: 12,
+                    padding: '8px 12px',
+                    background: isDark ? 'rgba(250, 173, 20, 0.1)' : '#fffbe6',
+                    border: `1px solid ${isDark ? 'rgba(250, 173, 20, 0.3)' : '#ffe58f'}`,
+                    borderRadius: 6,
+                  }}>
+                    <Space size={4}>
+                      <BulbOutlined style={{ color: '#faad14' }} />
+                      <Text style={{ fontSize: 12, color: token.colorText }}>
+                        <strong>智能推荐：</strong>检测到阴离子，建议选择带弥散函数的基组（标准或精确），以提高阴离子电子云描述精度
+                      </Text>
+                    </Space>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             <div style={{ marginBottom: 12 }}>
               <Text strong style={{ fontSize: 13, color: token.colorText }}>选择计算方法：</Text>
             </div>
@@ -1757,6 +1788,9 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                   </div>
                   <Text type="secondary" style={{ fontSize: 12 }}>~1-2 小时</Text>
                 </div>
+                <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
+                  适用于快速预览，无弥散函数
+                </Text>
               </div>
               <div
                 onClick={() => setSelectedMethodLevel('standard')}
@@ -1773,9 +1807,13 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                   <div>
                     <Tag color="blue">标准 (Standard)</Tag>
                     <Text style={{ fontSize: 13, color: token.colorText }}>B3LYP/6-31++G(d,p)</Text>
+                    <Tag color="orange" style={{ marginLeft: 8, fontSize: 10 }}>含弥散</Tag>
                   </div>
                   <Text type="secondary" style={{ fontSize: 12 }}>~2-4 小时</Text>
                 </div>
+                <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
+                  推荐用于含阴离子体系，++G 提供重/轻原子弥散函数
+                </Text>
               </div>
               <div
                 onClick={() => setSelectedMethodLevel('accurate')}
@@ -1791,10 +1829,14 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <Tag color="purple">精确 (Accurate)</Tag>
-                    <Text style={{ fontSize: 13, color: token.colorText }}>wB97XD/6-311++G(2d,2p)</Text>
+                    <Text style={{ fontSize: 13, color: token.colorText }}>ωB97XD/6-311++G(2d,2p)</Text>
+                    <Tag color="orange" style={{ marginLeft: 8, fontSize: 10 }}>含弥散+色散</Tag>
                   </div>
                   <Text type="secondary" style={{ fontSize: 12 }}>~4-8 小时</Text>
                 </div>
+                <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
+                  高精度计算，ωB97XD 含长程校正和色散修正，适合弱相互作用
+                </Text>
               </div>
             </Space>
 

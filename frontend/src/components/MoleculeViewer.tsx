@@ -439,7 +439,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
       width: 80,
       align: 'right',
       render: (x: number) => (
-        <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{x.toFixed(3)}</span>
+        <span style={{ fontFamily: 'monospace', fontSize: 12, color: token.colorText }}>{x.toFixed(3)}</span>
       ),
     },
     {
@@ -449,7 +449,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
       width: 80,
       align: 'right',
       render: (y: number) => (
-        <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{y.toFixed(3)}</span>
+        <span style={{ fontFamily: 'monospace', fontSize: 12, color: token.colorText }}>{y.toFixed(3)}</span>
       ),
     },
     {
@@ -459,7 +459,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
       width: 80,
       align: 'right',
       render: (z: number) => (
-        <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{z.toFixed(3)}</span>
+        <span style={{ fontFamily: 'monospace', fontSize: 12, color: token.colorText }}>{z.toFixed(3)}</span>
       ),
     },
   ];
