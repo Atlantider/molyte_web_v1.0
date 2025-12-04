@@ -130,6 +130,19 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
   const [anionCountFilter, setAnionCountFilter] = useState<number[]>([]);  // 阴离子数量筛选
   const [solventTypeFilter, setSolventTypeFilter] = useState<string[]>([]);  // 溶剂类型筛选
 
+  // 当 jobId 变化时，重置所有状态
+  useEffect(() => {
+    setStructures([]);
+    setSelectedKeys([]);
+    setOverview(null);
+    setExpandedJobId(null);
+    setExpandedRowKeys([]);
+    setQcTasksCache({});
+    setCnFilter([]);
+    setAnionCountFilter([]);
+    setSolventTypeFilter([]);
+  }, [jobId]);
+
   // 计算参数
   const [desolvationMode, setDesolvationMode] = useState<'stepwise' | 'full'>('stepwise');
   const [methodLevel, setMethodLevel] = useState<'fast' | 'standard' | 'accurate'>('standard');
