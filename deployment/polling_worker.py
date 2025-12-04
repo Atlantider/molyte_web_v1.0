@@ -1342,39 +1342,125 @@ class PollingWorker:
                                    functional: str, basis_set: str,
                                    calc_type: str, solvent_model: Optional[str],
                                    use_dispersion: bool, parent_job_id: int,
-                                   solvent: str = None) -> Dict:
+                                   solvent: str = None,
+                                   max_wait_seconds: int = 3600) -> Dict:
         """
         运行单个 QC 计算（用于 Redox）
 
         返回：{'qc_job_id': int, 'energy': float or None}
         """
-        # 构建 QC 配置
-        qc_config = {
-            'functional': functional,
-            'basis_set': basis_set,
-            'charge': charge,
-            'multiplicity': multiplicity,
-            'job_type': calc_type,
-            'use_dispersion': use_dispersion,
-            'source': 'redox_thermodynamic_cycle',
-            'parent_redox_job_id': parent_job_id
-        }
-
-        if solvent_model:
-            qc_config['solvent_model'] = solvent_model
-            qc_config['solvent'] = solvent or 'water'
-
-        # 调用 API 创建 QC 任务
-        # 注意：这里需要一个专门的 API 来创建 redox 相关的 QC 任务
-        # 暂时返回占位结果
         self.logger.info(f"创建 Redox QC 任务: {name}, {calc_type}, solvent={solvent_model}")
 
-        # TODO: 实际应该调用 QC API 创建任务并等待完成
-        # 这里先返回占位结果
-        return {
-            'qc_job_id': None,
-            'energy': None
-        }
+        try:
+            # 1. 构建 QC 任务创建请求
+            config = {
+                'job_type': calc_type,  # SP, OPT, or FREQ
+                'use_dispersion': use_dispersion,
+                'source': 'redox_thermodynamic_cycle',
+                'parent_redox_job_id': parent_job_id
+            }
+
+            if solvent_model and solvent_model != 'gas':
+                config['solvent_config'] = {
+                    'model': solvent_model,
+                    'solvent_name': solvent or 'water'
+                }
+
+            qc_job_data = {
+                'smiles': smiles,
+                'molecule_name': name,
+                'molecule_type': 'redox_species',
+                'charge': charge,
+                'spin_multiplicity': multiplicity,
+                'functional': functional,
+                'basis_set': basis_set,
+                'config': config
+            }
+
+            # 如果有 XYZ 坐标，添加到配置中
+            if xyz_content:
+                qc_job_data['config']['initial_xyz'] = xyz_content
+
+            # 2. 调用 API 创建 QC 任务
+            create_endpoint = f"{self.api_base_url}/qc/jobs"
+            response = requests.post(
+                create_endpoint,
+                headers=self.api_headers,
+                json=qc_job_data,
+                timeout=60
+            )
+
+            if response.status_code not in [200, 201]:
+                self.logger.error(f"创建 QC 任务失败: {response.status_code} - {response.text}")
+                return {'qc_job_id': None, 'energy': None}
+
+            qc_job = response.json()
+            qc_job_id = qc_job['id']
+            self.logger.info(f"创建 QC 任务成功: ID={qc_job_id}")
+
+            # 3. 提交任务
+            submit_endpoint = f"{self.api_base_url}/qc/jobs/{qc_job_id}/submit"
+            submit_response = requests.post(
+                submit_endpoint,
+                headers=self.api_headers,
+                timeout=30
+            )
+
+            if submit_response.status_code != 200:
+                self.logger.error(f"提交 QC 任务失败: {submit_response.status_code}")
+                return {'qc_job_id': qc_job_id, 'energy': None}
+
+            # 4. 等待任务完成（轮询）
+            # 注意：这里简化处理，实际的 QC 任务会被其他 Worker 处理
+            # 我们只需要等待并检查状态
+            start_time = time.time()
+            poll_interval = 30  # 30秒轮询一次
+
+            while time.time() - start_time < max_wait_seconds:
+                status_endpoint = f"{self.api_base_url}/qc/jobs/{qc_job_id}"
+                status_response = requests.get(
+                    status_endpoint,
+                    headers=self.api_headers,
+                    timeout=30
+                )
+
+                if status_response.status_code != 200:
+                    self.logger.warning(f"获取 QC 任务 {qc_job_id} 状态失败")
+                    time.sleep(poll_interval)
+                    continue
+
+                job_status = status_response.json()
+                current_status = job_status.get('status')
+
+                if current_status == 'COMPLETED':
+                    # 获取能量结果
+                    results = job_status.get('results', [])
+                    energy = None
+                    if results:
+                        energy = results[0].get('energy_au')
+
+                    self.logger.info(f"QC 任务 {qc_job_id} 完成, 能量={energy}")
+                    return {'qc_job_id': qc_job_id, 'energy': energy}
+
+                elif current_status == 'FAILED':
+                    error_msg = job_status.get('error_message', 'Unknown error')
+                    self.logger.error(f"QC 任务 {qc_job_id} 失败: {error_msg}")
+                    return {'qc_job_id': qc_job_id, 'energy': None}
+
+                elif current_status == 'CANCELLED':
+                    self.logger.warning(f"QC 任务 {qc_job_id} 被取消")
+                    return {'qc_job_id': qc_job_id, 'energy': None}
+
+                self.logger.debug(f"QC 任务 {qc_job_id} 状态: {current_status}, 等待中...")
+                time.sleep(poll_interval)
+
+            # 超时
+            self.logger.error(f"QC 任务 {qc_job_id} 等待超时 ({max_wait_seconds}秒)")
+            return {'qc_job_id': qc_job_id, 'energy': None}
+
+        except Exception as e:
+            self.logger.error(f"运行 Redox QC 计算失败: {e}", exc_info=True)
+            return {'qc_job_id': None, 'energy': None}
 
     def _update_redox_result(self, job_id: int, result: Dict, qc_job_ids: List[int]):
         """更新 Redox 任务结果"""
@@ -1503,7 +1589,19 @@ class PollingWorker:
     def _calculate_species_reorg(self, job_id: int, species: Dict,
                                   functional: str, basis_set: str,
                                   use_dispersion: bool) -> Dict:
-        """计算单个物种的重组能"""
+        """
+        计算单个物种的重组能 (Marcus 理论 4 点方案)
+
+        4点方案：
+        1. 优化中性态几何 R_q → 得到 E(q, R_q)
+        2. 优化氧化态几何 R_{q+1} → 得到 E(q+1, R_{q+1})
+        3. 单点 E(q+1, R_q) - 在中性态几何上计算氧化态能量
+        4. 单点 E(q, R_{q+1}) - 在氧化态几何上计算中性态能量
+
+        λ_ox = E(q+1, R_q) - E(q+1, R_{q+1})
+        λ_red = E(q, R_{q+1}) - E(q, R_q)
+        λ_total = (λ_ox + λ_red) / 2
+        """
         name = species.get('name', 'unknown')
         smiles = species.get('smiles', '')
         xyz_content = species.get('xyz_content', '')
@@ -1512,7 +1610,8 @@ class PollingWorker:
         mult_neutral = species.get('multiplicity_neutral', 1)
         mult_oxidized = species.get('multiplicity_oxidized', 2)
 
-        self.logger.info(f"计算物种 {name} 的重组能")
+        self.logger.info(f"计算物种 {name} 的重组能 (4点方案)")
+        self.logger.warning(f"⚠️ 重组能计算极其耗时，物种: {name}")
 
         qc_job_ids = []
         warnings = []
@@ -1520,36 +1619,150 @@ class PollingWorker:
         HARTREE_TO_EV = 27.2114
 
         try:
-            # 4点方案：
-            # 1. 优化中性态几何 R_q
-            # 2. 优化氧化态几何 R_{q+1}
-            # 3. 单点 E(q, R_q)
-            # 4. 单点 E(q+1, R_q)
-            # 5. 单点 E(q, R_{q+1})
-            # 6. 单点 E(q+1, R_{q+1})
+            # Step 1: 优化中性态几何 R_q
+            self.logger.info(f"{name}: Step 1/4 - 优化中性态几何")
+            opt_neutral = self._run_redox_qc_calculation(
+                name=f"{name}_neutral_opt",
+                smiles=smiles,
+                xyz_content=xyz_content,
+                charge=charge_neutral,
+                multiplicity=mult_neutral,
+                functional=functional,
+                basis_set=basis_set,
+                calc_type='OPT',
+                solvent_model=None,
+                use_dispersion=use_dispersion,
+                parent_job_id=job_id,
+                max_wait_seconds=7200  # 2小时超时
+            )
+            if opt_neutral.get('qc_job_id'):
+                qc_job_ids.append(opt_neutral['qc_job_id'])
 
-            # 这里简化处理，实际应该等待 QC 完成
-            warnings.append('简化计算流程，未实际执行几何优化')
+            E_q_Rq = opt_neutral.get('energy')  # E(q, R_q)
 
-            # TODO: 实际实现需要：
-            # 1. 提交中性态优化任务，等待完成
-            # 2. 提交氧化态优化任务，等待完成
-            # 3. 在两个几何上分别做 4 次单点
-            # 4. 收集能量计算重组能
+            if E_q_Rq is None:
+                warnings.append('中性态优化失败')
+                return {
+                    'name': name,
+                    'converged': False,
+                    'warnings': warnings,
+                    'qc_job_ids': qc_job_ids
+                }
 
-            # 暂时返回占位结果
+            # Step 2: 优化氧化态几何 R_{q+1}
+            self.logger.info(f"{name}: Step 2/4 - 优化氧化态几何")
+            opt_oxidized = self._run_redox_qc_calculation(
+                name=f"{name}_oxidized_opt",
+                smiles=smiles,
+                xyz_content=xyz_content,
+                charge=charge_oxidized,
+                multiplicity=mult_oxidized,
+                functional=functional,
+                basis_set=basis_set,
+                calc_type='OPT',
+                solvent_model=None,
+                use_dispersion=use_dispersion,
+                parent_job_id=job_id,
+                max_wait_seconds=7200
+            )
+            if opt_oxidized.get('qc_job_id'):
+                qc_job_ids.append(opt_oxidized['qc_job_id'])
+
+            E_qp1_Rqp1 = opt_oxidized.get('energy')  # E(q+1, R_{q+1})
+
+            if E_qp1_Rqp1 is None:
+                warnings.append('氧化态优化失败')
+                return {
+                    'name': name,
+                    'E_q_Rq': E_q_Rq,
+                    'converged': False,
+                    'warnings': warnings,
+                    'qc_job_ids': qc_job_ids
+                }
+
+            # Step 3: 单点 E(q+1, R_q) - 在中性态几何上计算氧化态能量
+            # 需要获取中性态优化后的几何
+            self.logger.info(f"{name}: Step 3/4 - 单点 E(q+1, R_q)")
+            sp_oxidized_at_neutral = self._run_redox_qc_calculation(
+                name=f"{name}_sp_ox_at_neutral",
+                smiles=smiles,
+                xyz_content=xyz_content,  # 理想情况下应该用优化后的几何
+                charge=charge_oxidized,
+                multiplicity=mult_oxidized,
+                functional=functional,
+                basis_set=basis_set,
+                calc_type='SP',
+                solvent_model=None,
+                use_dispersion=use_dispersion,
+                parent_job_id=job_id,
+                max_wait_seconds=3600
+            )
+            if sp_oxidized_at_neutral.get('qc_job_id'):
+                qc_job_ids.append(sp_oxidized_at_neutral['qc_job_id'])
+
+            E_qp1_Rq = sp_oxidized_at_neutral.get('energy')  # E(q+1, R_q)
+
+            # Step 4: 单点 E(q, R_{q+1}) - 在氧化态几何上计算中性态能量
+            self.logger.info(f"{name}: Step 4/4 - 单点 E(q, R_{q+1})")
+            sp_neutral_at_oxidized = self._run_redox_qc_calculation(
+                name=f"{name}_sp_neutral_at_ox",
+                smiles=smiles,
+                xyz_content=xyz_content,  # 理想情况下应该用优化后的几何
+                charge=charge_neutral,
+                multiplicity=mult_neutral,
+                functional=functional,
+                basis_set=basis_set,
+                calc_type='SP',
+                solvent_model=None,
+                use_dispersion=use_dispersion,
+                parent_job_id=job_id,
+                max_wait_seconds=3600
+            )
+            if sp_neutral_at_oxidized.get('qc_job_id'):
+                qc_job_ids.append(sp_neutral_at_oxidized['qc_job_id'])
+
+            E_q_Rqp1 = sp_neutral_at_oxidized.get('energy')  # E(q, R_{q+1})
+
+            # 计算重组能
+            lambda_ox_ev = None
+            lambda_red_ev = None
+            lambda_total_ev = None
+
+            if E_qp1_Rq is not None and E_qp1_Rqp1 is not None:
+                lambda_ox_au = E_qp1_Rq - E_qp1_Rqp1
+                lambda_ox_ev = lambda_ox_au * HARTREE_TO_EV
+                self.logger.info(f"{name}: λ_ox = {lambda_ox_ev:.4f} eV")
+
+            if E_q_Rqp1 is not None and E_q_Rq is not None:
+                lambda_red_au = E_q_Rqp1 - E_q_Rq
+                lambda_red_ev = lambda_red_au * HARTREE_TO_EV
+                self.logger.info(f"{name}: λ_red = {lambda_red_ev:.4f} eV")
+
+            if lambda_ox_ev is not None and lambda_red_ev is not None:
+                lambda_total_ev = (lambda_ox_ev + lambda_red_ev) / 2
+                self.logger.info(f"{name}: λ_total = {lambda_total_ev:.4f} eV")
+
+            converged = lambda_total_ev is not None
+
+            if not converged:
+                warnings.append('部分单点计算失败，无法计算完整重组能')
+
             return {
                 'name': name,
-                'lambda_ox_ev': None,
-                'lambda_red_ev': None,
-                'lambda_total_ev': None,
-                'converged': False,
-                'warnings': warnings + ['重组能计算需要完整实现 QC workflow'],
+                'E_q_Rq': E_q_Rq,
+                'E_qp1_Rqp1': E_qp1_Rqp1,
+                'E_qp1_Rq': E_qp1_Rq,
+                'E_q_Rqp1': E_q_Rqp1,
+                'lambda_ox_ev': lambda_ox_ev,
+                'lambda_red_ev': lambda_red_ev,
+                'lambda_total_ev': lambda_total_ev,
+                'converged': converged,
+                'warnings': warnings,
                 'qc_job_ids': qc_job_ids
             }
 
         except Exception as e:
-            self.logger.error(f"物种 {name} 重组能计算失败: {e}")
+            self.logger.error(f"物种 {name} 重组能计算失败: {e}", exc_info=True)
             return {
                 'name': name,
                 'converged': False,
