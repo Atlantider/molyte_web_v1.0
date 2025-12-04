@@ -74,6 +74,7 @@ import ClusterStatisticsPanel from './ClusterStatisticsPanel';
 import BindingAnalysisPanel from './BindingAnalysisPanel';
 import RedoxPotentialPanel from './RedoxPotentialPanel';
 import ReorganizationEnergyPanel from './ReorganizationEnergyPanel';
+import ClusterAnalysisPlannerPanel from './ClusterAnalysisPlannerPanel';
 
 // 3Dmol.js 类型声明
 declare global {
@@ -1748,6 +1749,18 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                   </Space>
                 ),
                 children: <ReorganizationEnergyPanel mdJobId={jobId} />,
+              },
+              {
+                key: 'cluster-planner',
+                label: (
+                  <Space>
+                    <span style={{ color: '#1890ff', fontWeight: 'bold' }}>🚀 统一规划</span>
+                    <Tooltip title="统一规划多种 Cluster 计算（Binding/Desolvation/Redox/Reorg），智能复用 QC 任务">
+                      <ExperimentOutlined style={{ color: '#1890ff' }} />
+                    </Tooltip>
+                  </Space>
+                ),
+                children: <ClusterAnalysisPlannerPanel mdJobId={jobId} />,
               },
             ]}
           />
