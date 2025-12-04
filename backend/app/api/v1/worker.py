@@ -1180,3 +1180,174 @@ async def upload_md_results(
         "uploaded": uploaded_counts
     }
 
+
+@router.post("/jobs/{job_id}/process_desolvation")
+async def process_desolvation_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Worker 触发去溶剂化能计算任务
+
+    校园网 Worker 调用此接口，在腾讯云后端执行去溶剂化能计算逻辑。
+    计算分两个阶段：
+    - Phase 1: 创建 QC 任务（cluster, ligands, cluster_minus）
+    - Phase 2: 等待 QC 完成后计算去溶剂化能
+    """
+    from app.models.job import PostprocessJob, JobStatus
+    from app.tasks.desolvation import run_desolvation_job
+
+    # 验证是否是 Worker 用户
+    if not is_worker_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only worker users can process desolvation jobs"
+        )
+
+    # 获取 Postprocess 任务
+    job = db.query(PostprocessJob).filter(PostprocessJob.id == job_id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Postprocess job {job_id} not found"
+        )
+
+    # 检查任务类型
+    if job.job_type != 'DESOLVATION_ENERGY':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Job {job_id} is not a desolvation energy job"
+        )
+
+    # 更新状态为 QUEUED
+    job.status = JobStatus.QUEUED
+    db.commit()
+
+    logger.info(f"Processing desolvation job {job_id}")
+
+    try:
+        # 执行去溶剂化能计算
+        result = run_desolvation_job(job, db)
+
+        if result['success']:
+            logger.info(f"Desolvation job {job_id} completed successfully")
+            return {
+                "status": "ok",
+                "job_id": job_id,
+                "phase": result.get('phase', 'unknown'),
+                "message": result.get('message', 'Job completed')
+            }
+        else:
+            logger.error(f"Desolvation job {job_id} failed: {result.get('error')}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get('error', 'Unknown error')
+            )
+    except Exception as e:
+        logger.error(f"Error processing desolvation job {job_id}: {e}", exc_info=True)
+        # 更新任务状态为失败
+        job.status = JobStatus.FAILED
+        job.error_message = str(e)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.post("/jobs/{job_id}/check_waiting_desolvation")
+async def check_waiting_desolvation_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Worker 检查等待中的去溶剂化任务
+
+    对于处于 POSTPROCESSING 状态（Phase 2 等待中）的任务，
+    检查其 QC 任务是否已完成，如果完成则继续计算去溶剂化能。
+    """
+    from app.models.job import PostprocessJob, JobStatus
+    from app.tasks.desolvation import run_desolvation_job
+
+    # 验证是否是 Worker 用户
+    if not is_worker_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only worker users can check desolvation jobs"
+        )
+
+    # 获取任务
+    job = db.query(PostprocessJob).filter(PostprocessJob.id == job_id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Postprocess job {job_id} not found"
+        )
+
+    # 检查任务状态
+    if job.status != JobStatus.POSTPROCESSING:
+        return {
+            "status": "skipped",
+            "job_id": job_id,
+            "message": f"Job is not in POSTPROCESSING state (current: {job.status.value})"
+        }
+
+    logger.info(f"Checking waiting desolvation job {job_id}")
+
+    try:
+        result = run_desolvation_job(job, db)
+
+        return {
+            "status": "ok" if result['success'] else "error",
+            "job_id": job_id,
+            "phase": result.get('phase', 'unknown'),
+            "message": result.get('message', result.get('error', 'Unknown'))
+        }
+    except Exception as e:
+        logger.error(f"Error checking desolvation job {job_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.get("/jobs/waiting_desolvation")
+async def get_waiting_desolvation_jobs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    获取所有等待中的去溶剂化任务
+
+    返回处于 POSTPROCESSING 状态的去溶剂化任务列表，
+    Worker 可以定期调用此接口检查是否有任务的 QC 计算已完成。
+    """
+    from app.models.job import PostprocessJob, JobStatus
+
+    # 验证是否是 Worker 用户
+    if not is_worker_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only worker users can get waiting desolvation jobs"
+        )
+
+    waiting_jobs = db.query(PostprocessJob).filter(
+        PostprocessJob.job_type == 'DESOLVATION_ENERGY',
+        PostprocessJob.status == JobStatus.POSTPROCESSING
+    ).all()
+
+    return {
+        "status": "ok",
+        "jobs": [
+            {
+                "id": job.id,
+                "md_job_id": job.md_job_id,
+                "config": job.config,
+                "created_at": job.created_at.isoformat() if job.created_at else None
+            }
+            for job in waiting_jobs
+        ]
+    }
+
