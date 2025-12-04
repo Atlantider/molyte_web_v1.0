@@ -297,3 +297,140 @@ class BindingAnalysisJob(Base):
     def __repr__(self):
         return f"<BindingAnalysisJob(id={self.id}, md_job_id={self.md_job_id}, status={self.status})>"
 
+
+# ============================================================================
+# 热力学循环计算氧化还原电位
+# ============================================================================
+
+class RedoxJobStatus(enum.Enum):
+    """热力学循环任务状态"""
+    CREATED = "CREATED"
+    SUBMITTED = "SUBMITTED"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class RedoxPotentialJob(Base):
+    """
+    热力学循环计算氧化还原电位任务
+
+    ⚠️ 高风险警告：
+    - 结果对方法/基组/溶剂模型/构型高度敏感
+    - 计算量大，经常不收敛
+    - 数值可能存在数百 mV 的系统性偏差
+    - 仅供研究参考，不应作为定量预测
+
+    热力学循环：
+    ΔG°(sol) = ΔG°(gas) + ΔG_solv(Red) - ΔG_solv(Ox)
+    E° = -ΔG°(sol) / nF
+    E°(vs Li) = E°_abs - E°_abs(Li+/Li)
+    """
+    __tablename__ = "redox_potential_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # 任务状态
+    status = Column(Enum(RedoxJobStatus), default=RedoxJobStatus.CREATED, nullable=False, index=True)
+    progress = Column(Float, default=0.0)
+    error_message = Column(Text)
+
+    # 配置
+    config = Column(JSONB)  # {species_list, mode, functional, basis_set, solvent_model, ...}
+
+    # 结果
+    result = Column(JSONB)  # {species_results, oxidation_potentials_v, reduction_potentials_v, ...}
+
+    # 关联的 QC 任务 ID 列表
+    qc_job_ids = Column(JSONB)  # [qc_job_id, ...]
+
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
+
+    # Relationships
+    md_job = relationship("MDJob", backref="redox_potential_jobs")
+    user = relationship("User", backref="redox_potential_jobs")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_redox_potential_md_job_id', 'md_job_id'),
+        Index('idx_redox_potential_user_id', 'user_id'),
+        Index('idx_redox_potential_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<RedoxPotentialJob(id={self.id}, status={self.status})>"
+
+
+# ============================================================================
+# 重组能计算 (Marcus 理论)
+# ============================================================================
+
+class ReorgEnergyJobStatus(enum.Enum):
+    """重组能任务状态"""
+    CREATED = "CREATED"
+    SUBMITTED = "SUBMITTED"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class ReorganizationEnergyJob(Base):
+    """
+    重组能计算任务 (Marcus 理论)
+
+    ⚠️ 极高风险警告：
+    - 每个物种至少 2 次优化 + 4 次单点
+    - Cluster 体系极易不收敛
+    - 构型依赖极强
+    - 默认限制：最多 5 个物种
+
+    4点方案：
+    λ_ox = E(q+1, R_q) - E(q+1, R_{q+1})
+    λ_red = E(q, R_{q+1}) - E(q, R_q)
+    λ_total = (λ_ox + λ_red) / 2
+    """
+    __tablename__ = "reorganization_energy_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    md_job_id = Column(Integer, ForeignKey("md_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # 任务状态
+    status = Column(Enum(ReorgEnergyJobStatus), default=ReorgEnergyJobStatus.CREATED, nullable=False, index=True)
+    progress = Column(Float, default=0.0)
+    error_message = Column(Text)
+
+    # 配置
+    config = Column(JSONB)  # {species_list, functional, basis_set, ...}
+
+    # 结果
+    result = Column(JSONB)  # {species_results, lambda_ox_mean_ev, lambda_red_mean_ev, ...}
+
+    # 关联的 QC 任务 ID 列表
+    qc_job_ids = Column(JSONB)  # [qc_job_id, ...]
+
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
+
+    # Relationships
+    md_job = relationship("MDJob", backref="reorganization_energy_jobs")
+    user = relationship("User", backref="reorganization_energy_jobs")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_reorg_energy_md_job_id', 'md_job_id'),
+        Index('idx_reorg_energy_user_id', 'user_id'),
+        Index('idx_reorg_energy_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f"<ReorganizationEnergyJob(id={self.id}, status={self.status})>"
