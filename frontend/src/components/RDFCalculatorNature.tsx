@@ -384,7 +384,8 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
   const selectedData = savedResults.filter(r => selectedRdfIds.includes(r.id));
 
   // 计算配位数统计 @ cnCutoff Å（动态截断距离）
-  const coordinationStats = selectedData.map((result, index) => {
+  // 先计算每个 RDF 的配位数
+  const rawStats = selectedData.map((result) => {
     let cn_at_cutoff = 0;
     for (let i = 0; i < result.r.length; i++) {
       if (result.r[i] >= cnCutoff) {
@@ -395,13 +396,48 @@ export default function RDFCalculatorNature({ jobId }: RDFCalculatorProps) {
     return {
       id: result.id,
       label: result.shell_species,
-      fullLabel: `${result.center_species} → ${result.shell_species}`,
-      color: NATURE_COLORS[index % NATURE_COLORS.length],
+      center_species: result.center_species,
       cn_at_cutoff,
       first_peak_position: result.first_peak_position,
       first_peak_height: result.first_peak_height,
     };
   });
+
+  // 按 shell_species 分组并合并（求平均值）
+  const groupedStats = rawStats.reduce((acc, stat) => {
+    if (!acc[stat.label]) {
+      acc[stat.label] = {
+        label: stat.label,
+        center_species: stat.center_species,
+        cn_values: [],
+        first_peak_positions: [],
+        first_peak_heights: [],
+      };
+    }
+    acc[stat.label].cn_values.push(stat.cn_at_cutoff);
+    if (stat.first_peak_position) {
+      acc[stat.label].first_peak_positions.push(stat.first_peak_position);
+    }
+    if (stat.first_peak_height) {
+      acc[stat.label].first_peak_heights.push(stat.first_peak_height);
+    }
+    return acc;
+  }, {} as Record<string, any>);
+
+  // 计算平均值并生成最终的 coordinationStats
+  const coordinationStats = Object.values(groupedStats).map((group: any, index) => ({
+    id: `${group.label}_${index}`,
+    label: group.label,
+    fullLabel: `${group.center_species} → ${group.label}`,
+    color: NATURE_COLORS[index % NATURE_COLORS.length],
+    cn_at_cutoff: group.cn_values.reduce((sum: number, v: number) => sum + v, 0) / group.cn_values.length,
+    first_peak_position: group.first_peak_positions.length > 0
+      ? group.first_peak_positions.reduce((sum: number, v: number) => sum + v, 0) / group.first_peak_positions.length
+      : undefined,
+    first_peak_height: group.first_peak_heights.length > 0
+      ? group.first_peak_heights.reduce((sum: number, v: number) => sum + v, 0) / group.first_peak_heights.length
+      : undefined,
+  }));
 
   const totalCN = coordinationStats.reduce((sum, stat) => sum + stat.cn_at_cutoff, 0);
 
