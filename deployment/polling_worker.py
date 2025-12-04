@@ -769,33 +769,37 @@ class PollingWorker:
             self._update_job_status(job_id, 'FAILED', 'postprocess', error_message=str(e))
 
     def _process_desolvation_energy_job(self, job_id: int, config: Dict):
-        """处理去溶剂化能计算任务"""
+        """处理去溶剂化能计算任务（通过 API 调用后端处理）"""
         self.logger.info(f"开始去溶剂化能计算任务 {job_id}")
 
-        # 导入任务处理函数
-        import sys
-        sys.path.insert(0, str(Path(__file__).parent.parent / 'backend'))
-
-        from app.database import SessionLocal
-        from app.models.job import PostprocessJob
-        from app.tasks.desolvation import run_desolvation_job
-
-        # 执行任务
-        db = SessionLocal()
         try:
-            job_obj = db.query(PostprocessJob).filter(PostprocessJob.id == job_id).first()
+            # 调用后端 API 处理任务
+            endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/process_desolvation"
 
-            if not job_obj:
-                raise ValueError(f"Postprocess job {job_id} not found")
+            response = requests.post(
+                endpoint,
+                headers=self.api_headers,
+                timeout=300  # 5分钟超时
+            )
 
-            result = run_desolvation_job(job_obj, db)
-
-            if result['success']:
-                self.logger.info(f"去溶剂化能任务 {job_id} 完成")
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    self.logger.info(f"去溶剂化能任务 {job_id} 处理成功")
+                    self._update_job_status(job_id, 'COMPLETED', 'postprocess')
+                else:
+                    error_msg = result.get('error', 'Unknown error')
+                    self.logger.error(f"去溶剂化能任务 {job_id} 处理失败: {error_msg}")
+                    self._update_job_status(job_id, 'FAILED', 'postprocess', error_message=error_msg)
             else:
-                self.logger.error(f"去溶剂化能任务 {job_id} 失败: {result.get('error')}")
-        finally:
-            db.close()
+                error_msg = f"API returned status {response.status_code}: {response.text}"
+                self.logger.error(f"去溶剂化能任务 {job_id} API调用失败: {error_msg}")
+                self._update_job_status(job_id, 'FAILED', 'postprocess', error_message=error_msg)
+
+        except Exception as e:
+            self.logger.error(f"去溶剂化能任务 {job_id} 失败: {e}", exc_info=True)
+            self._update_job_status(job_id, 'FAILED', 'postprocess', error_message=str(e))
+            raise
 
     def _check_waiting_desolvation_jobs(self):
         """

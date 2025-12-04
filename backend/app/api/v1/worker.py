@@ -292,24 +292,44 @@ async def get_pending_jobs(
     elif job_type == "POSTPROCESS":
         # 获取 SUBMITTED 状态的后处理任务（包括去溶剂化能计算）
         from app.models.job import PostprocessJob, PostprocessType
+        from app.models.solvation import SolvationStructure
 
         jobs = db.query(PostprocessJob).filter(
             PostprocessJob.status == JobStatus.SUBMITTED
         ).order_by(PostprocessJob.created_at).limit(limit).all()
 
-        return [
-            PendingJobResponse(
+        result = []
+        for job in jobs:
+            config = {
+                "job_type": job.job_type.value,
+                "md_job_id": job.md_job_id,
+                **(job.config or {}),
+            }
+
+            # 如果是去溶剂化能任务，包含 SolvationStructure 数据
+            if job.job_type == PostprocessType.DESOLVATION_ENERGY:
+                solvation_structure_id = (job.config or {}).get("solvation_structure_id")
+                if solvation_structure_id:
+                    solvation_structure = db.query(SolvationStructure).filter(
+                        SolvationStructure.id == solvation_structure_id
+                    ).first()
+                    if solvation_structure:
+                        config["solvation_structure_data"] = {
+                            "id": solvation_structure.id,
+                            "center_ion": solvation_structure.center_ion,
+                            "coordination_num": solvation_structure.coordination_num,
+                            "xyz_content": solvation_structure.xyz_content,
+                            "smiles": solvation_structure.smiles,
+                        }
+
+            result.append(PendingJobResponse(
                 id=job.id,
                 type=f"POSTPROCESS_{job.job_type.value}",
-                config={
-                    "job_type": job.job_type.value,
-                    "md_job_id": job.md_job_id,
-                    **(job.config or {}),
-                },
+                config=config,
                 created_at=job.created_at
-            )
-            for job in jobs
-        ]
+            ))
+
+        return result
 
     else:
         raise HTTPException(
@@ -1180,3 +1200,43 @@ async def upload_md_results(
         "uploaded": uploaded_counts
     }
 
+
+@router.post("/jobs/{job_id}/process_desolvation")
+async def process_desolvation_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    处理去溶剂化能计算任务
+
+    Worker 调用此接口来处理 desolvation 任务
+    """
+    # 验证是否是 Worker 用户（ADMIN 角色）
+    if not is_worker_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only worker users can process desolvation jobs"
+        )
+
+    from app.models.job import PostprocessJob
+    from app.tasks.desolvation import run_desolvation_job
+
+    # 获取任务
+    job = db.query(PostprocessJob).filter(PostprocessJob.id == job_id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Postprocess job {job_id} not found"
+        )
+
+    # 执行任务
+    try:
+        result = run_desolvation_job(job, db)
+        return result
+    except Exception as e:
+        logger.error(f"Failed to process desolvation job {job_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process desolvation job: {str(e)}"
+        )
