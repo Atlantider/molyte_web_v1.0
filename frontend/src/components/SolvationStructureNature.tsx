@@ -260,14 +260,14 @@ const RESPONSIVE_STYLES = `
     padding: 14px 0;
   }
   .chart-card .ant-card-body {
-    padding: 16px !important;
+    padding: 8px !important;
   }
   /* 图表容器样式 */
   .chart-container {
-    background: linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%);
-    border: 1px solid #e8e8e8;
-    border-radius: 8px;
-    padding: 8px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
   }
 `;
 
@@ -766,8 +766,8 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
     series: [
       {
         type: 'pie',
-        radius: ['28%', '58%'],
-        center: ['50%', '42%'],
+        radius: ['35%', '70%'],
+        center: ['50%', '45%'],
         avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 3,
@@ -823,8 +823,8 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
     series: [
       {
         type: 'pie',
-        radius: ['28%', '58%'],
-        center: ['50%', '42%'],
+        radius: ['35%', '70%'],
+        center: ['50%', '45%'],
         avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 3,
@@ -888,8 +888,8 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
     series: [
       {
         type: 'pie',
-        radius: ['28%', '58%'],
-        center: ['50%', '42%'],
+        radius: ['35%', '70%'],
+        center: ['50%', '45%'],
         avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 3,
@@ -960,8 +960,8 @@ export default function SolvationStructureNature({ jobId }: SolvationStructurePr
     series: [
       {
         type: 'pie',
-        radius: ['28%', '58%'],
-        center: ['50%', '42%'],
+        radius: ['35%', '70%'],
+        center: ['50%', '45%'],
         avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 3,
