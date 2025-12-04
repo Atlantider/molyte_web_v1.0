@@ -254,10 +254,41 @@ async def get_desolvation_qc_tasks(
             detail="去溶剂化任务不存在"
         )
 
+    # 从 config 中获取 qc_job_ids
+    qc_job_ids = job.config.get("qc_job_ids", [])
+
+    # 如果没有 qc_job_ids，尝试从其他字段获取
+    if not qc_job_ids:
+        # 尝试获取 cluster_qc_job_id
+        cluster_qc_job_id = job.config.get("cluster_qc_job_id")
+        if cluster_qc_job_id:
+            qc_job_ids.append(cluster_qc_job_id)
+
+        # 获取 cluster_minus_job_ids
+        cluster_minus_ids = job.config.get("cluster_minus_job_ids", [])
+        qc_job_ids.extend(cluster_minus_ids)
+
+        # 获取 ligand_qc_jobs
+        ligand_qc_jobs = job.config.get("ligand_qc_jobs", {})
+        qc_job_ids.extend(ligand_qc_jobs.values())
+
+        # 获取 center_ion_job_id
+        center_ion_job_id = job.config.get("center_ion_job_id")
+        if center_ion_job_id:
+            qc_job_ids.append(center_ion_job_id)
+
     # 查询关联的 QC 任务
-    qc_jobs = db.query(QCJob).filter(
-        QCJob.desolvation_postprocess_job_id == job_id
-    ).order_by(QCJob.created_at.asc()).all()
+    qc_jobs = []
+    if qc_job_ids:
+        qc_jobs = db.query(QCJob).filter(
+            QCJob.id.in_(qc_job_ids)
+        ).order_by(QCJob.created_at.asc()).all()
+
+    # 如果还是没有，尝试用 desolvation_postprocess_job_id 查询
+    if not qc_jobs:
+        qc_jobs = db.query(QCJob).filter(
+            QCJob.desolvation_postprocess_job_id == job_id
+        ).order_by(QCJob.created_at.asc()).all()
 
     # 构建响应
     qc_tasks = []
@@ -345,13 +376,27 @@ def _build_job_response(job: PostprocessJob, db: Session) -> DesolvationJobRespo
             if electrolyte:
                 electrolyte_name = electrolyte.name
 
-    # 获取 QC 任务进度（通过 desolvation_postprocess_job_id 查询）
+    # 获取 QC 任务进度（从 config 中读取 qc_job_ids）
     qc_progress = None
-    if job.status in [JobStatus.RUNNING, JobStatus.QUEUED, JobStatus.SUBMITTED]:
+    if job.status in [JobStatus.RUNNING, JobStatus.QUEUED, JobStatus.SUBMITTED, JobStatus.POSTPROCESSING]:
+        # 从 config 获取 qc_job_ids
+        qc_job_ids = job.config.get("qc_job_ids", [])
+        if not qc_job_ids:
+            # 尝试从其他字段获取
+            cluster_qc_job_id = job.config.get("cluster_qc_job_id")
+            if cluster_qc_job_id:
+                qc_job_ids.append(cluster_qc_job_id)
+            qc_job_ids.extend(job.config.get("cluster_minus_job_ids", []))
+            ligand_qc_jobs = job.config.get("ligand_qc_jobs", {})
+            qc_job_ids.extend(ligand_qc_jobs.values())
+            center_ion_job_id = job.config.get("center_ion_job_id")
+            if center_ion_job_id:
+                qc_job_ids.append(center_ion_job_id)
+
         # 查询关联的 QC 任务
-        qc_jobs = db.query(QCJob).filter(
-            QCJob.desolvation_postprocess_job_id == job.id
-        ).all()
+        qc_jobs = []
+        if qc_job_ids:
+            qc_jobs = db.query(QCJob).filter(QCJob.id.in_(qc_job_ids)).all()
 
         if qc_jobs:
             total = len(qc_jobs)
