@@ -57,6 +57,7 @@ import {
   type DesolvationPreviewResponse,
   type ClusterMinusPreview,
 } from '../api/desolvation';
+import { getPartitions, type PartitionInfo } from '../api/slurm';
 import type {
   DesolvationJobResponse,
   DesolvationOverviewResponse,
@@ -199,9 +200,30 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
   const [customEps, setCustomEps] = useState<number>(80.0);  // 自定义介电常数
 
   // Slurm 资源配置
+  const [partitions, setPartitions] = useState<PartitionInfo[]>([]);
   const [slurmPartition, setSlurmPartition] = useState<string>('cpu');
   const [slurmCpus, setSlurmCpus] = useState<number>(16);
   const [slurmTime, setSlurmTime] = useState<number>(7200);  // 分钟
+
+  // 加载 Slurm 分区列表
+  useEffect(() => {
+    const loadPartitions = async () => {
+      try {
+        const data = await getPartitions();
+        setPartitions(data);
+        // 如果有分区，设置默认值为第一个 up 状态的分区
+        if (data.length > 0) {
+          const upPartition = data.find(p => p.state === 'up');
+          if (upPartition) {
+            setSlurmPartition(upPartition.name);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load partitions:', error);
+      }
+    };
+    loadPartitions();
+  }, []);
 
   // 辅助函数：计算结构中的阴离子数量（只计算 count > 0 的）
   const getAnionCount = (composition: Record<string, number>): number => {
@@ -464,7 +486,8 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
   };
 
   // 渲染 3D 预览
-  const renderMolecule = useCallback((xyzContent: string) => {
+  // highlightCenterIon: 是否高亮第一个原子作为中心离子（仅对 cluster 和 cluster_minus 有效）
+  const renderMolecule = useCallback((xyzContent: string, highlightCenterIon: boolean = true) => {
     if (!previewViewerRef.current || !window.$3Dmol || !xyzContent) return;
 
     // 清除旧的 viewer
@@ -484,10 +507,12 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
       stick: { radius: 0.15, colorscheme: 'Jmol' },
       sphere: { scale: 0.3, colorscheme: 'Jmol' },
     });
-    // 高亮中心离子（第一个原子）
-    viewer.setStyle({ serial: 0 }, {
-      sphere: { scale: 0.5, color: '#e74c3c' },
-    });
+    // 只对 cluster 和 cluster_minus 高亮中心离子（第一个原子）
+    if (highlightCenterIon) {
+      viewer.setStyle({ serial: 0 }, {
+        sphere: { scale: 0.5, color: '#e74c3c' },
+      });
+    }
     viewer.zoomTo(0.85);
     viewer.rotate(-15, 'x');
     viewer.rotate(10, 'y');
@@ -499,27 +524,35 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
     if (!previewData || !previewVisible) return;
 
     let xyzContent = '';
+    // 判断是否需要高亮中心离子：只有 cluster、cluster_minus、center_ion 需要
+    // ligand 不需要高亮（因为第一个原子不是中心离子）
+    let highlightCenterIon = true;
+
     if (selectedPreviewTab === 'cluster') {
       xyzContent = previewData.cluster.xyz_content;
+      highlightCenterIon = true;
     } else if (selectedPreviewTab === 'center_ion') {
       xyzContent = previewData.center_ion_structure.xyz_content;
+      highlightCenterIon = true;  // 单原子，高亮也无妨
     } else if (selectedPreviewTab.startsWith('minus_')) {
       const idx = parseInt(selectedPreviewTab.replace('minus_', ''), 10);
       const clusterMinus = previewData.cluster_minus_structures[idx];
       if (clusterMinus) {
         xyzContent = clusterMinus.xyz_content;
       }
+      highlightCenterIon = true;  // cluster_minus 第一个原子是中心离子
     } else if (selectedPreviewTab.startsWith('ligand_')) {
       const idx = parseInt(selectedPreviewTab.replace('ligand_', ''), 10);
       const ligand = previewData.ligands[idx];
       if (ligand) {
         xyzContent = ligand.xyz_content;
       }
+      highlightCenterIon = false;  // 配体不需要高亮第一个原子
     }
 
     // 延迟渲染，确保 Modal 已完全展开
     const timer = setTimeout(() => {
-      renderMolecule(xyzContent);
+      renderMolecule(xyzContent, highlightCenterIon);
     }, 100);
 
     return () => clearTimeout(timer);
@@ -987,9 +1020,24 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                         size="small"
                         type="primary"
                         ghost
-                        onClick={() => setSelectedKeys(filteredStructures.map(s => s.id))}
+                        onClick={() => {
+                          // 切换功能：如果已经全选了当前筛选的所有结构，则取消全选
+                          const filteredIds = filteredStructures.map(s => s.id);
+                          const allSelected = filteredIds.every(id => selectedKeys.includes(id));
+                          if (allSelected && filteredIds.length > 0) {
+                            // 取消选择当前筛选的所有结构
+                            setSelectedKeys(prev => prev.filter(id => !filteredIds.includes(id)));
+                          } else {
+                            // 全选当前筛选的结构（追加到已选中的）
+                            setSelectedKeys(prev => [...new Set([...prev, ...filteredIds])]);
+                          }
+                        }}
                       >
-                        全选当前 ({filteredStructures.length})
+                        {filteredStructures.length > 0 &&
+                         filteredStructures.every(s => selectedKeys.includes(s.id))
+                          ? `取消全选 (${filteredStructures.length})`
+                          : `全选当前 (${filteredStructures.length})`
+                        }
                       </Button>
                       <Button
                         size="small"
@@ -1190,11 +1238,18 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                         value={slurmPartition}
                         onChange={setSlurmPartition}
                         style={{ width: '100%' }}
-                        options={[
-                          { label: 'cpu', value: 'cpu' },
-                          { label: 'gpu', value: 'gpu' },
-                          { label: 'debug', value: 'debug' },
-                        ]}
+                        options={partitions.length > 0
+                          ? partitions.map(p => ({
+                              label: `${p.name} ${p.state !== 'up' ? `(${p.state})` : ''}`,
+                              value: p.name,
+                              disabled: p.state !== 'up',
+                            }))
+                          : [
+                              { label: 'cpu', value: 'cpu' },
+                              { label: 'gpu', value: 'gpu' },
+                              { label: 'debug', value: 'debug' },
+                            ]
+                        }
                       />
                     </Col>
                     <Col span={8}>
@@ -1457,17 +1512,31 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                         label: <Divider style={{ margin: '8px 0' }} />,
                         disabled: true,
                       },
-                      ...previewData.ligands.map((lig, idx) => ({
-                        key: `ligand_${idx}`,
-                        label: (
-                          <Space>
-                            <Badge status="processing" />
-                            <span style={{ fontSize: 12 }}>
-                              {lig.ligand_label} ({lig.atom_count}原子)
-                            </span>
-                          </Space>
-                        ),
-                      })),
+                      // 对配体按类型分组，只显示每种类型一次，附加数量信息
+                      ...(() => {
+                        // 按配体类型分组
+                        const ligandsByType = previewData.ligands.reduce((acc, lig, idx) => {
+                          const type = lig.ligand_type || lig.ligand_label.replace(/_\d+$/, '');
+                          if (!acc[type]) {
+                            acc[type] = { first: lig, firstIdx: idx, count: 0, totalAtoms: 0 };
+                          }
+                          acc[type].count++;
+                          acc[type].totalAtoms = lig.atom_count;  // 每个同类型的原子数相同
+                          return acc;
+                        }, {} as Record<string, { first: typeof previewData.ligands[0], firstIdx: number, count: number, totalAtoms: number }>);
+
+                        return Object.entries(ligandsByType).map(([type, info]) => ({
+                          key: `ligand_${info.firstIdx}`,
+                          label: (
+                            <Space>
+                              <Badge status="processing" />
+                              <span style={{ fontSize: 12 }}>
+                                {type} ({info.totalAtoms}原子){info.count > 1 ? ` ×${info.count}` : ''}
+                              </span>
+                            </Space>
+                          ),
+                        }));
+                      })(),
                       {
                         key: 'center_ion',
                         label: (
