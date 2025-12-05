@@ -556,82 +556,85 @@ export default function PostProcessDetail() {
   const canProceedToStep2 = selectedMdJobId && selectedStructureIds.length > 0 && selectedCalcTypes.length > 0;
   const canSubmit = canProceedToStep2 && planResult;
 
-  // 渲染创建模式 - 现代化单页向导设计
+  // 计算类型的详细说明和示意图
+  const CALC_TYPE_DETAILS: Record<ClusterCalcType, { diagram: string; explanation: string }> = {
+    BINDING_TOTAL: {
+      diagram: 'Li⁺ + 溶剂₁ + 溶剂₂ + ... → [Li·溶剂化簇]',
+      explanation: '计算整个溶剂化簇的形成能，反映离子与所有配体的总结合强度',
+    },
+    BINDING_PAIRWISE: {
+      diagram: 'Li⁺ + 单个分子 → [Li-分子]',
+      explanation: '分别计算每个配体与离子的结合能，比较不同分子的配位能力',
+    },
+    DESOLVATION_STEPWISE: {
+      diagram: '[Li·ABCD] → [Li·ABC] + D → [Li·AB] + C → ...',
+      explanation: '逐步移除配体，计算每一步的能量变化，分析脱溶剂化路径',
+    },
+    DESOLVATION_FULL: {
+      diagram: '[Li·溶剂化簇] → Li⁺(裸离子) + 所有配体',
+      explanation: '计算完全脱去溶剂化壳层需要的总能量',
+    },
+    REDOX: {
+      diagram: 'Li⁺/Li⁰ 或 分子⁺/分子⁰ 氧化还原电位',
+      explanation: '使用热力学循环计算电化学窗口和稳定性',
+    },
+    REORGANIZATION: {
+      diagram: 'λ = E(R₁,Q₂) + E(R₂,Q₁) - E(R₁,Q₁) - E(R₂,Q₂)',
+      explanation: 'Marcus理论4点法计算电子转移重组能',
+    },
+  };
+
+  // 渲染创建模式
   const renderCreateMode = () => {
-    // Step 0: 选择数据源
+    // Step 0: 选择数据源 - 简化版
     if (currentStep === 0) {
       return (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: 'calc(100vh - 200px)',
-          padding: 48,
-        }}>
-          <Card
-            style={{
-              width: '100%',
-              maxWidth: 600,
-              textAlign: 'center',
-              borderRadius: 16,
-              boxShadow: `0 8px 32px ${token.colorBgSpotlight}`,
-            }}
-            bodyStyle={{ padding: 48 }}
-          >
-            <ExperimentOutlined style={{ fontSize: 64, color: token.colorPrimary, marginBottom: 24 }} />
-            <Title level={3} style={{ marginBottom: 8 }}>开始后处理分析</Title>
-            <Paragraph type="secondary" style={{ marginBottom: 32 }}>
-              选择一个已完成的 MD 模拟任务，提取的溶剂化结构将用于量子化学计算
-            </Paragraph>
-
-            <Select
-              size="large"
-              style={{ width: '100%', textAlign: 'left' }}
-              placeholder="🔍 选择 MD 模拟任务..."
-              value={selectedMdJobId}
-              onChange={(v) => {
-                setSelectedMdJobId(v);
-                setSelectedStructureIds([]);
-                setSelectedCalcTypes([]);
-                setPlanResult(null);
-              }}
-              options={mdJobs.map(j => ({
-                value: j.id,
-                label: `#${j.id} - ${j.config?.job_name || 'MD Job'}`,
-              }))}
-              showSearch
-              filterOption={(input, option) =>
-                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-              }
-            />
-
-            {selectedMdJobId && (
-              <Button
-                type="primary"
-                size="large"
-                icon={<RocketOutlined />}
-                style={{ marginTop: 24, height: 48, paddingLeft: 32, paddingRight: 32 }}
-                onClick={() => setCurrentStep(1)}
-              >
-                开始配置分析
-              </Button>
-            )}
-
-            {mdJobs.length === 0 && (
-              <Alert
-                type="info"
-                message="暂无已完成的 MD 任务"
-                style={{ marginTop: 24, textAlign: 'left' }}
-                action={
-                  <Button size="small" onClick={() => navigate('/workspace/liquid-electrolyte/md')}>
-                    前往 MD 模拟
-                  </Button>
+        <Card title="选择数据来源" style={{ marginBottom: 24 }}>
+          <Row gutter={16} align="middle">
+            <Col flex="auto">
+              <Select
+                style={{ width: '100%', maxWidth: 500 }}
+                placeholder="请选择一个已完成的 MD 模拟任务"
+                value={selectedMdJobId}
+                onChange={(v) => {
+                  setSelectedMdJobId(v);
+                  setSelectedStructureIds([]);
+                  setSelectedCalcTypes([]);
+                  setPlanResult(null);
+                }}
+                options={mdJobs.map(j => ({
+                  value: j.id,
+                  label: `#${j.id} - ${j.config?.job_name || 'MD Job'} (${dayjs(j.created_at).format('YYYY-MM-DD')})`,
+                }))}
+                showSearch
+                filterOption={(input, option) =>
+                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                 }
               />
-            )}
-          </Card>
-        </div>
+            </Col>
+            <Col>
+              <Button
+                type="primary"
+                disabled={!selectedMdJobId}
+                onClick={() => setCurrentStep(1)}
+              >
+                下一步 →
+              </Button>
+            </Col>
+          </Row>
+          {mdJobs.length === 0 && (
+            <Alert
+              type="info"
+              message="暂无已完成的 MD 任务，请先完成 MD 模拟"
+              style={{ marginTop: 16 }}
+              action={
+                <Button size="small" onClick={() => navigate('/workspace/liquid-electrolyte/md')}>
+                  前往 MD 模拟
+                </Button>
+              }
+            />
+          )}
+        </Card>
       );
     }
 
@@ -739,10 +742,10 @@ export default function PostProcessDetail() {
                     )}
                   </Space>
 
-                  {/* 结构列表 */}
-                  <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+                  {/* 结构列表 - 带滚动 */}
+                  <div style={{ flex: 1, overflow: 'auto', minHeight: 200 }}>
                     {viewMode === 'grouped' ? (
-                      <div>
+                      <div style={{ paddingRight: 4 }}>
                         {sortedGroupKeys.filter(key => groupedStructures[key].structures.some(s => filteredStructures.includes(s))).map(groupKey => {
                           const group = groupedStructures[groupKey];
                           const isAllSelected = isGroupAllSelected(groupKey);
@@ -782,8 +785,8 @@ export default function PostProcessDetail() {
                         dataSource={filteredStructures}
                         rowKey="id"
                         size="small"
-                        pagination={{ pageSize: 10, size: 'small', showTotal: (t) => `${t}条` }}
-                        scroll={{ x: 600 }}
+                        pagination={{ pageSize: 8, size: 'small', showTotal: (t) => `共${t}条`, showSizeChanger: true, pageSizeOptions: ['8', '15', '30', '50'] }}
+                        scroll={{ x: 600, y: 'calc(100vh - 500px)' }}
                       />
                     )}
                   </div>
@@ -795,7 +798,7 @@ export default function PostProcessDetail() {
             <Col span={8} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               <Card
                 size="small"
-                title={<Space><ThunderboltOutlined /> 计算类型</Space>}
+                title={<Space><ThunderboltOutlined /> 计算类型 <Text type="secondary" style={{ fontSize: 12 }}>点击查看详情</Text></Space>}
                 bodyStyle={{ padding: 12, overflow: 'auto' }}
                 style={{ height: '100%' }}
               >
@@ -803,11 +806,12 @@ export default function PostProcessDetail() {
                   {CALC_TYPE_OPTIONS.map(opt => {
                     const isSelected = selectedCalcTypes.includes(opt.value);
                     const info = CALC_TYPE_INFO[opt.value];
+                    const details = CALC_TYPE_DETAILS[opt.value];
                     return (
                       <div
                         key={opt.value}
                         style={{
-                          padding: '12px 16px',
+                          padding: '10px 14px',
                           borderRadius: 8,
                           border: `2px solid ${isSelected ? token.colorPrimary : token.colorBorder}`,
                           background: isSelected ? token.colorPrimaryBg : 'transparent',
@@ -835,7 +839,23 @@ export default function PostProcessDetail() {
                             </Tag>
                           </Col>
                         </Row>
-                        <Text type="secondary" style={{ fontSize: 12, marginLeft: 24 }}>{opt.description}</Text>
+                        {/* 示意图 */}
+                        <div style={{
+                          marginTop: 6,
+                          marginLeft: 24,
+                          padding: '4px 8px',
+                          background: token.colorBgLayout,
+                          borderRadius: 4,
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          color: token.colorTextSecondary,
+                        }}>
+                          {details.diagram}
+                        </div>
+                        {/* 解释 */}
+                        <Text type="secondary" style={{ fontSize: 11, marginLeft: 24, display: 'block', marginTop: 4 }}>
+                          {details.explanation}
+                        </Text>
                       </div>
                     );
                   })}
@@ -844,7 +864,7 @@ export default function PostProcessDetail() {
                 {selectedCalcTypes.some(t => ['REDOX', 'REORGANIZATION'].includes(t)) && (
                   <Alert
                     type="warning"
-                    message="高风险计算需要更多 QC 任务，时间较长"
+                    message="高风险计算需要更多 QC 任务"
                     style={{ marginTop: 12 }}
                     showIcon
                   />
