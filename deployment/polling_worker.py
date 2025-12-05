@@ -752,7 +752,8 @@ class PollingWorker:
                 functional, basis_set,
                 solvent_model, solvent_name,
                 solvent_config,
-                xyz_content=xyz_content  # 传递 xyz 坐标
+                xyz_content=xyz_content,  # 传递 xyz 坐标
+                nprocs=slurm_cpus  # 使用配置的 CPU 核心数
             )
             self.logger.info(f"生成 Gaussian 输入文件: {gjf_path}")
 
