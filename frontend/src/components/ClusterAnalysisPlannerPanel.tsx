@@ -100,8 +100,8 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
   const loadStructures = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await autoSelectSolvationStructures(mdJobId, { max_per_composition: 100 });
-      setStructures(result.selected);
+      const result = await autoSelectSolvationStructures(mdJobId);
+      setStructures(result.selected_structures);
     } catch (error) {
       message.error('加载溶剂化结构失败');
       console.error(error);
@@ -562,7 +562,7 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
                 </Text>
                 <Button
                   type="link"
-                  onClick={() => setSelectedStructureIds(structures.map(s => s.structure_id))}
+                  onClick={() => setSelectedStructureIds(structures.map(s => s.id))}
                 >
                   全选
                 </Button>
@@ -698,7 +698,9 @@ function ClusterAnalysisResultsView({ jobId, onClose }: ResultsViewProps) {
       {/* 各类型结果 */}
       {results.calc_types.map((calcType) => {
         const info = CALC_TYPE_INFO[calcType as ClusterCalcType];
-        const calcResult = results.results?.[calcType] as Record<string, unknown>;
+        const calcResult = results.results?.[calcType] as Record<string, unknown> | undefined;
+        const hasError = Boolean(calcResult?.error);
+        const hasResult = calcResult && !hasError && Object.keys(calcResult).length > 0;
 
         return (
           <Card
@@ -707,9 +709,9 @@ function ClusterAnalysisResultsView({ jobId, onClose }: ResultsViewProps) {
             title={<span>{info?.icon} {info?.label || calcType}</span>}
             style={{ marginBottom: 16 }}
             extra={
-              calcResult?.error ? (
+              hasError ? (
                 <Tag color="red">失败</Tag>
-              ) : calcResult && Object.keys(calcResult).length > 0 ? (
+              ) : hasResult ? (
                 <Tag color="green">完成</Tag>
               ) : (
                 <Tag>等待</Tag>
@@ -721,11 +723,11 @@ function ClusterAnalysisResultsView({ jobId, onClose }: ResultsViewProps) {
               <Text code>{info?.formula}</Text>
             </div>
 
-            {calcResult?.error && (
-              <Alert type="error" message={calcResult.error as string} style={{ marginTop: 8 }} />
+            {hasError && (
+              <Alert type="error" message={String(calcResult?.error)} style={{ marginTop: 8 }} />
             )}
 
-            {calcResult && !calcResult.error && Object.keys(calcResult).length > 0 && (
+            {hasResult && calcResult && (
               <div style={{ marginTop: 16 }}>
                 {renderResultContent(calcType as ClusterCalcType, calcResult)}
               </div>

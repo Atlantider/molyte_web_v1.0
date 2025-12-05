@@ -53,8 +53,7 @@ import {
   type ClusterCalcType,
   type ClusterAnalysisPlanResponse,
 } from '../api/clusterAnalysis';
-import { getMDJobs, getMDJob } from '../api/jobs';
-import { getSolvationStructures, type SolvationStructure } from '../api/desolvation';
+import { getMDJobs, getMDJob, getSolvationStructures, type SolvationStructure } from '../api/jobs';
 import type { MDJob } from '../types';
 import { JobStatus } from '../types';
 import ClusterAnalysisResultsPanel from '../components/ClusterAnalysisResultsPanel';
@@ -295,7 +294,7 @@ export default function PostProcessDetail() {
               onChange={(v) => setSelectedMdJobId(v)}
               options={mdJobs.map(j => ({
                 value: j.id,
-                label: `#${j.id} - ${j.name || 'MD Job'} (${dayjs(j.created_at).format('YYYY-MM-DD')})`,
+                label: `#${j.id} - ${j.config?.job_name || 'MD Job'} (${dayjs(j.created_at).format('YYYY-MM-DD')})`,
               }))}
               showSearch
               filterOption={(input, option) =>

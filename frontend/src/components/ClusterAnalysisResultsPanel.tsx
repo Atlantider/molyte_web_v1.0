@@ -224,13 +224,15 @@ export default function ClusterAnalysisResultsPanel({ jobId, onBack }: Props) {
       >
         {job.calc_types.map((calcType) => {
           const info = CALC_TYPE_INFO[calcType as ClusterCalcType];
-          const calcResult = results?.results?.[calcType] as Record<string, unknown>;
+          const calcResult = results?.results?.[calcType] as Record<string, unknown> | undefined;
+          const hasError = Boolean(calcResult?.error);
+          const hasResult = calcResult && !hasError && Object.keys(calcResult).length > 0;
 
           const getResultStatus = () => {
-            if (calcResult?.error) {
+            if (hasError) {
               return <Tag color="error" icon={<CloseCircleOutlined />}>失败</Tag>;
             }
-            if (calcResult && Object.keys(calcResult).length > 0) {
+            if (hasResult) {
               return <Tag color="success" icon={<CheckCircleOutlined />}>完成</Tag>;
             }
             return <Tag icon={<ClockCircleOutlined />}>等待</Tag>;
@@ -254,12 +256,12 @@ export default function ClusterAnalysisResultsPanel({ jobId, onBack }: Props) {
               </div>
 
               {/* 结果展示 */}
-              {calcResult && !calcResult.error && (
+              {hasResult && calcResult && (
                 <div>{renderCalcTypeResult(calcType as ClusterCalcType, calcResult)}</div>
               )}
 
-              {calcResult?.error && (
-                <Alert type="error" message={calcResult.error as string} />
+              {hasError && (
+                <Alert type="error" message={String(calcResult?.error)} />
               )}
             </Panel>
           );

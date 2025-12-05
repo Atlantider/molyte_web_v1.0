@@ -276,7 +276,7 @@ export default function PostProcessAnalysis() {
                 onChange={(v) => setSelectedMdJobId(v)}
                 options={mdJobs.map(j => ({
                   value: j.id,
-                  label: `#${j.id} - ${j.name || 'MD Job'}`,
+                  label: `#${j.id} - ${j.config?.job_name || 'MD Job'}`,
                 }))}
               />
             </Space>
