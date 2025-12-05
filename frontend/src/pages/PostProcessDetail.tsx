@@ -240,29 +240,54 @@ export default function PostProcessDetail() {
     {
       title: 'ID',
       dataIndex: 'id',
-      width: 70,
+      width: 60,
+    },
+    {
+      title: '中心离子',
+      dataIndex: 'center_ion',
+      width: 80,
+      render: (ion: string) => <Tag color="blue">{ion}</Tag>,
+    },
+    {
+      title: '类型',
+      dataIndex: 'structure_type',
+      width: 100,
+      render: (type: string) => <Tag>{type || '-'}</Tag>,
     },
     {
       title: '组成',
-      dataIndex: 'composition_key',
+      dataIndex: 'composition',
       width: 200,
-      render: (key: string) => <Tag>{key}</Tag>,
-    },
-    {
-      title: '帧',
-      dataIndex: 'frame_index',
-      width: 80,
-    },
-    {
-      title: '配体数',
-      dataIndex: 'n_ligands',
-      width: 80,
+      render: (comp: Record<string, number>) => {
+        if (!comp || Object.keys(comp).length === 0) return '-';
+        return (
+          <Space size={4} wrap>
+            {Object.entries(comp).map(([mol, count]) => (
+              <Tag key={mol} color="green">{mol}: {count}</Tag>
+            ))}
+          </Space>
+        );
+      },
     },
     {
       title: '配位数',
-      dataIndex: 'coordination_number',
-      width: 100,
-      render: (cn: number) => cn?.toFixed(2),
+      dataIndex: 'coordination_num',
+      width: 80,
+      align: 'center' as const,
+      render: (cn: number) => cn ?? '-',
+    },
+    {
+      title: '帧',
+      dataIndex: 'snapshot_frame',
+      width: 60,
+      align: 'center' as const,
+      render: (frame: number) => frame ?? '-',
+    },
+    {
+      title: '描述',
+      dataIndex: 'description',
+      ellipsis: true,
+      render: (desc: string) => desc || '-',
     },
   ];
 
