@@ -974,11 +974,21 @@ def get_cluster_analysis_qc_status(
     if job.user_id != current_user.id and current_user.role.value != 'admin':
         raise HTTPException(status_code=403, detail="无权访问此任务")
 
+    # 方法 1: 从 qc_task_plan 获取 QC 任务 ID（旧数据兼容）
     qc_task_plan = job.qc_task_plan or {}
-    all_qc_job_ids = (
+    plan_qc_job_ids = set(
         qc_task_plan.get("reused_qc_jobs", []) +
         qc_task_plan.get("new_qc_jobs", [])
     )
+
+    # 方法 2: 直接通过 cluster_analysis_job_id 查询关联的 QC 任务（新数据）
+    linked_qc_jobs = db.query(QCJob).filter(
+        QCJob.cluster_analysis_job_id == job_id
+    ).all()
+    linked_qc_job_ids = set(qc.id for qc in linked_qc_jobs)
+
+    # 合并两种方式的 ID
+    all_qc_job_ids = list(plan_qc_job_ids | linked_qc_job_ids)
 
     if not all_qc_job_ids:
         return {
@@ -991,8 +1001,7 @@ def get_cluster_analysis_qc_status(
             "all_completed": True,
         }
 
-    # 查询 QC 任务状态
-    from app.models.qc import QCJob
+    # 查询所有 QC 任务状态
     qc_jobs = db.query(QCJob).filter(QCJob.id.in_(all_qc_job_ids)).all()
 
     status_counts = {"COMPLETED": 0, "RUNNING": 0, "SUBMITTED": 0, "CREATED": 0, "FAILED": 0}
@@ -1016,6 +1025,7 @@ def get_cluster_analysis_qc_status(
                 "id": qc.id,
                 "status": qc.status.value if hasattr(qc.status, 'value') else str(qc.status),
                 "molecule_name": qc.molecule_name,
+                "task_type": qc.task_type,
             }
             for qc in qc_jobs
         ]
