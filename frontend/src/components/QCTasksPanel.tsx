@@ -332,7 +332,7 @@ export default function QCTasksPanel({ mdJobId, refreshInterval = 10000 }: QCTas
                         type="link"
                         size="small"
                         icon={<EyeOutlined />}
-                        onClick={() => navigate(`/workspace/qc-jobs/${job.id}`, { state: { fromMDJob: mdJobId } })}
+                        onClick={() => navigate(`/workspace/liquid-electrolyte/qc/${job.id}`, { state: { fromMDJob: mdJobId } })}
                       >
                         详情
                       </Button>
@@ -476,7 +476,7 @@ export default function QCTasksPanel({ mdJobId, refreshInterval = 10000 }: QCTas
             <div style={{ textAlign: 'center', marginTop: 16 }}>
               <Button
                 type="link"
-                onClick={() => navigate('/workspace/qc-jobs')}
+                onClick={() => navigate('/workspace/liquid-electrolyte/qc')}
                 icon={<RightOutlined />}
               >
                 查看全部QC任务

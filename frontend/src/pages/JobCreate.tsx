@@ -272,7 +272,7 @@ export default function JobCreate() {
       const job = await createMDJob(jobData);
 
       const successMsg = submitToCluster ? '计算任务已提交到集群！' : '计算任务已保存！';
-      const targetPath = submitToCluster ? `/workspace/jobs/${job.id}/detail` : `/workspace/jobs/${job.id}/submit`;
+      const targetPath = submitToCluster ? `/workspace/liquid-electrolyte/md/${job.id}` : `/workspace/liquid-electrolyte/md/${job.id}/submit`;
 
       message.success(successMsg);
       navigate(targetPath);

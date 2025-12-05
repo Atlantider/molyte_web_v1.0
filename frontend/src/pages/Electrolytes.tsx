@@ -532,7 +532,7 @@ export default function Electrolytes() {
   // 创建任务 - 跳转到配置页面
   const handleCreateJob = (electrolyte: ElectrolyteSystem) => {
     // 跳转到任务配置页面，传递电解质系统信息
-    navigate(`/workspace/jobs/create/${electrolyte.id}`, {
+    navigate(`/workspace/liquid-electrolyte/md/create/${electrolyte.id}`, {
       state: { electrolyte }
     });
   };

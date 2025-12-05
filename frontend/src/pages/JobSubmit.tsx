@@ -89,7 +89,7 @@ export default function JobSubmit() {
         }
       } catch (error: any) {
         message.error('加载任务信息失败: ' + (error.response?.data?.detail || error.message));
-        navigate('/workspace/jobs');
+        navigate('/workspace/liquid-electrolyte/md');
       } finally {
         setLoading(false);
       }
@@ -240,7 +240,7 @@ export default function JobSubmit() {
           setSubmitting(true);
           await submitJobToCluster(Number(jobId));
           message.success('任务已提交到集群！');
-          navigate(`/workspace/jobs/${jobId}/detail`);
+          navigate(`/workspace/liquid-electrolyte/md/${jobId}`);
         } catch (error: any) {
           const detail = error.response?.data?.detail || error.message;
           // 检查是否是余额不足错误
@@ -317,7 +317,7 @@ export default function JobSubmit() {
 
         const newJob = await createMDJob(newJobData);
         message.success(`已创建新任务：${newJobName}`);
-        navigate(`/workspace/jobs/${newJob.id}/submit`);
+        navigate(`/workspace/liquid-electrolyte/md/${newJob.id}/submit`);
       } else {
         // 未提交的任务：直接更新（包含QC配置）
         const updateData = {
@@ -386,7 +386,7 @@ export default function JobSubmit() {
         <Space style={{ marginBottom: 16 }}>
           <Button
             icon={<ArrowLeftOutlined />}
-            onClick={() => navigate('/workspace/jobs')}
+            onClick={() => navigate('/workspace/liquid-electrolyte/md')}
             style={{ borderRadius: 8 }}
           >
             返回任务列表
@@ -1129,7 +1129,7 @@ export default function JobSubmit() {
             >
               提交到集群
             </Button>
-            <Button size="large" onClick={() => navigate('/workspace/jobs')}>
+            <Button size="large" onClick={() => navigate('/workspace/liquid-electrolyte/md')}>
               返回任务列表
             </Button>
           </Space>
@@ -1139,7 +1139,7 @@ export default function JobSubmit() {
       {/* 已提交任务的返回按钮 */}
       {!editMode && isSubmittedJob && (
         <Card style={{ marginTop: 24 }}>
-          <Button size="large" onClick={() => navigate('/workspace/jobs')}>
+          <Button size="large" onClick={() => navigate('/workspace/liquid-electrolyte/md')}>
             返回任务列表
           </Button>
         </Card>

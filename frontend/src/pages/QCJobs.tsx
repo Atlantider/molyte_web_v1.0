@@ -755,7 +755,7 @@ export default function QCJobs() {
           okText: '查看已有结果',
           onOk: () => {
             if (existingJobId) {
-              navigate(`/workspace/qc-jobs/${existingJobId}`);
+              navigate(`/workspace/liquid-electrolyte/qc/${existingJobId}`);
               setModalVisible(false);
               setEditingJob(null);
               form.resetFields();
@@ -1137,7 +1137,7 @@ export default function QCJobs() {
               type="link"
               size="small"
               icon={<EyeOutlined />}
-              onClick={() => navigate(`/workspace/qc-jobs/${record.id}`)}
+              onClick={() => navigate(`/workspace/liquid-electrolyte/qc/${record.id}`)}
             />
           </Tooltip>
           <Popconfirm

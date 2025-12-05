@@ -289,7 +289,8 @@ declare global {
 
 interface SolvationStructureProps {
   jobId: number;
-  onGoToDesolvation?: () => void;  // 跳转到去溶剂化能计算 Tab
+  onGoToDesolvation?: () => void;  // 跳转到去溶剂化能计算 Tab（已废弃，保留兼容）
+  onGoToPostProcess?: () => void;  // 跳转到后处理分析页面
 }
 
 // Nature 期刊风格配色（低饱和度）
@@ -305,7 +306,7 @@ const NATURE_COLORS = [
   '#17becf', // 青色
 ];
 
-export default function SolvationStructureNature({ jobId, onGoToDesolvation }: SolvationStructureProps) {
+export default function SolvationStructureNature({ jobId, onGoToDesolvation, onGoToPostProcess }: SolvationStructureProps) {
   const { mode } = useThemeStore();
   const { token } = theme.useToken();
   const isDark = mode === 'dark';
@@ -1494,15 +1495,15 @@ export default function SolvationStructureNature({ jobId, onGoToDesolvation }: S
                   {structures.length}
                 </Tag>
               </div>
-              {onGoToDesolvation && structures.length > 0 && (
+              {structures.length > 0 && (onGoToPostProcess || onGoToDesolvation) && (
                 <Button
                   type="primary"
                   size="small"
                   icon={<ThunderboltOutlined />}
-                  onClick={onGoToDesolvation}
+                  onClick={onGoToPostProcess || onGoToDesolvation}
                   style={{ fontSize: 12 }}
                 >
-                  一键计算去溶剂化能
+                  前往后处理分析
                 </Button>
               )}
             </div>

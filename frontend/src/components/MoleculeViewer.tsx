@@ -925,7 +925,7 @@ export default function MoleculeViewer({ jobId }: MoleculeViewerProps) {
               <div style={{ marginTop: 16, textAlign: 'center' }}>
                 <Text type="secondary">
                   暂无QC计算数据。可在创建MD任务时勾选"启用QC计算"，或前往
-                  <a href="/workspace/qc-jobs" style={{ marginLeft: 4 }}>QC计算</a>
+                  <a href="/workspace/liquid-electrolyte/qc" style={{ marginLeft: 4 }}>QC计算</a>
                   页面单独提交计算。
                 </Text>
               </div>

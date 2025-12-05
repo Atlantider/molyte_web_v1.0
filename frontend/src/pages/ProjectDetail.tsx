@@ -273,7 +273,7 @@ export default function ProjectDetail() {
                             onEdit={() => navigate('/workspace/electrolytes')}
                             onCopy={() => navigate('/workspace/electrolytes')}
                             onDelete={handleDeleteElectrolyte}
-                            onCreateJob={() => navigate('/workspace/jobs')}
+                            onCreateJob={() => navigate('/workspace/liquid-electrolyte/md')}
                           />
                         </Col>
                       ))}
@@ -295,7 +295,7 @@ export default function ProjectDetail() {
                   >
                     <Button
                       type="primary"
-                      onClick={() => navigate('/workspace/jobs', { state: { openCreateModal: true } })}
+                      onClick={() => navigate('/workspace/liquid-electrolyte/md', { state: { openCreateModal: true } })}
                       disabled={electrolytes.length === 0}
                     >
                       创建计算任务

@@ -114,9 +114,9 @@ export default function QCJobDetail() {
   // 返回按钮处理：如果从MD任务详情跳转过来，则返回MD任务详情
   const handleGoBack = () => {
     if (fromMDJob) {
-      navigate(`/workspace/jobs/${fromMDJob}/detail`);
+      navigate(`/workspace/liquid-electrolyte/md/${fromMDJob}`);
     } else {
-      navigate('/workspace/qc-jobs');
+      navigate('/workspace/liquid-electrolyte/qc');
     }
   };
 
@@ -580,7 +580,7 @@ export default function QCJobDetail() {
               <Button
                 type="link"
                 style={{ padding: 0 }}
-                onClick={() => navigate(`/workspace/jobs/${job.md_job_id}/detail`)}
+                onClick={() => navigate(`/workspace/liquid-electrolyte/md/${job.md_job_id}`)}
               >
                 查看关联的MD任务 #{job.md_job_id}
               </Button>

@@ -165,7 +165,7 @@ export default function Research() {
 
   // 查看详情
   const handleViewDetail = (record: ElectrolyteSearchResult) => {
-    navigate(`/workspace/jobs/${record.job_id}/detail`);
+    navigate(`/workspace/liquid-electrolyte/md/${record.job_id}`);
   };
 
   // 表格列定义

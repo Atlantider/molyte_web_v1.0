@@ -290,7 +290,7 @@ export default function Dashboard() {
             <Card
               style={kpiCardStyle}
               hoverable
-              onClick={() => navigate('/workspace/jobs')}
+              onClick={() => navigate('/workspace/liquid-electrolyte/md')}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1 }}>
@@ -457,7 +457,7 @@ export default function Dashboard() {
                     cursor: 'pointer',
                     transition: 'all 0.3s',
                   }}
-                  onClick={() => navigate(`/workspace/jobs/${job.id}/detail`)}
+                  onClick={() => navigate(`/workspace/liquid-electrolyte/md/${job.id}`)}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = token.colorPrimary;
                     e.currentTarget.style.boxShadow = `0 4px 12px ${isDark ? 'rgba(107, 154, 255, 0.2)' : 'rgba(91, 141, 239, 0.15)'}`;
@@ -662,7 +662,7 @@ export default function Dashboard() {
                 onChange={(value) => setTaskFilter(value as any)}
                 size="small"
               />
-              <Button type="link" onClick={() => navigate('/workspace/jobs')}>
+              <Button type="link" onClick={() => navigate('/workspace/liquid-electrolyte/md')}>
                 查看全部
               </Button>
             </Space>
@@ -692,7 +692,7 @@ export default function Dashboard() {
               rowKey="id"
               pagination={false}
               onRow={(record) => ({
-                onClick: () => navigate(`/workspace/jobs/${record.id}/detail`),
+                onClick: () => navigate(`/workspace/liquid-electrolyte/md/${record.id}`),
                 style: { cursor: 'pointer' },
               })}
               columns={[

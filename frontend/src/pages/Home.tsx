@@ -228,7 +228,7 @@ export default function Home() {
                 <Button
                   type="link"
                   className="feature-link"
-                  onClick={() => isAuthenticated ? navigate('/workspace/jobs') : navigate('/login')}
+                  onClick={() => isAuthenticated ? navigate('/workspace/liquid-electrolyte/md') : navigate('/login')}
                 >
                   查看分析 <ArrowRightOutlined />
                 </Button>

@@ -1500,7 +1500,7 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
       }
     } else {
       // 私有数据：跳转到详情页
-      navigate(`/workspace/qc-jobs/${record.id}`);
+      navigate(`/workspace/liquid-electrolyte/qc/${record.id}`);
     }
   };
 
@@ -1516,7 +1516,7 @@ export default function QCDataTab({ isPublic = false }: QCDataTabProps) {
     setSelectedJob(null);
     message.success('重新计算任务已创建，正在跳转...');
     setTimeout(() => {
-      navigate(`/workspace/qc-jobs/${newJob.id}`);
+      navigate(`/workspace/liquid-electrolyte/qc/${newJob.id}`);
     }, 1000);
   };
 

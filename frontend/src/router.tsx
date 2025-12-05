@@ -1,7 +1,7 @@
 /**
  * 路由配置
  */
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -14,6 +14,8 @@ import JobSubmit from './pages/JobSubmit';
 import JobDetail from './pages/JobDetail';
 import QCJobs from './pages/QCJobs';
 import QCJobDetail from './pages/QCJobDetail';
+import PostProcessAnalysis from './pages/PostProcessAnalysis';
+import PostProcessDetail from './pages/PostProcessDetail';
 import ChangePassword from './pages/ChangePassword';
 import Profile from './pages/Profile';
 import Recharge from './pages/Recharge';
@@ -76,30 +78,80 @@ const router = createBrowserRouter([
         path: 'electrolytes',
         element: <Electrolytes />,
       },
+      // ===== 溶液电解质模块 =====
+      {
+        path: 'liquid-electrolyte',
+        children: [
+          // 默认跳转到 MD 模拟
+          {
+            index: true,
+            element: <Navigate to="md" replace />,
+          },
+          // MD 模拟
+          {
+            path: 'md',
+            element: <Jobs />,
+          },
+          {
+            path: 'md/create/:systemId',
+            element: <JobCreate />,
+          },
+          {
+            path: 'md/:jobId/submit',
+            element: <JobSubmit />,
+          },
+          {
+            path: 'md/:id',
+            element: <JobDetail />,
+          },
+          // 后处理分析
+          {
+            path: 'analysis',
+            element: <PostProcessAnalysis />,
+          },
+          {
+            path: 'analysis/create',
+            element: <PostProcessDetail />,
+          },
+          {
+            path: 'analysis/:id',
+            element: <PostProcessDetail />,
+          },
+          // QC 任务
+          {
+            path: 'qc',
+            element: <QCJobs />,
+          },
+          {
+            path: 'qc/:id',
+            element: <QCJobDetail />,
+          },
+        ],
+      },
+      // ===== 旧路由重定向（兼容性）=====
       {
         path: 'jobs',
-        element: <Jobs />,
+        element: <Navigate to="/workspace/liquid-electrolyte/md" replace />,
       },
       {
         path: 'jobs/create/:systemId',
-        element: <JobCreate />,
+        element: <JobCreate />,  // 保持兼容
       },
       {
         path: 'jobs/:jobId/submit',
-        element: <JobSubmit />,
+        element: <JobSubmit />,  // 保持兼容
       },
       {
         path: 'jobs/:id/detail',
-        element: <JobDetail />,
+        element: <Navigate to={`/workspace/liquid-electrolyte/md/${window.location.pathname.split('/')[3]}`} replace />,
       },
-      // QC量子化学计算路由
       {
         path: 'qc-jobs',
-        element: <QCJobs />,
+        element: <Navigate to="/workspace/liquid-electrolyte/qc" replace />,
       },
       {
         path: 'qc-jobs/:id',
-        element: <QCJobDetail />,
+        element: <QCJobDetail />,  // 保持兼容
       },
       {
         path: 'change-password',

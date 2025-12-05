@@ -20,6 +20,8 @@ import {
   EyeOutlined,
   SunOutlined,
   MoonOutlined,
+  AppstoreOutlined,
+  LineChartOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { useThemeStore, themeTokens } from '../stores/themeStore';
@@ -50,9 +52,16 @@ export default function Layout() {
     if (path === '/workspace/admin/logs') return '/workspace/admin/logs';
     if (path === '/workspace/admin' || path === '/workspace/admin/') return '/workspace/admin';
 
-    // 其他页面 - 优先匹配更具体的路径
-    if (path.startsWith('/workspace/qc-jobs')) return '/workspace/qc-jobs';
-    if (path.startsWith('/workspace/jobs')) return '/workspace/jobs';
+    // 溶液电解质子菜单
+    if (path.startsWith('/workspace/liquid-electrolyte/analysis')) return '/workspace/liquid-electrolyte/analysis';
+    if (path.startsWith('/workspace/liquid-electrolyte/qc')) return '/workspace/liquid-electrolyte/qc';
+    if (path.startsWith('/workspace/liquid-electrolyte/md') || path.startsWith('/workspace/liquid-electrolyte')) return '/workspace/liquid-electrolyte/md';
+
+    // 旧路由兼容
+    if (path.startsWith('/workspace/qc-jobs')) return '/workspace/liquid-electrolyte/qc';
+    if (path.startsWith('/workspace/jobs')) return '/workspace/liquid-electrolyte/md';
+
+    // 其他页面
     if (path.startsWith('/workspace/electrolytes')) return '/workspace/electrolytes';
     if (path.startsWith('/workspace/projects')) return '/workspace/projects';
     if (path.startsWith('/workspace/research')) return '/workspace/research';
@@ -65,10 +74,17 @@ export default function Layout() {
   // 获取打开的子菜单
   const getOpenKeys = () => {
     const path = location.pathname;
+    const keys: string[] = [];
+
     if (path.startsWith('/workspace/admin')) {
-      return ['/workspace/admin'];
+      keys.push('/workspace/admin');
     }
-    return [];
+    if (path.startsWith('/workspace/liquid-electrolyte') ||
+        path.startsWith('/workspace/jobs') ||
+        path.startsWith('/workspace/qc-jobs')) {
+      keys.push('/workspace/liquid-electrolyte');
+    }
+    return keys;
   };
 
   // 侧边栏菜单项
@@ -88,15 +104,28 @@ export default function Layout() {
       icon: <ExperimentOutlined />,
       label: '配方管理',
     },
+    // 溶液电解质模块（二级菜单）
     {
-      key: '/workspace/jobs',
-      icon: <RocketOutlined />,
-      label: 'MD计算',
-    },
-    {
-      key: '/workspace/qc-jobs',
-      icon: <ThunderboltOutlined />,
-      label: 'QC计算',
+      key: '/workspace/liquid-electrolyte',
+      icon: <AppstoreOutlined />,
+      label: '溶液电解质',
+      children: [
+        {
+          key: '/workspace/liquid-electrolyte/md',
+          icon: <RocketOutlined />,
+          label: 'MD 模拟',
+        },
+        {
+          key: '/workspace/liquid-electrolyte/analysis',
+          icon: <LineChartOutlined />,
+          label: '后处理分析',
+        },
+        {
+          key: '/workspace/liquid-electrolyte/qc',
+          icon: <ThunderboltOutlined />,
+          label: 'QC 任务',
+        },
+      ],
     },
     {
       key: '/workspace/research',
@@ -257,7 +286,7 @@ export default function Layout() {
           theme="dark"
           mode="inline"
           selectedKeys={[getSelectedKey()]}
-          defaultOpenKeys={getOpenKeys()}
+          defaultOpenKeys={['/workspace/liquid-electrolyte', ...getOpenKeys()]}
           items={menuItems}
           onClick={handleMenuClick}
           style={{

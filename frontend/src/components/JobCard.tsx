@@ -103,11 +103,11 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
 
   // 处理按钮点击
   const handleConfigClick = () => {
-    navigate(`/workspace/jobs/${job.id}/submit`);
+    navigate(`/workspace/liquid-electrolyte/md/${job.id}/submit`);
   };
 
   const handleDetailClick = () => {
-    navigate(`/workspace/jobs/${job.id}/detail`);
+    navigate(`/workspace/liquid-electrolyte/md/${job.id}`);
   };
 
   // 复制任务配置
@@ -130,7 +130,7 @@ export default function JobCard({ job, electrolyte, onCancel, onResubmit, onDele
       message.success('任务配置已复制，请配置参数后提交');
 
       // 跳转到新任务的配置页面
-      navigate(`/workspace/jobs/${newJob.id}/submit`);
+      navigate(`/workspace/liquid-electrolyte/md/${newJob.id}/submit`);
     } catch (error: any) {
       message.error(error.response?.data?.detail || '复制任务失败');
     }

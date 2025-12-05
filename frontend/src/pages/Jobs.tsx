@@ -982,7 +982,7 @@ export default function Jobs() {
                   width: 200,
                   fixed: 'left',
                   render: (_: any, record: MDJob) => (
-                    <a onClick={() => navigate(`/workspace/jobs/${record.id}/detail`)}>
+                    <a onClick={() => navigate(`/workspace/liquid-electrolyte/md/${record.id}`)}>
                       {record.config?.job_name || `任务 #${record.id}`}
                     </a>
                   ),
@@ -1064,7 +1064,7 @@ export default function Jobs() {
                       <Button
                         type="link"
                         size="small"
-                        onClick={() => navigate(`/workspace/jobs/${record.id}/detail`)}
+                        onClick={() => navigate(`/workspace/liquid-electrolyte/md/${record.id}`)}
                       >
                         详情
                       </Button>

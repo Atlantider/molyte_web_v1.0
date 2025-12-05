@@ -41,8 +41,6 @@ import RDFCalculatorNature from '../components/RDFCalculatorNature';
 import MSDCalculatorNature from '../components/MSDCalculatorNature';
 import SolvationStructureNature from '../components/SolvationStructureNature';
 import JobBasicInfo from '../components/JobBasicInfo';
-import QCTasksPanel from '../components/QCTasksPanel';
-import DesolvationBatchPanel from '../components/DesolvationBatchPanel';
 import { getMDJob, resubmitMDJob, getJobSlurmStatus, syncJobStatus, type SlurmJobStatus } from '../api/jobs';
 import { getElectrolyte } from '../api/electrolytes';
 import { translateError } from '../utils/errorTranslator';
@@ -143,7 +141,7 @@ export default function JobDetail() {
     } catch (error: any) {
       console.error(`[JobDetail] Error loading job ${id}:`, error);
       message.error('加载任务详情失败: ' + (error.response?.data?.detail || error.message));
-      navigate('/workspace/jobs');
+      navigate('/workspace/liquid-electrolyte/md');
     } finally {
       setLoading(false);
     }
@@ -279,7 +277,7 @@ export default function JobDetail() {
             <Space size="large">
               <Button
                 icon={<ArrowLeftOutlined />}
-                onClick={() => navigate('/workspace/jobs')}
+                onClick={() => navigate('/workspace/liquid-electrolyte/md')}
                 size="large"
               >
                 返回
@@ -625,7 +623,7 @@ export default function JobDetail() {
                 <div style={{ padding: 0 }}>
                   <SolvationStructureNature
                     jobId={job.id}
-                    onGoToDesolvation={() => setActiveTab('desolvation')}
+                    onGoToPostProcess={() => navigate(`/workspace/liquid-electrolyte/analysis/create?md_job_id=${job.id}`)}
                   />
                 </div>
               ) : (
@@ -640,39 +638,49 @@ export default function JobDetail() {
               ),
             },
             {
-              key: 'desolvation',
+              key: 'post-process',
               label: (
                 <span style={{ fontSize: 14, fontWeight: 500 }}>
                   <ThunderboltOutlined style={{ marginRight: 6, color: '#1890ff' }} />
-                  去溶剂化能
+                  后处理分析
                 </span>
               ),
               children: job.status === JobStatus.COMPLETED || job.status === JobStatus.POSTPROCESSING ? (
                 <div style={{ padding: 24 }}>
-                  <DesolvationBatchPanel jobId={job.id} />
+                  <Card>
+                    <div style={{ textAlign: 'center', padding: 40 }}>
+                      <ExperimentOutlined style={{ fontSize: 48, color: token.colorPrimary, marginBottom: 16 }} />
+                      <Title level={4}>后处理分析</Title>
+                      <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
+                        基于溶剂化结构进行 Binding Energy / Desolvation / Redox / Reorganization 计算
+                      </Text>
+                      <Space size="large">
+                        <Button
+                          type="primary"
+                          size="large"
+                          icon={<ThunderboltOutlined />}
+                          onClick={() => navigate(`/workspace/liquid-electrolyte/analysis/create?md_job_id=${job.id}`)}
+                        >
+                          新建分析任务
+                        </Button>
+                        <Button
+                          size="large"
+                          onClick={() => navigate(`/workspace/liquid-electrolyte/analysis?md_job_id=${job.id}`)}
+                        >
+                          查看已有分析
+                        </Button>
+                      </Space>
+                    </div>
+                  </Card>
                 </div>
               ) : (
                 <div style={{ padding: 24 }}>
                   <Alert
                     message="任务未完成"
-                    description="请等待 MD 任务完成后再进行去溶剂化能计算"
+                    description="请等待 MD 任务完成后再进行后处理分析"
                     type="info"
                     showIcon
                   />
-                </div>
-              ),
-            },
-            {
-              key: 'qc',
-              label: (
-                <span style={{ fontSize: 14, fontWeight: 500 }}>
-                  <ThunderboltOutlined style={{ marginRight: 6, color: '#722ed1' }} />
-                  量子化学计算
-                </span>
-              ),
-              children: (
-                <div style={{ padding: 24 }}>
-                  <QCTasksPanel mdJobId={job.id} />
                 </div>
               ),
             },
