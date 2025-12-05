@@ -931,76 +931,65 @@ export default function PostProcessDetail() {
       // QC 任务表格列定义
       const taskColumns: ColumnsType<PlannedQCTask> = [
         {
-          title: '任务名称',
+          title: 'Name',
           dataIndex: 'task_type',
           key: 'task_type',
-          width: 140,
+          width: 200,
           render: (taskType: string) => {
-            // 从 task_type 提取更友好的名称
+            // 从 task_type 提取英文名称
             if (taskType === 'cluster') return <Tag color="purple">Cluster</Tag>;
-            if (taskType === 'ion') return <Tag color="gold">Li⁺ 离子</Tag>;
+            if (taskType === 'ion') return <Tag color="gold">Li⁺ Ion</Tag>;
             if (taskType?.startsWith('ligand_')) {
               const name = taskType.replace('ligand_', '');
-              return <Tag color="blue">配体 {name}</Tag>;
+              return <Tag color="blue">Ligand: {name}</Tag>;
             }
             if (taskType?.startsWith('dimer_')) {
               const name = taskType.replace('dimer_', '');
-              return <Tag color="green">Li-{name} Dimer</Tag>;
+              return <Tag color="green">Dimer: Li-{name}</Tag>;
             }
             if (taskType?.startsWith('intermediate_')) {
-              return <Tag color="orange">中间态</Tag>;
+              const parts = taskType.replace('intermediate_', '').split('_');
+              return <Tag color="orange">Intermediate #{parts[0]}</Tag>;
             }
             if (taskType?.startsWith('redox_mol_')) {
-              // redox_mol_{mol}_{state}
               const parts = taskType.replace('redox_mol_', '').split('_');
               const mol = parts[0];
               const state = parts.slice(1).join('_');
-              const stateLabel: Record<string, string> = {
-                'neutral_gas': '中性/气相',
-                'charged_gas': '氧化/气相',
-                'neutral_sol': '中性/溶液',
-                'charged_sol': '氧化/溶液',
+              const stateMap: Record<string, string> = {
+                'neutral_gas': 'N/Gas', 'charged_gas': 'Ox/Gas',
+                'neutral_sol': 'N/Sol', 'charged_sol': 'Ox/Sol',
               };
-              return <Tag color="magenta">[分子] {mol} {stateLabel[state] || state}</Tag>;
+              return <Tag color="magenta">Redox-Mol: {mol} ({stateMap[state] || state})</Tag>;
             }
             if (taskType?.startsWith('redox_dimer_')) {
-              // redox_dimer_{mol}_{state}
               const parts = taskType.replace('redox_dimer_', '').split('_');
               const mol = parts[0];
               const state = parts.slice(1).join('_');
-              const stateLabel: Record<string, string> = {
-                'neutral_gas': '中性/气相',
-                'charged_gas': '氧化/气相',
-                'neutral_sol': '中性/溶液',
-                'charged_sol': '氧化/溶液',
+              const stateMap: Record<string, string> = {
+                'neutral_gas': 'N/Gas', 'charged_gas': 'Ox/Gas',
+                'neutral_sol': 'N/Sol', 'charged_sol': 'Ox/Sol',
               };
-              return <Tag color="geekblue">[Dimer] Li-{mol} {stateLabel[state] || state}</Tag>;
+              return <Tag color="geekblue">Redox-Dimer: Li-{mol} ({stateMap[state] || state})</Tag>;
             }
             if (taskType?.startsWith('reorg_mol_')) {
-              // reorg_mol_{mol}_{mode}
               const parts = taskType.replace('reorg_mol_', '').split('_');
               const mol = parts[0];
               const mode = parts.slice(1).join('_');
-              const modeLabel: Record<string, string> = {
-                'opt_neutral': '中性优化',
-                'opt_charged': '氧化优化',
-                'sp_charged_at_neutral': 'SP@中性',
-                'sp_neutral_at_charged': 'SP@氧化',
+              const modeMap: Record<string, string> = {
+                'opt_neutral': 'Opt-N', 'opt_charged': 'Opt-Ox',
+                'sp_charged_at_neutral': 'SP-Ox@N', 'sp_neutral_at_charged': 'SP-N@Ox',
               };
-              return <Tag color="volcano">[分子] {mol} {modeLabel[mode] || mode}</Tag>;
+              return <Tag color="volcano">Reorg-Mol: {mol} ({modeMap[mode] || mode})</Tag>;
             }
             if (taskType?.startsWith('reorg_cluster_')) {
-              // reorg_cluster_{id}_{mode}
               const parts = taskType.replace('reorg_cluster_', '').split('_');
               const id = parts[0];
               const mode = parts.slice(1).join('_');
-              const modeLabel: Record<string, string> = {
-                'opt_neutral': '中性优化',
-                'opt_charged': '氧化优化',
-                'sp_charged_at_neutral': 'SP@中性',
-                'sp_neutral_at_charged': 'SP@氧化',
+              const modeMap: Record<string, string> = {
+                'opt_neutral': 'Opt-N', 'opt_charged': 'Opt-Ox',
+                'sp_charged_at_neutral': 'SP-Ox@N', 'sp_neutral_at_charged': 'SP-N@Ox',
               };
-              return <Tag color="purple">[Cluster#{id}] {modeLabel[mode] || mode}</Tag>;
+              return <Tag color="purple">Reorg-Cluster #{id} ({modeMap[mode] || mode})</Tag>;
             }
             return <Tag>{taskType}</Tag>;
           },
@@ -1945,14 +1934,14 @@ export default function PostProcessDetail() {
                   style={{ height: 420, overflow: 'auto' }}
                 >
                   <Space direction="vertical" style={{ width: '100%' }}>
-                    {/* BINDING_TOTAL 和 DESOLVATION_STEPWISE 需要完整 Cluster */}
+                    {/* BINDING_TOTAL, DESOLVATION, REDOX, REORGANIZATION 需要完整 Cluster */}
                     {(!previewCalcType || ['BINDING_TOTAL', 'DESOLVATION_STEPWISE', 'REDOX', 'REORGANIZATION'].includes(previewCalcType)) && (
                       <Button
                         block
                         type={selectedPreviewTab === 'cluster' ? 'primary' : 'default'}
                         onClick={() => setSelectedPreviewTab('cluster')}
                       >
-                        完整 Cluster ({previewData.cluster.atom_count} 原子)
+                        Full Cluster ({previewData.cluster.atom_count} atoms)
                       </Button>
                     )}
 
@@ -1963,14 +1952,14 @@ export default function PostProcessDetail() {
                         type={selectedPreviewTab === 'center_ion' ? 'primary' : 'default'}
                         onClick={() => setSelectedPreviewTab('center_ion')}
                       >
-                        中心离子 ({previewData.center_ion})
+                        Center Ion ({previewData.center_ion})
                       </Button>
                     )}
 
-                    {/* BINDING_PAIRWISE 需要 Dimer 结构（Li + 配体）*/}
-                    {previewCalcType === 'BINDING_PAIRWISE' && previewData.dimer_structures && previewData.dimer_structures.length > 0 && (
+                    {/* BINDING_PAIRWISE 和 REDOX 需要 Dimer 结构（Li + 配体）*/}
+                    {['BINDING_PAIRWISE', 'REDOX'].includes(previewCalcType) && previewData.dimer_structures && previewData.dimer_structures.length > 0 && (
                       <>
-                        <Divider style={{ margin: '8px 0' }}>Li-配体 Dimer（从 Cluster 提取）</Divider>
+                        <Divider style={{ margin: '8px 0' }}>Li-Ligand Dimer</Divider>
                         {previewData.dimer_structures.map((dimer: any, idx: number) => (
                           <Button
                             key={`dimer_${idx}`}
@@ -1979,7 +1968,7 @@ export default function PostProcessDetail() {
                             onClick={() => setSelectedPreviewTab(`dimer_${idx}`)}
                             style={{ background: selectedPreviewTab === `dimer_${idx}` ? undefined : '#e6f7e6' }}
                           >
-                            {dimer.name} ({dimer.atom_count} 原子)
+                            {dimer.name} ({dimer.atom_count} atoms)
                           </Button>
                         ))}
                       </>
@@ -1988,7 +1977,7 @@ export default function PostProcessDetail() {
                     {/* DESOLVATION_STEPWISE 需要 Cluster-minus 结构 */}
                     {previewCalcType === 'DESOLVATION_STEPWISE' && previewData.cluster_minus_structures && previewData.cluster_minus_structures.length > 0 && (
                       <>
-                        <Divider style={{ margin: '8px 0' }}>Cluster-minus（从 Cluster 提取）</Divider>
+                        <Divider style={{ margin: '8px 0' }}>Cluster-minus</Divider>
                         {previewData.cluster_minus_structures.map((cm: any, idx: number) => (
                           <Button
                             key={`cluster_minus_${idx}`}
@@ -1997,16 +1986,16 @@ export default function PostProcessDetail() {
                             onClick={() => setSelectedPreviewTab(`cluster_minus_${idx}`)}
                             style={{ background: selectedPreviewTab === `cluster_minus_${idx}` ? undefined : '#fff7e6' }}
                           >
-                            {cm.removed_ligand} 已移除 ({cm.atom_count} 原子)
+                            -{cm.removed_ligand} ({cm.atom_count} atoms)
                           </Button>
                         ))}
                       </>
                     )}
 
-                    {/* 单独配体 - Binding 类型都需要 */}
-                    {(!previewCalcType || ['BINDING_TOTAL', 'BINDING_PAIRWISE', 'DESOLVATION_STEPWISE'].includes(previewCalcType)) && (
+                    {/* 单独配体 - Binding、REDOX、REORGANIZATION 类型都需要 */}
+                    {(!previewCalcType || ['BINDING_TOTAL', 'BINDING_PAIRWISE', 'DESOLVATION_STEPWISE', 'REDOX', 'REORGANIZATION'].includes(previewCalcType)) && (
                       <>
-                        <Divider style={{ margin: '8px 0' }}>单独配体（从 Cluster 提取）</Divider>
+                        <Divider style={{ margin: '8px 0' }}>Ligands</Divider>
                         {previewData.ligands.map((ligand: any, idx: number) => (
                           <Button
                             key={`ligand_${idx}`}
@@ -2014,7 +2003,7 @@ export default function PostProcessDetail() {
                             type={selectedPreviewTab === `ligand_${idx}` ? 'primary' : 'default'}
                             onClick={() => setSelectedPreviewTab(`ligand_${idx}`)}
                           >
-                            {ligand.ligand_label} ({ligand.atom_count} 原子)
+                            {ligand.ligand_label} ({ligand.atom_count} atoms)
                           </Button>
                         ))}
                       </>
@@ -2029,16 +2018,16 @@ export default function PostProcessDetail() {
                   size="small"
                   title={
                     selectedPreviewTab === 'cluster'
-                      ? '完整 Cluster'
+                      ? 'Full Cluster'
                       : selectedPreviewTab === 'center_ion'
-                      ? '中心离子'
+                      ? 'Center Ion'
                       : selectedPreviewTab.startsWith('dimer_')
                       ? `Dimer: ${previewData.dimer_structures?.[parseInt(selectedPreviewTab.replace('dimer_', ''), 10)]?.name}`
                       : selectedPreviewTab.startsWith('cluster_minus_')
-                      ? `Cluster-minus: ${previewData.cluster_minus_structures?.[parseInt(selectedPreviewTab.replace('cluster_minus_', ''), 10)]?.removed_ligand} 已移除`
+                      ? `Cluster-minus: -${previewData.cluster_minus_structures?.[parseInt(selectedPreviewTab.replace('cluster_minus_', ''), 10)]?.removed_ligand}`
                       : selectedPreviewTab.startsWith('ligand_')
-                      ? `配体: ${previewData.ligands[parseInt(selectedPreviewTab.replace('ligand_', ''), 10)]?.ligand_label}`
-                      : '3D 结构'
+                      ? `Ligand: ${previewData.ligands[parseInt(selectedPreviewTab.replace('ligand_', ''), 10)]?.ligand_label}`
+                      : '3D Structure'
                   }
                   style={{ height: 420 }}
                 >
