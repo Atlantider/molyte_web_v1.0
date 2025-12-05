@@ -984,51 +984,21 @@ export default function PostProcessDetail() {
           align: 'right',
           render: (e: number | undefined | null) => e != null ? e.toFixed(6) : '-',
         },
-        {
-          title: '操作',
-          key: 'action',
-          width: 100,
-          align: 'center',
-          render: (_: any, record: PlannedQCTask) => {
-            // cluster 类型且有 structure_id 的任务显示 3D 预览按钮
-            if (record.task_type === 'cluster' && record.structure_id) {
-              return (
-                <Tooltip title="预览 3D 结构">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EyeOutlined />}
-                    onClick={() => handlePreviewStructure(record.structure_id!)}
-                  />
-                </Tooltip>
-              );
-            }
-            // 有 SMILES 的任务显示 PubChem 链接
-            if (record.smiles) {
-              return (
-                <Tooltip title="在 PubChem 查看分子结构">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EyeOutlined />}
-                    onClick={() => {
-                      window.open(
-                        `https://pubchem.ncbi.nlm.nih.gov/#query=${encodeURIComponent(record.smiles!)}`,
-                        '_blank'
-                      );
-                    }}
-                  />
-                </Tooltip>
-              );
-            }
-            return null;
-          },
-        },
       ];
+
+      // 获取第一个有 structure_id 的任务，用于预览
+      const getFirstStructureId = (tasks: PlannedQCTask[]): number | null => {
+        for (const task of tasks) {
+          if (task.structure_id) return task.structure_id;
+        }
+        return null;
+      };
 
       // 构建 Collapse 项
       const collapseItems = planResult?.calc_requirements.map((req: CalcTypeRequirements) => {
         const info = CALC_TYPE_INFO[req.calc_type as ClusterCalcType];
+        const firstStructureId = getFirstStructureId(req.required_qc_tasks);
+
         return {
           key: req.calc_type,
           label: (
@@ -1037,7 +1007,21 @@ export default function PostProcessDetail() {
                 {info?.icon} <Text strong>{info?.label || req.calc_type}</Text>
                 <Text type="secondary" style={{ marginLeft: 8 }}>({req.description})</Text>
               </span>
-              <span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {firstStructureId && (
+                  <Tooltip title="查看所有相关结构的 3D 预览">
+                    <Button
+                      size="small"
+                      icon={<EyeOutlined />}
+                      onClick={(e) => {
+                        e.stopPropagation();  // 防止展开/折叠
+                        handlePreviewStructure(firstStructureId);
+                      }}
+                    >
+                      查看结构
+                    </Button>
+                  </Tooltip>
+                )}
                 <Tag color="warning">新建 {req.new_tasks_count}</Tag>
                 <Tag color="success">复用 {req.reused_tasks_count}</Tag>
               </span>
