@@ -122,11 +122,12 @@ const RedoxPotentialPanel: React.FC<RedoxPotentialPanelProps> = ({ mdJobId }) =>
         return;
       }
 
-      // 根据选中的类型构建 species_list
+      // 根据选中的类型构建 species_list，包含 smiles 用于复用匹配
       const speciesList: SpeciesConfig[] = selectedTypes.map(typeName => {
         const clusterInfo = availableClusters.find(c => c.type_name === typeName);
         return {
           name: typeName,
+          smiles: clusterInfo?.example_smiles || '',  // 传递 SMILES 用于 QC 复用
           charge: clusterInfo?.charge || 0,
           multiplicity: clusterInfo?.multiplicity || 1,
           redox_type: values.redox_type || 'oxidation',

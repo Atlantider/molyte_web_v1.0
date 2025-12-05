@@ -1440,12 +1440,6 @@ class PollingWorker:
                 'parent_redox_job_id': parent_job_id
             }
 
-            if solvent_model and solvent_model != 'gas':
-                config['solvent_config'] = {
-                    'model': solvent_model,
-                    'solvent_name': solvent or 'water'
-                }
-
             qc_job_data = {
                 'smiles': smiles,
                 'molecule_name': name,
@@ -1456,6 +1450,13 @@ class PollingWorker:
                 'basis_set': basis_set,
                 'config': config
             }
+
+            # 溶剂配置：作为顶层字段传递，用于后端查重复用
+            if solvent_model and solvent_model != 'gas':
+                qc_job_data['solvent_config'] = {
+                    'model': solvent_model,
+                    'solvent_name': solvent or 'water'
+                }
 
             # 如果有 XYZ 坐标，添加到配置中
             if xyz_content:

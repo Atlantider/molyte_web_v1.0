@@ -120,12 +120,13 @@ const ReorganizationEnergyPanel: React.FC<ReorganizationEnergyPanelProps> = ({ m
         return;
       }
 
-      // 根据选中的类型构建 species_list
+      // 根据选中的类型构建 species_list，包含 smiles 用于复用匹配
       const speciesList: ReorgSpeciesConfig[] = selectedTypes.map(typeName => {
         const clusterInfo = availableClusters.find(c => c.type_name === typeName);
         const charge = clusterInfo?.charge || 0;
         return {
           name: typeName,
+          smiles: clusterInfo?.example_smiles || '',  // 传递 SMILES 用于 QC 复用
           charge_neutral: charge,
           charge_oxidized: charge + 1,  // 氧化态 +1
           multiplicity_neutral: clusterInfo?.multiplicity || 1,
