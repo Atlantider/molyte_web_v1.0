@@ -55,11 +55,23 @@ export interface CalcTypeRequirements {
   reused_tasks_count: number;
 }
 
+export interface RedoxOptions {
+  include_molecule: boolean;
+  include_dimer: boolean;
+}
+
+export interface ReorganizationOptions {
+  include_molecule: boolean;
+  include_cluster: boolean;
+}
+
 export interface ClusterAnalysisPlanRequest {
   md_job_id: number;
   solvation_structure_ids?: number[];
   composition_keys?: string[];
   calc_types: ClusterCalcType[];
+  redox_options?: RedoxOptions;
+  reorganization_options?: ReorganizationOptions;
   qc_config?: Partial<QCConfig>;
 }
 

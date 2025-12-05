@@ -44,17 +44,33 @@ class QCConfig(BaseModel):
     charge_ion: int = Field(1, description="离子电荷 (Li+ = 1)")
 
 
+class RedoxOptions(BaseModel):
+    """REDOX 子选项"""
+    include_molecule: bool = Field(True, description="计算单独配体分子的氧化还原电位")
+    include_dimer: bool = Field(True, description="计算 Li-配体 Dimer 的氧化还原电位")
+
+
+class ReorganizationOptions(BaseModel):
+    """REORGANIZATION 子选项"""
+    include_molecule: bool = Field(True, description="计算单独配体分子的重组能")
+    include_cluster: bool = Field(True, description="计算整个 Cluster 的重组能")
+
+
 class ClusterAnalysisPlanRequest(BaseModel):
     """规划请求 - 用户选择结构和计算类型"""
     md_job_id: int = Field(..., description="MD 任务 ID")
-    
+
     # 选中的结构（二选一）
     solvation_structure_ids: Optional[List[int]] = Field(None, description="选中的溶剂化结构 ID 列表")
     composition_keys: Optional[List[str]] = Field(None, description="选中的 composition_key 列表")
-    
+
     # 选中的计算类型
     calc_types: List[ClusterCalcType] = Field(..., description="选中的计算类型")
-    
+
+    # 子选项
+    redox_options: Optional[RedoxOptions] = Field(default_factory=RedoxOptions, description="REDOX 子选项")
+    reorganization_options: Optional[ReorganizationOptions] = Field(default_factory=ReorganizationOptions, description="REORGANIZATION 子选项")
+
     # QC 配置
     qc_config: Optional[QCConfig] = Field(default_factory=QCConfig, description="QC 计算配置")
 

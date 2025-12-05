@@ -245,6 +245,10 @@ export default function PostProcessDetail() {
   const [planLoading, setPlanLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
 
+  // REDOX 和 REORGANIZATION 子选项
+  const [redoxOptions, setRedoxOptions] = useState({ include_molecule: true, include_dimer: true });
+  const [reorganizationOptions, setReorganizationOptions] = useState({ include_molecule: true, include_cluster: true });
+
   // 筛选状态
   const [filterCoordNums, setFilterCoordNums] = useState<number[]>([]);
   const [filterAnions, setFilterAnions] = useState<string[]>([]);
@@ -755,6 +759,8 @@ export default function PostProcessDetail() {
         md_job_id: selectedMdJobId,
         solvation_structure_ids: selectedStructureIds,
         calc_types: selectedCalcTypes,
+        redox_options: selectedCalcTypes.includes('REDOX') ? redoxOptions : undefined,
+        reorganization_options: selectedCalcTypes.includes('REORGANIZATION') ? reorganizationOptions : undefined,
       });
       setPlanResult(result);
       setCurrentStep(2);  // Step 2: 确认提交页面
@@ -1497,6 +1503,64 @@ export default function PostProcessDetail() {
                     );
                   })}
                 </Space>
+
+                {/* REDOX 子选项 */}
+                {selectedCalcTypes.includes('REDOX') && (
+                  <div style={{
+                    marginTop: 12,
+                    padding: '8px 12px',
+                    background: token.colorFillTertiary,
+                    borderRadius: 6,
+                    border: `1px solid ${token.colorBorder}`
+                  }}>
+                    <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                      🔋 氧化还原电位 - 计算对象
+                    </Text>
+                    <Space direction="vertical" size={4}>
+                      <Checkbox
+                        checked={redoxOptions.include_molecule}
+                        onChange={(e) => setRedoxOptions({ ...redoxOptions, include_molecule: e.target.checked })}
+                      >
+                        <Text style={{ fontSize: 12 }}>分子 (每种配体的氧化还原电位)</Text>
+                      </Checkbox>
+                      <Checkbox
+                        checked={redoxOptions.include_dimer}
+                        onChange={(e) => setRedoxOptions({ ...redoxOptions, include_dimer: e.target.checked })}
+                      >
+                        <Text style={{ fontSize: 12 }}>Li-配体 Dimer (配位后的氧化还原电位)</Text>
+                      </Checkbox>
+                    </Space>
+                  </div>
+                )}
+
+                {/* REORGANIZATION 子选项 */}
+                {selectedCalcTypes.includes('REORGANIZATION') && (
+                  <div style={{
+                    marginTop: 12,
+                    padding: '8px 12px',
+                    background: token.colorFillTertiary,
+                    borderRadius: 6,
+                    border: `1px solid ${token.colorBorder}`
+                  }}>
+                    <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                      ⚡ Marcus 重组能 - 计算对象
+                    </Text>
+                    <Space direction="vertical" size={4}>
+                      <Checkbox
+                        checked={reorganizationOptions.include_molecule}
+                        onChange={(e) => setReorganizationOptions({ ...reorganizationOptions, include_molecule: e.target.checked })}
+                      >
+                        <Text style={{ fontSize: 12 }}>分子 (每种配体的重组能)</Text>
+                      </Checkbox>
+                      <Checkbox
+                        checked={reorganizationOptions.include_cluster}
+                        onChange={(e) => setReorganizationOptions({ ...reorganizationOptions, include_cluster: e.target.checked })}
+                      >
+                        <Text style={{ fontSize: 12 }}>Cluster (整个溶剂化簇的重组能)</Text>
+                      </Checkbox>
+                    </Space>
+                  </div>
+                )}
 
                 {selectedCalcTypes.some(t => ['REDOX', 'REORGANIZATION'].includes(t)) && (
                   <Alert
