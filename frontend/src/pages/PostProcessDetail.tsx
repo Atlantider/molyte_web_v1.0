@@ -125,14 +125,37 @@ export default function PostProcessDetail() {
   // 展开的分组
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
 
-  // 从 composition 生成簇名称，如 Na1MP2PF6
+  // 数字转下标
+  const toSubscript = (num: number): string => {
+    const subscripts = '₀₁₂₃₄₅₆₇₈₉';
+    return String(num).split('').map(d => subscripts[parseInt(d)]).join('');
+  };
+
+  // 从 composition 生成簇名称
+  // 旧格式: Na1MPN4PF6 → 新格式: Na⁺·MPN·(PF6)₄
   const generateClusterName = (centerIon: string, composition: Record<string, number>): string => {
-    if (!composition || Object.keys(composition).length === 0) return centerIon || '-';
+    if (!composition || Object.keys(composition).length === 0) return centerIon ? `${centerIon}⁺` : '-';
+
+    // 阴离子列表（需要括号包裹）
+    const anionList = ['PF6', 'TFSI', 'FSI', 'BF4', 'ClO4', 'DFOB', 'BOB', 'NO3'];
+
     const parts = Object.entries(composition)
       .filter(([_, count]) => count > 0)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([mol, count]) => `${count}${mol}`);
-    return `${centerIon || ''}${parts.join('')}`;
+      .map(([mol, count]) => {
+        const isAnion = anionList.some(a => mol.toUpperCase().includes(a.toUpperCase()));
+        if (count === 1) {
+          return mol;
+        } else if (isAnion) {
+          // 阴离子用括号: (PF6)₄
+          return `(${mol})${toSubscript(count)}`;
+        } else {
+          // 溶剂直接加下标: MPN₂
+          return `${mol}${toSubscript(count)}`;
+        }
+      });
+
+    return `${centerIon || ''}⁺·${parts.join('·')}`;
   };
 
   // 提取所有可用的筛选选项
@@ -532,12 +555,28 @@ export default function PostProcessDetail() {
   // 渲染创建模式
   const renderCreateMode = () => (
     <>
-      {/* 步骤条 */}
+      {/* 步骤条 - 可点击返回 */}
       <Card style={{ marginBottom: 24 }}>
         <Steps
           current={currentStep}
+          onChange={(step) => {
+            // 只允许返回之前的步骤
+            if (step < currentStep) {
+              setCurrentStep(step);
+              // 如果返回 Step 0，清空选择
+              if (step === 0) {
+                setSelectedStructureIds([]);
+                setSelectedCalcTypes([]);
+                setPlanResult(null);
+              }
+            }
+          }}
           items={[
-            { title: '选择数据源', description: '选择 MD Job' },
+            {
+              title: '选择数据源',
+              description: selectedMdJobId ? `MD #${selectedMdJobId}` : '选择 MD Job',
+              style: { cursor: currentStep > 0 ? 'pointer' : 'default' }
+            },
             { title: '选择结构', description: '筛选溶剂化结构' },
             { title: '选择计算', description: '选择计算类型' },
             { title: '确认提交', description: '预览并提交' },
@@ -554,7 +593,13 @@ export default function PostProcessDetail() {
               style={{ width: 400 }}
               placeholder="请选择 MD Job"
               value={selectedMdJobId}
-              onChange={(v) => setSelectedMdJobId(v)}
+              onChange={(v) => {
+                setSelectedMdJobId(v);
+                // 切换 MD Job 时清空之前的选择
+                setSelectedStructureIds([]);
+                setSelectedCalcTypes([]);
+                setPlanResult(null);
+              }}
               options={mdJobs.map(j => ({
                 value: j.id,
                 label: `#${j.id} - ${j.config?.job_name || 'MD Job'} (${dayjs(j.created_at).format('YYYY-MM-DD')})`,
