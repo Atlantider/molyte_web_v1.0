@@ -2002,7 +2002,8 @@ class PollingWorker:
                                    solvent_model: str, solvent_name: str,
                                    solvent_config: Dict = None,
                                    xyz_content: str = None,
-                                   retry_level: int = 0):
+                                   retry_level: int = 0,
+                                   nprocs: int = 16):
         """
         生成 Gaussian 输入文件
 
@@ -2019,6 +2020,7 @@ class PollingWorker:
             solvent_config: 自定义溶剂参数
             xyz_content: XYZ 坐标内容（用于 desolvation 创建的 QC 任务）
             retry_level: 重试级别 (0=首次, 1+=重试)
+            nprocs: CPU 核心数
         """
         # 导入 QC 安全机制模块
         try:
@@ -2131,9 +2133,12 @@ class PollingWorker:
                 charge = corrected_charge
                 spin_multiplicity = corrected_spin
 
+        # 根据 CPU 核心数动态设置内存（大约每核 0.5-1GB）
+        mem_gb = max(4, min(nprocs, 32))  # 4-32GB 范围
+
         # 生成 gjf 内容
-        gjf_content = f"""%nprocshared=16
-%mem=8GB
+        gjf_content = f"""%nprocshared={nprocs}
+%mem={mem_gb}GB
 %chk={safe_name}.chk
 # {keywords}
 
