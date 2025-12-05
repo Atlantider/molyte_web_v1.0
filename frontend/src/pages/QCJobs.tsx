@@ -678,10 +678,22 @@ export default function QCJobs() {
         }
       }
 
-      // 获取精度等级对应的泛函和基组
-      const accuracyLevel = accuracyLevels.find(l => l.value === selectedAccuracy);
-      const functional = selectedAccuracy === 'custom' ? values.functional : (accuracyLevel?.functional || 'B3LYP');
-      const basisSet = selectedAccuracy === 'custom' ? values.basis_set : (accuracyLevel?.basis_set || '6-31G(d)');
+      // 获取泛函和基组
+      // 如果启用了智能推荐，使用表单中的值（已被智能推荐更新）
+      // 否则使用精度等级的预设值
+      let functional: string;
+      let basisSet: string;
+
+      if (useRecommendedParams || selectedAccuracy === 'custom') {
+        // 智能推荐或自定义模式：使用表单中的实际值
+        functional = values.functional || form.getFieldValue('functional') || 'B3LYP';
+        basisSet = values.basis_set || form.getFieldValue('basis_set') || '6-31G(d)';
+      } else {
+        // 未启用智能推荐：使用精度等级的预设值
+        const accuracyLevel = accuracyLevels.find(l => l.value === selectedAccuracy);
+        functional = accuracyLevel?.functional || 'B3LYP';
+        basisSet = accuracyLevel?.basis_set || '6-31G(d)';
+      }
 
       const jobData: QCJobCreate = {
         molecule_name: values.molecule_name,
