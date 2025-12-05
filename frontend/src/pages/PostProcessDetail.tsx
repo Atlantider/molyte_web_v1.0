@@ -552,44 +552,43 @@ export default function PostProcessDetail() {
     },
   ];
 
-  // 渲染创建模式
-  const renderCreateMode = () => (
-    <>
-      {/* 步骤条 - 可点击返回 */}
-      <Card style={{ marginBottom: 24 }}>
-        <Steps
-          current={currentStep}
-          onChange={(step) => {
-            // 只允许返回之前的步骤，或者跳到已完成的步骤
-            if (step < currentStep || (step === 1 && selectedMdJobId) || (step === 2 && selectedStructureIds.length > 0)) {
-              setCurrentStep(step);
-              if (step === 0) {
-                setSelectedStructureIds([]);
-                setSelectedCalcTypes([]);
-                setPlanResult(null);
-              }
-            }
-          }}
-          items={[
-            {
-              title: '选择数据源',
-              description: selectedMdJobId ? `MD #${selectedMdJobId}` : '选择 MD Job',
-            },
-            { title: '选择结构', description: `${selectedStructureIds.length} 个已选` },
-            { title: '选择计算', description: `${selectedCalcTypes.length} 种计算` },
-            { title: '确认提交', description: '预览并提交' },
-          ]}
-        />
-      </Card>
+  // 计算当前步骤的有效性
+  const canProceedToStep2 = selectedMdJobId && selectedStructureIds.length > 0 && selectedCalcTypes.length > 0;
+  const canSubmit = canProceedToStep2 && planResult;
 
-      {/* Step 0: 选择 MD Job */}
-      {currentStep === 0 && (
-        <Card title="选择数据来源">
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Text>选择一个已完成的 MD 模拟任务作为分析的数据来源：</Text>
+  // 渲染创建模式 - 现代化单页向导设计
+  const renderCreateMode = () => {
+    // Step 0: 选择数据源
+    if (currentStep === 0) {
+      return (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: 'calc(100vh - 200px)',
+          padding: 48,
+        }}>
+          <Card
+            style={{
+              width: '100%',
+              maxWidth: 600,
+              textAlign: 'center',
+              borderRadius: 16,
+              boxShadow: `0 8px 32px ${token.colorBgSpotlight}`,
+            }}
+            bodyStyle={{ padding: 48 }}
+          >
+            <ExperimentOutlined style={{ fontSize: 64, color: token.colorPrimary, marginBottom: 24 }} />
+            <Title level={3} style={{ marginBottom: 8 }}>开始后处理分析</Title>
+            <Paragraph type="secondary" style={{ marginBottom: 32 }}>
+              选择一个已完成的 MD 模拟任务，提取的溶剂化结构将用于量子化学计算
+            </Paragraph>
+
             <Select
-              style={{ width: 400 }}
-              placeholder="请选择 MD Job"
+              size="large"
+              style={{ width: '100%', textAlign: 'left' }}
+              placeholder="🔍 选择 MD 模拟任务..."
               value={selectedMdJobId}
               onChange={(v) => {
                 setSelectedMdJobId(v);
@@ -599,458 +598,446 @@ export default function PostProcessDetail() {
               }}
               options={mdJobs.map(j => ({
                 value: j.id,
-                label: `#${j.id} - ${j.config?.job_name || 'MD Job'} (${dayjs(j.created_at).format('YYYY-MM-DD')})`,
+                label: `#${j.id} - ${j.config?.job_name || 'MD Job'}`,
               }))}
               showSearch
               filterOption={(input, option) =>
                 (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
               }
             />
+
+            {selectedMdJobId && (
+              <Button
+                type="primary"
+                size="large"
+                icon={<RocketOutlined />}
+                style={{ marginTop: 24, height: 48, paddingLeft: 32, paddingRight: 32 }}
+                onClick={() => setCurrentStep(1)}
+              >
+                开始配置分析
+              </Button>
+            )}
+
             {mdJobs.length === 0 && (
               <Alert
                 type="info"
                 message="暂无已完成的 MD 任务"
-                description={
-                  <Space>
-                    <Text>请先完成 MD 模拟任务</Text>
-                    <Button type="link" onClick={() => navigate('/workspace/liquid-electrolyte/md')}>
-                      前往 MD 模拟
-                    </Button>
-                  </Space>
+                style={{ marginTop: 24, textAlign: 'left' }}
+                action={
+                  <Button size="small" onClick={() => navigate('/workspace/liquid-electrolyte/md')}>
+                    前往 MD 模拟
+                  </Button>
                 }
               />
             )}
-          </Space>
-        </Card>
-      )}
+          </Card>
+        </div>
+      );
+    }
 
-      {/* 滑动容器 - Step 1, 2, 3 */}
-      {currentStep >= 1 && selectedMdJobId && (
-        <div style={{
-          overflow: 'hidden',
-          position: 'relative',
-        }}>
+    // Step 1: 配置分析（结构 + 计算类型 + 预览，三栏布局）
+    if (currentStep === 1) {
+      const coveredCompositions = Object.keys(groupedStructures).filter(k =>
+        groupedStructures[k].structures.some(s => selectedStructureIds.includes(s.id))
+      ).length;
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 180px)' }}>
+          {/* 顶部进度条 */}
           <div style={{
-            display: 'flex',
-            transition: 'transform 0.4s ease-in-out',
-            transform: `translateX(-${(currentStep - 1) * 100}%)`,
+            background: token.colorBgContainer,
+            borderRadius: 12,
+            padding: '16px 24px',
+            marginBottom: 16,
+            boxShadow: `0 2px 8px ${token.colorBgSpotlight}`,
           }}>
-            {/* Step 1: 选择结构 */}
-            <div style={{ minWidth: '100%', flexShrink: 0, padding: '0 8px' }}>
-              <Row gutter={16}>
-                <Col span={18}>
-                  <Card
-                    title={
-                      <Space>
-                        <Tag color="blue">Step 1</Tag>
-                        <span>选择溶剂化结构</span>
-                        <Text type="secondary">({selectedMdJob?.config?.job_name || `MD #${selectedMdJobId}`})</Text>
-                      </Space>
-                    }
-                    extra={
-                      <Space>
-                        <Space.Compact>
-                          <Tooltip title="列表视图">
-                            <Button
-                              icon={<UnorderedListOutlined />}
-                              type={viewMode === 'list' ? 'primary' : 'default'}
-                              onClick={() => setViewMode('list')}
-                              size="small"
-                            />
-                          </Tooltip>
-                          <Tooltip title="分组视图">
-                            <Button
-                              icon={<AppstoreOutlined />}
-                              type={viewMode === 'grouped' ? 'primary' : 'default'}
-                              onClick={() => setViewMode('grouped')}
-                              size="small"
-                            />
-                          </Tooltip>
-                        </Space.Compact>
-                      </Space>
-                    }
-                  >
-                    <Spin spinning={loading}>
-                      {structures.length === 0 ? (
-                        <Empty description="未找到溶剂化结构，请先在 MD 详情页提取结构" />
-                      ) : (
-                        <>
-                          {/* 智能选择和筛选区域 */}
-                          <Card size="small" style={{ marginBottom: 16, background: token.colorBgLayout }}>
-                            <Row gutter={[16, 12]} align="middle">
-                              <Col flex="auto">
-                                <Space wrap>
-                                  <Text strong>快速选择:</Text>
-                                  <Button
-                                    size="small"
-                                    icon={<BulbOutlined />}
-                                    loading={autoSelectLoading}
-                                    onClick={handleAutoSelect}
-                                  >
-                                    每种组成1个
-                                  </Button>
-                                  <Button size="small" onClick={() => selectNPerGroup(3)}>
-                                    每种组成3个
-                                  </Button>
-                                  <Divider type="vertical" />
-                                  <Button
-                                    size="small"
-                                    type={filteredStructures.length !== structures.length ? 'primary' : 'default'}
-                                    onClick={() => setSelectedStructureIds(filteredStructures.map(s => s.id))}
-                                  >
-                                    全选筛选结果 ({filteredStructures.length})
-                                  </Button>
-                                  <Button size="small" onClick={() => setSelectedStructureIds(structures.map(s => s.id))}>
-                                    全选全部
-                                  </Button>
-                                  <Button size="small" danger onClick={() => setSelectedStructureIds([])}>
-                                    清空
-                                  </Button>
-                                </Space>
-                              </Col>
-                            </Row>
-                            <Divider style={{ margin: '12px 0' }} />
-                            <Row gutter={[16, 8]} align="middle">
-                              <Col>
-                                <Space>
-                                  <Text type="secondary">配位数:</Text>
-                                  <Select
-                                    mode="multiple"
-                                    style={{ minWidth: 100 }}
-                                    placeholder="全部"
-                                    value={filterCoordNums}
-                                    onChange={setFilterCoordNums}
-                                    options={filterOptions.coordNums.map(n => ({ value: n, label: `${n}` }))}
-                                    allowClear
-                                    maxTagCount={2}
-                                    size="small"
-                                  />
-                          </Space>
-                        </Col>
-                        <Col>
-                          <Space>
-                            <Text type="secondary">阴离子:</Text>
-                            <Select
-                              mode="multiple"
-                              style={{ minWidth: 120 }}
-                              placeholder="全部"
-                              value={filterAnions}
-                              onChange={setFilterAnions}
-                              options={filterOptions.anions.map(a => ({ value: a, label: a }))}
-                              allowClear
-                              maxTagCount={2}
-                              size="small"
-                            />
-                          </Space>
-                        </Col>
-                        <Col>
-                          <Space>
-                            <Text type="secondary">溶剂:</Text>
-                            <Select
-                              mode="multiple"
-                              style={{ minWidth: 120 }}
-                              placeholder="全部"
-                              value={filterSolvents}
-                              onChange={setFilterSolvents}
-                              options={filterOptions.solvents.map(s => ({ value: s, label: s }))}
-                              allowClear
-                              maxTagCount={2}
-                              size="small"
-                            />
-                          </Space>
-                        </Col>
-                        <Col>
-                          <Button size="small" onClick={resetFilters}>重置</Button>
-                        </Col>
-                      </Row>
-                    </Card>
+            <Row align="middle" justify="space-between">
+              <Col>
+                <Space size="large">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      background: token.colorPrimary, color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 'bold',
+                    }}>1</div>
+                    <Text strong>配置分析</Text>
+                  </div>
+                  <div style={{ width: 60, height: 2, background: selectedStructureIds.length > 0 && selectedCalcTypes.length > 0 ? token.colorPrimary : token.colorBorder }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      background: canProceedToStep2 ? token.colorPrimary : token.colorBorder,
+                      color: canProceedToStep2 ? '#fff' : token.colorTextDisabled,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 'bold',
+                    }}>2</div>
+                    <Text type={canProceedToStep2 ? undefined : 'secondary'}>确认提交</Text>
+                  </div>
+                </Space>
+              </Col>
+              <Col>
+                <Space>
+                  <Tag color="blue">{selectedMdJob?.config?.job_name || `MD #${selectedMdJobId}`}</Tag>
+                  <Button size="small" onClick={() => setCurrentStep(0)}>更换数据源</Button>
+                </Space>
+              </Col>
+            </Row>
+          </div>
 
-                    {/* 统计信息 */}
-                    <Alert
-                      type="info"
-                      message={
-                        <Row justify="space-between" align="middle">
-                          <Col>
-                            <Space split={<Divider type="vertical" />}>
-                              <span>已选 <Text strong style={{ color: token.colorPrimary }}>{selectedStructureIds.length}</Text> 个结构</span>
-                              <span>覆盖 <Text strong>{Object.keys(groupedStructures).filter(k =>
-                                groupedStructures[k].structures.some(s => selectedStructureIds.includes(s.id))
-                              ).length}</Text> 种组成</span>
-                              <span>共 <Text strong>{sortedGroupKeys.length}</Text> 种 / {structures.length} 个</span>
-                            </Space>
-                          </Col>
-                        </Row>
-                      }
-                      style={{ marginBottom: 16 }}
+          {/* 主内容区 - 三栏布局 */}
+          <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
+            {/* 左栏：结构选择 */}
+            <Col span={10} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <Card
+                size="small"
+                title={<Space><ExperimentOutlined /> 溶剂化结构</Space>}
+                extra={
+                  <Space.Compact size="small">
+                    <Button
+                      icon={<UnorderedListOutlined />}
+                      type={viewMode === 'list' ? 'primary' : 'default'}
+                      onClick={() => setViewMode('list')}
                     />
+                    <Button
+                      icon={<AppstoreOutlined />}
+                      type={viewMode === 'grouped' ? 'primary' : 'default'}
+                      onClick={() => setViewMode('grouped')}
+                    />
+                  </Space.Compact>
+                }
+                bodyStyle={{ padding: 12, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}
+                style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+              >
+                <Spin spinning={loading} style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  {/* 快速选择 */}
+                  <Space wrap style={{ marginBottom: 12 }}>
+                    <Button size="small" icon={<BulbOutlined />} loading={autoSelectLoading} onClick={handleAutoSelect}>
+                      智能选择
+                    </Button>
+                    <Button size="small" onClick={() => selectNPerGroup(3)}>每种3个</Button>
+                    <Button size="small" type={filteredStructures.length !== structures.length ? 'primary' : 'default'}
+                      onClick={() => setSelectedStructureIds(filteredStructures.map(s => s.id))}>
+                      全选 ({filteredStructures.length})
+                    </Button>
+                    <Button size="small" danger onClick={() => setSelectedStructureIds([])}>清空</Button>
+                  </Space>
 
-                    {/* 分组视图 */}
+                  {/* 筛选器 */}
+                  <Space wrap style={{ marginBottom: 12 }}>
+                    <Select size="small" mode="multiple" style={{ minWidth: 80 }} placeholder="CN"
+                      value={filterCoordNums} onChange={setFilterCoordNums} allowClear maxTagCount={1}
+                      options={filterOptions.coordNums.map(n => ({ value: n, label: `CN=${n}` }))} />
+                    <Select size="small" mode="multiple" style={{ minWidth: 100 }} placeholder="阴离子"
+                      value={filterAnions} onChange={setFilterAnions} allowClear maxTagCount={1}
+                      options={filterOptions.anions.map(a => ({ value: a, label: a }))} />
+                    <Select size="small" mode="multiple" style={{ minWidth: 100 }} placeholder="溶剂"
+                      value={filterSolvents} onChange={setFilterSolvents} allowClear maxTagCount={1}
+                      options={filterOptions.solvents.map(s => ({ value: s, label: s }))} />
+                    {(filterCoordNums.length > 0 || filterAnions.length > 0 || filterSolvents.length > 0) && (
+                      <Button size="small" type="link" onClick={resetFilters}>重置</Button>
+                    )}
+                  </Space>
+
+                  {/* 结构列表 */}
+                  <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
                     {viewMode === 'grouped' ? (
-                      <div style={{ maxHeight: 500, overflow: 'auto' }}>
-                        {sortedGroupKeys
-                          .filter(key => {
-                            // 应用筛选
-                            const group = groupedStructures[key];
-                            return group.structures.some(s => filteredStructures.includes(s));
-                          })
-                          .map(groupKey => {
-                            const group = groupedStructures[groupKey];
-                            const groupFilteredStructures = group.structures.filter(s => filteredStructures.includes(s));
-                            const isAllSelected = isGroupAllSelected(groupKey);
-                            const isPartial = isGroupPartiallySelected(groupKey);
-                            const selectedInGroup = group.structures.filter(s => selectedStructureIds.includes(s.id)).length;
-
-                            return (
-                              <Card
-                                key={groupKey}
-                                size="small"
-                                style={{ marginBottom: 8 }}
-                                title={
+                      <div>
+                        {sortedGroupKeys.filter(key => groupedStructures[key].structures.some(s => filteredStructures.includes(s))).map(groupKey => {
+                          const group = groupedStructures[groupKey];
+                          const isAllSelected = isGroupAllSelected(groupKey);
+                          const isPartial = isGroupPartiallySelected(groupKey);
+                          const selectedInGroup = group.structures.filter(s => selectedStructureIds.includes(s.id)).length;
+                          return (
+                            <div key={groupKey} style={{
+                              padding: '8px 12px', marginBottom: 4, borderRadius: 8,
+                              background: isAllSelected ? token.colorPrimaryBg : (isPartial ? token.colorWarningBg : token.colorBgLayout),
+                              border: `1px solid ${isAllSelected ? token.colorPrimary : token.colorBorder}`,
+                              cursor: 'pointer',
+                            }}
+                              onClick={() => selectGroup(groupKey, !isAllSelected)}
+                            >
+                              <Row justify="space-between" align="middle">
+                                <Col>
                                   <Space>
-                                    <Checkbox
-                                      checked={isAllSelected}
-                                      indeterminate={isPartial}
-                                      onChange={(e) => selectGroup(groupKey, e.target.checked)}
-                                    />
-                                    <Text strong style={{ fontFamily: 'monospace' }}>{groupKey}</Text>
-                                    <Tag color="blue">{group.count} 个</Tag>
-                                    <Tag color="purple">{group.percentage.toFixed(1)}%</Tag>
-                                    {selectedInGroup > 0 && (
-                                      <Tag color="green">已选 {selectedInGroup}</Tag>
-                                    )}
+                                    <Checkbox checked={isAllSelected} indeterminate={isPartial} />
+                                    <Text strong style={{ fontFamily: 'monospace', fontSize: 13 }}>{groupKey}</Text>
                                   </Space>
-                                }
-                                extra={
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    onClick={() => {
-                                      if (expandedGroups.includes(groupKey)) {
-                                        setExpandedGroups(expandedGroups.filter(k => k !== groupKey));
-                                      } else {
-                                        setExpandedGroups([...expandedGroups, groupKey]);
-                                      }
-                                    }}
-                                  >
-                                    {expandedGroups.includes(groupKey) ? '收起' : '展开'}
-                                  </Button>
-                                }
-                              >
-                                {expandedGroups.includes(groupKey) && (
-                                  <Table
-                                    columns={structureColumns.filter(c => c.key !== 'cluster_name' && c.key !== 'percentage' && c.key !== 'group_count')}
-                                    dataSource={groupFilteredStructures}
-                                    rowKey="id"
-                                    size="small"
-                                    pagination={false}
-                                  />
-                                )}
-                              </Card>
-                            );
-                          })}
+                                </Col>
+                                <Col>
+                                  <Space size={4}>
+                                    <Tag color="blue" style={{ margin: 0 }}>{group.count}</Tag>
+                                    <Text type="secondary" style={{ fontSize: 12 }}>{group.percentage.toFixed(1)}%</Text>
+                                    {selectedInGroup > 0 && <Tag color="green" style={{ margin: 0 }}>{selectedInGroup}✓</Tag>}
+                                  </Space>
+                                </Col>
+                              </Row>
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
-                      /* 列表视图 */
                       <Table
                         columns={structureColumns}
                         dataSource={filteredStructures}
                         rowKey="id"
                         size="small"
-                        pagination={{ pageSize: 15, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
-                        scroll={{ x: 800 }}
+                        pagination={{ pageSize: 10, size: 'small', showTotal: (t) => `${t}条` }}
+                        scroll={{ x: 600 }}
                       />
                     )}
-
-                      <div style={{ marginTop: 16, textAlign: 'right' }}>
-                        <Space>
-                          <Button onClick={() => setCurrentStep(0)}>
-                            重选数据源
-                          </Button>
-                          <Button
-                            type="primary"
-                            disabled={selectedStructureIds.length === 0}
-                            onClick={() => setCurrentStep(2)}
-                          >
-                            下一步：选择计算类型 →
-                          </Button>
-                        </Space>
-                      </div>
-                    </>
-                  )}
+                  </div>
                 </Spin>
               </Card>
             </Col>
 
-            {/* 右侧实时预估面板 */}
-            <Col span={6}>
+            {/* 中栏：计算类型选择 */}
+            <Col span={8} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               <Card
-                title={
-                  <Space>
-                    <CalculatorOutlined />
-                    <span>计算预估</span>
-                  </Space>
-                }
                 size="small"
-                style={{ position: 'sticky', top: 80 }}
+                title={<Space><ThunderboltOutlined /> 计算类型</Space>}
+                bodyStyle={{ padding: 12, overflow: 'auto' }}
+                style={{ height: '100%' }}
               >
-                <Statistic
-                  title="已选结构"
-                  value={selectedStructureIds.length}
-                  suffix={`/ ${structures.length}`}
-                  style={{ marginBottom: 16 }}
-                />
-                <Statistic
-                  title="覆盖组成类型"
-                  value={Object.keys(groupedStructures).filter(k =>
-                    groupedStructures[k].structures.some(s => selectedStructureIds.includes(s.id))
-                  ).length}
-                  suffix={`/ ${sortedGroupKeys.length}`}
-                  style={{ marginBottom: 16 }}
-                />
-                <Divider style={{ margin: '12px 0' }} />
-                {selectedCalcTypes.length > 0 ? (
-                  <>
-                    <Text type="secondary" style={{ fontSize: 12 }}>预估 QC 任务数：</Text>
-                    {Object.entries(estimatedQCTasks.details).map(([calcType, count]) => (
-                      <div key={calcType} style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0' }}>
-                        <Text style={{ fontSize: 12 }}>{CALC_TYPE_INFO[calcType as ClusterCalcType]?.icon} {CALC_TYPE_INFO[calcType as ClusterCalcType]?.label}</Text>
-                        <Text strong style={{ fontSize: 12 }}>~{count}</Text>
+                <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                  {CALC_TYPE_OPTIONS.map(opt => {
+                    const isSelected = selectedCalcTypes.includes(opt.value);
+                    const info = CALC_TYPE_INFO[opt.value];
+                    return (
+                      <div
+                        key={opt.value}
+                        style={{
+                          padding: '12px 16px',
+                          borderRadius: 8,
+                          border: `2px solid ${isSelected ? token.colorPrimary : token.colorBorder}`,
+                          background: isSelected ? token.colorPrimaryBg : 'transparent',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedCalcTypes(selectedCalcTypes.filter(t => t !== opt.value));
+                          } else {
+                            setSelectedCalcTypes([...selectedCalcTypes, opt.value]);
+                          }
+                        }}
+                      >
+                        <Row justify="space-between" align="middle">
+                          <Col>
+                            <Space>
+                              <Checkbox checked={isSelected} />
+                              <Text strong>{info.icon} {opt.label}</Text>
+                            </Space>
+                          </Col>
+                          <Col>
+                            <Tag color={opt.riskLevel === 'high' ? 'red' : opt.riskLevel === 'medium' ? 'orange' : 'green'} style={{ margin: 0 }}>
+                              {opt.riskLevel === 'high' ? '高' : opt.riskLevel === 'medium' ? '中' : '低'}
+                            </Tag>
+                          </Col>
+                        </Row>
+                        <Text type="secondary" style={{ fontSize: 12, marginLeft: 24 }}>{opt.description}</Text>
                       </div>
+                    );
+                  })}
+                </Space>
+
+                {selectedCalcTypes.some(t => ['REDOX', 'REORGANIZATION'].includes(t)) && (
+                  <Alert
+                    type="warning"
+                    message="高风险计算需要更多 QC 任务，时间较长"
+                    style={{ marginTop: 12 }}
+                    showIcon
+                  />
+                )}
+              </Card>
+            </Col>
+
+            {/* 右栏：实时预览 */}
+            <Col span={6} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <Card
+                size="small"
+                title={<Space><CalculatorOutlined /> 分析预览</Space>}
+                bodyStyle={{ padding: 16 }}
+                style={{ height: '100%' }}
+              >
+                {/* 选择统计 */}
+                <div style={{
+                  background: token.colorPrimaryBg,
+                  borderRadius: 8,
+                  padding: 16,
+                  marginBottom: 16,
+                  textAlign: 'center',
+                }}>
+                  <Statistic
+                    title="已选结构"
+                    value={selectedStructureIds.length}
+                    suffix={<Text type="secondary">/ {structures.length}</Text>}
+                  />
+                  <Progress
+                    percent={structures.length > 0 ? Math.round((selectedStructureIds.length / structures.length) * 100) : 0}
+                    size="small"
+                    style={{ marginTop: 8 }}
+                  />
+                </div>
+
+                <div style={{
+                  background: token.colorBgLayout,
+                  borderRadius: 8,
+                  padding: 16,
+                  marginBottom: 16,
+                  textAlign: 'center',
+                }}>
+                  <Statistic
+                    title="覆盖组成"
+                    value={coveredCompositions}
+                    suffix={<Text type="secondary">/ {sortedGroupKeys.length} 种</Text>}
+                  />
+                </div>
+
+                <Divider style={{ margin: '12px 0' }}>预估 QC 任务</Divider>
+
+                {selectedCalcTypes.length > 0 && selectedStructureIds.length > 0 ? (
+                  <>
+                    {Object.entries(estimatedQCTasks.details).map(([calcType, count]) => (
+                      <Row key={calcType} justify="space-between" style={{ marginBottom: 8 }}>
+                        <Col><Text>{CALC_TYPE_INFO[calcType as ClusterCalcType]?.icon} {CALC_TYPE_INFO[calcType as ClusterCalcType]?.label}</Text></Col>
+                        <Col><Text strong>~{count}</Text></Col>
+                      </Row>
                     ))}
                     <Divider style={{ margin: '8px 0' }} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Text strong>总计</Text>
-                      <Text strong style={{ color: token.colorPrimary }}>~{estimatedQCTasks.total} 个</Text>
-                    </div>
+                    <Row justify="space-between">
+                      <Col><Text strong>总计</Text></Col>
+                      <Col><Text strong style={{ color: token.colorPrimary, fontSize: 18 }}>~{estimatedQCTasks.total}</Text></Col>
+                    </Row>
                   </>
                 ) : (
-                  <Text type="secondary" style={{ fontSize: 12 }}>选择计算类型后显示预估</Text>
+                  <Empty description="选择结构和计算类型后显示" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 )}
               </Card>
             </Col>
           </Row>
-        </div>
 
-        {/* Step 2: 选择计算类型 */}
-        <div style={{ minWidth: '100%', flexShrink: 0, padding: '0 8px' }}>
-          <Card
-            title={
-              <Space>
-                <Tag color="green">Step 2</Tag>
-                <span>选择计算类型</span>
-                <Text type="secondary">已选 {selectedStructureIds.length} 个结构</Text>
+          {/* 底部固定操作栏 */}
+          <div style={{
+            background: token.colorBgContainer,
+            borderRadius: 12,
+            padding: '16px 24px',
+            marginTop: 16,
+            boxShadow: `0 -2px 8px ${token.colorBgSpotlight}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <Space>
+              <Text type="secondary">
+                {selectedStructureIds.length > 0 ? `已选 ${selectedStructureIds.length} 个结构` : '请选择结构'}
+                {selectedCalcTypes.length > 0 ? ` · ${selectedCalcTypes.length} 种计算` : ''}
+              </Text>
+            </Space>
+            <Space>
+              <Button onClick={() => setCurrentStep(0)}>← 返回</Button>
+              <Button
+                type="primary"
+                size="large"
+                disabled={!canProceedToStep2}
+                loading={planLoading}
+                onClick={handlePlan}
+              >
+                生成规划 · 下一步 →
+              </Button>
+            </Space>
+          </div>
+        </div>
+      );
+    }
+
+    // Step 2: 确认提交
+    if (currentStep === 2 || currentStep === 3) {
+      return (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          padding: 24,
+        }}>
+          {/* 进度条 */}
+          <div style={{
+            background: token.colorBgContainer,
+            borderRadius: 12,
+            padding: '16px 24px',
+            marginBottom: 24,
+            width: '100%',
+            maxWidth: 800,
+            boxShadow: `0 2px 8px ${token.colorBgSpotlight}`,
+          }}>
+            <Row align="middle" justify="center">
+              <Space size="large">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: '50%',
+                    background: token.colorSuccess, color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}><CheckCircleOutlined /></div>
+                  <Text type="secondary">配置分析</Text>
+                </div>
+                <div style={{ width: 60, height: 2, background: token.colorPrimary }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: '50%',
+                    background: token.colorPrimary, color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 'bold',
+                  }}>2</div>
+                  <Text strong>确认提交</Text>
+                </div>
               </Space>
-            }
-          >
-            <Row gutter={[16, 16]}>
-              {CALC_TYPE_OPTIONS.map(opt => {
-                const isSelected = selectedCalcTypes.includes(opt.value);
-                const info = CALC_TYPE_INFO[opt.value];
-                return (
-                  <Col key={opt.value} xs={24} sm={12} md={8}>
-                    <div
-                      style={{
-                        padding: 16,
-                        border: `2px solid ${isSelected ? token.colorPrimary : token.colorBorder}`,
-                        borderRadius: 8,
-                        background: isSelected ? token.colorPrimaryBg : token.colorBgContainer,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                      }}
-                      onClick={() => {
-                        if (isSelected) {
-                          setSelectedCalcTypes(selectedCalcTypes.filter(t => t !== opt.value));
-                        } else {
-                          setSelectedCalcTypes([...selectedCalcTypes, opt.value]);
-                        }
-                      }}
-                    >
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Space>
-                          <Checkbox checked={isSelected} />
-                          <Text strong>{info.icon} {opt.label}</Text>
-                          <Tag color={opt.riskLevel === 'high' ? 'red' : opt.riskLevel === 'medium' ? 'orange' : 'green'}>
-                            {opt.riskLevel === 'high' ? '高风险' : opt.riskLevel === 'medium' ? '中风险' : '低风险'}
-                          </Tag>
-                        </Space>
-                        <Text type="secondary" style={{ fontSize: 12 }}>{opt.description}</Text>
-                      </Space>
-                    </div>
-                  </Col>
-                );
-              })}
             </Row>
-            {selectedCalcTypes.some(t => ['REDOX', 'REORGANIZATION'].includes(t)) && (
-              <Alert
-                type="warning"
-                message="高风险计算提示"
-                description="Redox 和 Reorganization 计算需要更多的 QC 任务，计算时间较长，结果误差可能较大。"
-                style={{ marginTop: 16 }}
-                showIcon
-              />
-            )}
-            <div style={{ marginTop: 16, textAlign: 'right' }}>
-              <Space>
-                <Button onClick={() => setCurrentStep(1)}>← 上一步</Button>
-                <Button
-                  type="primary"
-                  disabled={selectedCalcTypes.length === 0}
-                  loading={planLoading}
-                  onClick={handlePlan}
-                >
-                  生成规划预览 →
-                </Button>
-              </Space>
-            </div>
-          </Card>
-        </div>
+          </div>
 
-        {/* Step 3: 确认提交 */}
-        <div style={{ minWidth: '100%', flexShrink: 0, padding: '0 8px' }}>
+          {/* 规划结果卡片 */}
           <Card
-            title={
-              <Space>
-                <Tag color="orange">Step 3</Tag>
-                <span>确认提交</span>
-              </Space>
-            }
+            style={{
+              width: '100%',
+              maxWidth: 800,
+              borderRadius: 16,
+              boxShadow: `0 8px 32px ${token.colorBgSpotlight}`,
+            }}
           >
-            {planResult && (
+            {planResult ? (
               <>
-                <Descriptions bordered column={2} size="small">
-                  <Descriptions.Item label="MD Job">#{selectedMdJobId}</Descriptions.Item>
-                  <Descriptions.Item label="选中结构数">{planResult.selected_structures_count}</Descriptions.Item>
-                  <Descriptions.Item label="新建 QC 任务">
-                    <Text type="warning" strong>{planResult.total_new_qc_tasks}</Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="复用 QC 任务">
-                    <Text type="success" strong>{planResult.total_reused_qc_tasks}</Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="预估计算时间" span={2}>
-                    约 {planResult.estimated_compute_hours.toFixed(1)} 核时
-                  </Descriptions.Item>
-                </Descriptions>
+                <Row gutter={24} style={{ marginBottom: 24 }}>
+                  <Col span={6}>
+                    <Statistic title="选中结构" value={planResult.selected_structures_count} suffix="个" />
+                  </Col>
+                  <Col span={6}>
+                    <Statistic title="新建 QC 任务" value={planResult.total_new_qc_tasks} valueStyle={{ color: token.colorWarning }} />
+                  </Col>
+                  <Col span={6}>
+                    <Statistic title="复用 QC 任务" value={planResult.total_reused_qc_tasks} valueStyle={{ color: token.colorSuccess }} />
+                  </Col>
+                  <Col span={6}>
+                    <Statistic title="预估计算时间" value={planResult.estimated_compute_hours.toFixed(1)} suffix="核时" />
+                  </Col>
+                </Row>
 
                 <Divider>计算类型详情</Divider>
 
-                {planResult.calc_requirements.map(req => (
-                  <Card key={req.calc_type} size="small" style={{ marginBottom: 8 }}>
-                    <Row justify="space-between" align="middle">
-                      <Col>
-                        <Space>
-                          <Text strong>{CALC_TYPE_INFO[req.calc_type as ClusterCalcType]?.icon}</Text>
-                          <Text strong>{CALC_TYPE_INFO[req.calc_type as ClusterCalcType]?.label}</Text>
-                        </Space>
-                      </Col>
-                      <Col>
-                        <Space>
+                <Row gutter={[16, 16]}>
+                  {planResult.calc_requirements.map(req => (
+                    <Col key={req.calc_type} span={8}>
+                      <Card size="small" style={{ textAlign: 'center' }}>
+                        <Text strong style={{ fontSize: 16 }}>
+                          {CALC_TYPE_INFO[req.calc_type as ClusterCalcType]?.icon}
+                          {' '}{CALC_TYPE_INFO[req.calc_type as ClusterCalcType]?.label}
+                        </Text>
+                        <div style={{ marginTop: 8 }}>
                           <Tag color="blue">新建 {req.new_tasks_count}</Tag>
                           <Tag color="green">复用 {req.reused_tasks_count}</Tag>
-                        </Space>
-                      </Col>
-                    </Row>
-                  </Card>
-                ))}
+                        </div>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
 
                 {planResult.warnings.length > 0 && (
                   <Alert
@@ -1061,32 +1048,41 @@ export default function PostProcessDetail() {
                         {planResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
                       </ul>
                     }
-                    style={{ marginTop: 16 }}
+                    style={{ marginTop: 24 }}
                   />
                 )}
 
-                <div style={{ marginTop: 24, textAlign: 'right' }}>
-                  <Space>
-                    <Button onClick={() => setCurrentStep(2)}>← 上一步</Button>
+                <div style={{ marginTop: 32, textAlign: 'center' }}>
+                  <Space size="large">
+                    <Button size="large" onClick={() => setCurrentStep(1)}>← 返回修改</Button>
                     <Button
                       type="primary"
+                      size="large"
                       icon={<SendOutlined />}
                       loading={submitLoading}
                       onClick={handleSubmit}
+                      style={{ paddingLeft: 32, paddingRight: 32, height: 48 }}
                     >
                       提交分析任务
                     </Button>
                   </Space>
                 </div>
               </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 48 }}>
+                <Spin size="large" />
+                <div style={{ marginTop: 16 }}>
+                  <Text type="secondary">正在生成规划预览...</Text>
+                </div>
+              </div>
             )}
           </Card>
         </div>
-      </div>
-    </div>
-      )}
-    </>
-  );
+      );
+    }
+
+    return null;
+  };
 
   // 渲染查看模式
   const renderViewMode = () => {
