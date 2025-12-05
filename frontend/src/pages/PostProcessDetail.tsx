@@ -852,7 +852,7 @@ export default function PostProcessDetail() {
           render: (status: string, record: PlannedQCTask) => {
             if (status === 'reused') {
               return (
-                <Tooltip title={record.existing_energy !== undefined ? `已有能量: ${record.existing_energy.toFixed(4)} Ha` : '已有结果'}>
+                <Tooltip title={record.existing_energy != null ? `已有能量: ${record.existing_energy.toFixed(4)} Ha` : '已有结果'}>
                   <Tag color="success" icon={<CheckCircleOutlined />}>复用</Tag>
                 </Tooltip>
               );
@@ -866,7 +866,7 @@ export default function PostProcessDetail() {
           key: 'existing_energy',
           width: 120,
           align: 'right',
-          render: (e: number | undefined) => e !== undefined ? e.toFixed(6) : '-',
+          render: (e: number | undefined | null) => e != null ? e.toFixed(6) : '-',
         },
       ];
 
@@ -940,7 +940,7 @@ export default function PostProcessDetail() {
                   <Col span={6}>
                     <Statistic
                       title="预估计算时间"
-                      value={planResult.estimated_compute_hours.toFixed(1)}
+                      value={(planResult.estimated_compute_hours ?? 0).toFixed(1)}
                       suffix="核时"
                       prefix={<ClockCircleOutlined />}
                     />
