@@ -401,7 +401,9 @@ def _plan_qc_tasks_for_calc_type(
         li_smiles = "[Li+]"
         existing = _find_existing_qc_job(
             db, li_smiles, 1, 1, functional, basis_set,
-            solvent_model, solvent_name, "ion"
+            solvent_model, solvent_name,
+            molecule_type=None,  # 不限制 molecule_type，靠 SMILES 匹配
+            molecule_name="Li+"  # 传入名称用于回退匹配
         )
         if existing:
             task = PlannedQCTask(
@@ -487,7 +489,9 @@ def _plan_qc_tasks_for_calc_type(
         li_smiles = "[Li+]"
         existing = _find_existing_qc_job(
             db, li_smiles, 1, 1, functional, basis_set,
-            solvent_model, solvent_name, "ion"
+            solvent_model, solvent_name,
+            molecule_type=None,
+            molecule_name="Li+"
         )
         if existing:
             task = PlannedQCTask(
@@ -518,7 +522,9 @@ def _plan_qc_tasks_for_calc_type(
         li_smiles = "[Li+]"
         existing = _find_existing_qc_job(
             db, li_smiles, 1, 1, functional, basis_set,
-            solvent_model, solvent_name, "ion"
+            solvent_model, solvent_name,
+            molecule_type=None,
+            molecule_name="Li+"
         )
         if existing:
             task = PlannedQCTask(
@@ -554,7 +560,9 @@ def _plan_qc_tasks_for_calc_type(
         li_smiles = "[Li+]"
         existing = _find_existing_qc_job(
             db, li_smiles, 1, 1, functional, basis_set,
-            solvent_model, solvent_name, "ion"
+            solvent_model, solvent_name,
+            molecule_type=None,
+            molecule_name="Li+"
         )
         if existing:
             task = PlannedQCTask(
@@ -666,8 +674,11 @@ def _plan_qc_tasks_for_calc_type(
                             task_type = f"redox_mol_{mol_name}_{state_suffix}"
                             mult = 1 if (charge - lig_charge) % 2 == 0 else 2
 
+                            # 全局复用：不传 molecule_type，通过 SMILES 或 molecule_name 匹配
                             existing = _find_existing_qc_job(
-                                db, lig_smiles, charge, mult, functional, basis_set, sol_model, sol_name, task_type
+                                db, lig_smiles, charge, mult, functional, basis_set, sol_model, sol_name,
+                                molecule_type=None,  # 不限制 molecule_type
+                                molecule_name=mol_name  # 传入基础名称用于回退匹配
                             )
 
                             if existing:
@@ -702,9 +713,13 @@ def _plan_qc_tasks_for_calc_type(
                             task_type = f"redox_dimer_{mol_name}_{state_suffix}"
                             mult = 1 if charge == dimer_base_charge else 2
 
-                            # Dimer 也尝试全局复用（相同 SMILES + 电荷 + 多重度 + 溶剂配置）
+                            # 全局复用：不限制 molecule_type，通过 SMILES 或 molecule_name 匹配
+                            # 这样 Redox-Dimer 可以复用 Binding-Dimer 的结果
+                            dimer_name = f"Li-{mol_name}"
                             existing = _find_existing_qc_job(
-                                db, dimer_smiles, charge, mult, functional, basis_set, sol_model, sol_name, task_type
+                                db, dimer_smiles, charge, mult, functional, basis_set, sol_model, sol_name,
+                                molecule_type=None,  # 不限制 molecule_type
+                                molecule_name=dimer_name  # 传入 dimer 名称用于回退匹配
                             )
 
                             if existing:
@@ -770,10 +785,12 @@ def _plan_qc_tasks_for_calc_type(
                         ]
 
                         for task_type, desc, charge, mult, calc_mode in mol_tasks:
-                            # 尝试全局复用（优化任务也可以复用，如果配置相同）
+                            # 全局复用：不限制 molecule_type，通过 SMILES 或 molecule_name 匹配
                             existing = _find_existing_qc_job(
                                 db, lig_smiles, charge, mult, functional, basis_set,
-                                solvent_model, solvent_name, task_type
+                                solvent_model, solvent_name,
+                                molecule_type=None,  # 不限制 molecule_type
+                                molecule_name=mol_name  # 传入基础名称用于回退匹配
                             )
 
                             if existing:
