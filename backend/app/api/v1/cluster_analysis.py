@@ -726,9 +726,10 @@ def _calculate_binding_total(job, qc_results_by_type: Dict, db: Session) -> Dict
     """计算总 Binding Energy
 
     qc_results_by_type: Dict[(task_type, structure_id), result_dict]
-    """
-    # E_bind = E_cluster - (E_ion + Σ n_j × E_ligand_j)
 
+    E_bind = E_cluster - (E_ion + Σ n_j × E_ligand_j)
+    其中 n_j 是每种配体的数量，来自 SolvationStructure.composition
+    """
     # 从 qc_results_by_type 中提取能量
     e_ion = None
     ligand_energies = {}
@@ -753,16 +754,39 @@ def _calculate_binding_total(job, qc_results_by_type: Dict, db: Session) -> Dict
     if not ligand_energies:
         return {"error": "缺少配体能量"}
 
+    # 获取每个 cluster 结构的 composition 信息
+    structure_ids = [c["structure_id"] for c in cluster_results]
+    structures = db.query(SolvationStructure).filter(
+        SolvationStructure.id.in_(structure_ids)
+    ).all()
+    structure_composition_map = {s.id: s.composition or {} for s in structures}
+
     # 计算每个 cluster 的 binding energy
     binding_results = []
-    total_ligand_energy = sum(ligand_energies.values())
 
     for cluster in cluster_results:
+        structure_id = cluster["structure_id"]
         e_cluster = cluster["energy_au"]
+
+        # 根据 composition 计算配体总能量
+        composition = structure_composition_map.get(structure_id, {})
+        total_ligand_energy = 0.0
+        ligand_details = {}
+
+        for ligand_name, e_ligand in ligand_energies.items():
+            count = composition.get(ligand_name, 0)
+            if count > 0:
+                total_ligand_energy += count * e_ligand
+                ligand_details[ligand_name] = {"count": count, "energy_au": e_ligand}
+
         e_bind_au = e_cluster - (e_ion + total_ligand_energy)
         binding_results.append({
-            "structure_id": cluster["structure_id"],
+            "structure_id": structure_id,
+            "composition": composition,
             "e_cluster_au": e_cluster,
+            "e_ion_au": e_ion,
+            "total_ligand_energy_au": total_ligand_energy,
+            "ligand_details": ligand_details,
             "e_bind_au": e_bind_au,
             "e_bind_ev": e_bind_au * 27.2114,
             "e_bind_kcal_mol": e_bind_au * 627.509,
