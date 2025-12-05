@@ -87,9 +87,22 @@ def _find_existing_qc_job(
     multiplicity: int,
     functional: str,
     basis_set: str,
+    solvent_model: str = "gas",
+    solvent_name: str = None,
     molecule_type: str = None
 ) -> Optional[QCJob]:
-    """查找已有的、相同配置的 QC 任务"""
+    """
+    查找已有的、相同配置的 QC 任务（全平台复用）
+
+    复用条件：
+    - 相同 SMILES（分子结构）
+    - 相同电荷和自旋多重度
+    - 相同计算参数（泛函、基组）
+    - 相同溶剂模型配置
+    - 任务已完成且未删除
+
+    注意：不限制用户，实现全平台复用
+    """
     from sqlalchemy.orm import joinedload
 
     query = db.query(QCJob).options(
@@ -100,9 +113,14 @@ def _find_existing_qc_job(
         QCJob.spin_multiplicity == multiplicity,
         QCJob.functional == functional,
         QCJob.basis_set == basis_set,
+        QCJob.solvent_model == solvent_model,
         QCJob.status == QCJobStatus.COMPLETED,
         QCJob.is_deleted == False
     )
+
+    # 如果指定了溶剂名称，也需要匹配
+    if solvent_model != "gas" and solvent_name:
+        query = query.filter(QCJob.solvent_name == solvent_name)
 
     if molecule_type:
         query = query.filter(QCJob.molecule_type == molecule_type)
@@ -111,9 +129,8 @@ def _find_existing_qc_job(
     job = query.order_by(desc(QCJob.finished_at)).first()
 
     if job:
-        logger.debug(f"Found existing QC job {job.id} for {smiles}, charge={charge}, results count={len(job.results) if job.results else 0}")
-        if job.results:
-            logger.debug(f"  Energy: {job.results[0].energy_au}")
+        logger.debug(f"[全局复用] 找到已有 QC 任务 {job.id}: {smiles}, charge={charge}, "
+                     f"solvent={solvent_model}/{solvent_name}, energy={job.results[0].energy_au if job.results else 'N/A'}")
 
     return job
 
@@ -273,10 +290,16 @@ def _plan_qc_tasks_for_calc_type(
     qc_config: Dict[str, Any],
     mol_info_from_db: Optional[Dict[str, Dict[str, Any]]] = None
 ) -> CalcTypeRequirements:
-    """为某个计算类型规划 QC 任务"""
+    """为某个计算类型规划 QC 任务（支持全局复用）"""
     functional = qc_config.get("functional", "B3LYP")
     basis_set = qc_config.get("basis_set", "6-31G*")
     charge_ion = qc_config.get("charge_ion", 1)
+    # 溶剂配置：支持 solvent_model/solvent 或 solvent_model/solvent_name
+    solvent_model = qc_config.get("solvent_model") or "gas"
+    solvent_name = qc_config.get("solvent") or qc_config.get("solvent_name")
+
+    logger.info(f"[规划] calc_type={calc_type}, functional={functional}, basis_set={basis_set}, "
+                f"solvent_model={solvent_model}, solvent_name={solvent_name}")
 
     planned_tasks: List[PlannedQCTask] = []
     new_count = 0
@@ -315,10 +338,11 @@ def _plan_qc_tasks_for_calc_type(
             planned_tasks.append(task)
             new_count += 1
         
-        # 2. Ligand 任务 (每种配体一个，可复用)
+        # 2. Ligand 任务 (每种配体一个，全局可复用)
         for lig in ligand_info:
             existing = _find_existing_qc_job(
-                db, lig["smiles"], lig["charge"], 1, functional, basis_set, "ligand"
+                db, lig["smiles"], lig["charge"], 1, functional, basis_set,
+                solvent_model, solvent_name, "ligand"
             )
             # task_type 使用 ligand_{name} 格式，以便结果计算时能识别配体
             ligand_task_type = f"ligand_{lig['name']}"
@@ -347,9 +371,12 @@ def _plan_qc_tasks_for_calc_type(
             planned_tasks.append(task)
     
     if calc_type == ClusterCalcType.BINDING_TOTAL:
-        # Binding 需要 ion 能量
+        # Binding 需要 ion 能量（全局可复用）
         li_smiles = "[Li+]"
-        existing = _find_existing_qc_job(db, li_smiles, 1, 1, functional, basis_set, "ion")
+        existing = _find_existing_qc_job(
+            db, li_smiles, 1, 1, functional, basis_set,
+            solvent_model, solvent_name, "ion"
+        )
         if existing:
             task = PlannedQCTask(
                 task_type="ion",
@@ -393,9 +420,12 @@ def _plan_qc_tasks_for_calc_type(
                     new_count += 1
 
     if calc_type == ClusterCalcType.DESOLVATION_FULL:
-        # Full desolvation 需要 ion 能量
+        # Full desolvation 需要 ion 能量（全局可复用）
         li_smiles = "[Li+]"
-        existing = _find_existing_qc_job(db, li_smiles, 1, 1, functional, basis_set, "ion")
+        existing = _find_existing_qc_job(
+            db, li_smiles, 1, 1, functional, basis_set,
+            solvent_model, solvent_name, "ion"
+        )
         if existing:
             task = PlannedQCTask(
                 task_type="ion",
@@ -426,9 +456,12 @@ def _plan_qc_tasks_for_calc_type(
         # 2. 各配体能量（从 cluster 中提取的实际几何结构）
         # 3. Li-配体二聚体（从 cluster 中提取 Li+ 和某个配体的组合）
 
-        # 1. Li+ 离子
+        # 1. Li+ 离子（全局可复用）
         li_smiles = "[Li+]"
-        existing = _find_existing_qc_job(db, li_smiles, 1, 1, functional, basis_set, "ion")
+        existing = _find_existing_qc_job(
+            db, li_smiles, 1, 1, functional, basis_set,
+            solvent_model, solvent_name, "ion"
+        )
         if existing:
             task = PlannedQCTask(
                 task_type="ion",
