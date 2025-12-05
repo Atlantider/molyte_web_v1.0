@@ -3,7 +3,7 @@
  * - 创建模式：选择 MD Job → 选择结构 → 选择计算类型 → 提交
  * - 查看模式：显示任务状态、QC 进度、计算结果
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card,
@@ -46,6 +46,7 @@ import {
   UnorderedListOutlined,
   CalculatorOutlined,
   SettingOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -62,10 +63,19 @@ import {
   type PlannedQCTask,
 } from '../api/clusterAnalysis';
 import { getMDJobs, getMDJob, getSolvationStructures, autoSelectSolvationStructures, type SolvationStructure, type AutoSelectResponse } from '../api/jobs';
+import { previewDesolvationStructures, type DesolvationPreviewResponse } from '../api/desolvation';
 import type { MDJob } from '../types';
 import { JobStatus } from '../types';
 import ClusterAnalysisResultsPanel from '../components/ClusterAnalysisResultsPanel';
+import { useThemeStore } from '../stores/themeStore';
 import dayjs from 'dayjs';
+
+// 3Dmol.js 类型声明
+declare global {
+  interface Window {
+    $3Dmol: any;
+  }
+}
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -249,6 +259,15 @@ export default function PostProcessDetail() {
   // 计算类型详情弹窗
   const [calcTypeDetailVisible, setCalcTypeDetailVisible] = useState(false);
   const [selectedCalcTypeForDetail, setSelectedCalcTypeForDetail] = useState<ClusterCalcType | null>(null);
+
+  // 结构预览状态
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewData, setPreviewData] = useState<DesolvationPreviewResponse | null>(null);
+  const [selectedPreviewTab, setSelectedPreviewTab] = useState<string>('cluster');
+  const previewViewerRef = useRef<HTMLDivElement>(null);
+  const previewViewerInstance = useRef<any>(null);
+  const { isDark } = useThemeStore();
 
   // 数字转下标
   const toSubscript = (num: number): string => {
@@ -612,6 +631,95 @@ export default function PostProcessDetail() {
     }
   }, [selectedMdJobId, isCreateMode, loadMdJobDetail, loadStructures]);
 
+  // 加载 3Dmol.js
+  useEffect(() => {
+    if (!window.$3Dmol) {
+      const script = document.createElement('script');
+      script.src = 'https://3Dmol.csb.pitt.edu/build/3Dmol-min.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  // 打开结构预览
+  const handlePreviewStructure = async (structureId: number) => {
+    setPreviewLoading(true);
+    setPreviewVisible(true);
+    setSelectedPreviewTab('cluster');
+    try {
+      const data = await previewDesolvationStructures(structureId);
+      setPreviewData(data);
+    } catch (error: any) {
+      message.error(`加载预览失败: ${error.message || '未知错误'}`);
+      setPreviewVisible(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // 渲染 3D 预览
+  const renderMolecule = useCallback((xyzContent: string, highlightCenterIon: boolean = true) => {
+    if (!previewViewerRef.current || !window.$3Dmol || !xyzContent) return;
+
+    // 清除旧的 viewer
+    if (previewViewerInstance.current) {
+      previewViewerInstance.current.clear();
+      previewViewerInstance.current = null;
+    }
+
+    const container = previewViewerRef.current;
+    const viewer = window.$3Dmol.createViewer(container, {
+      backgroundColor: isDark ? '#1a1a1a' : '#f8f9fa',
+    });
+    previewViewerInstance.current = viewer;
+
+    viewer.addModel(xyzContent, 'xyz');
+    viewer.setStyle({}, {
+      stick: { radius: 0.15, colorscheme: 'Jmol' },
+      sphere: { scale: 0.3, colorscheme: 'Jmol' },
+    });
+    // 只对 cluster 高亮中心离子（第一个原子）
+    if (highlightCenterIon) {
+      viewer.setStyle({ serial: 0 }, {
+        sphere: { scale: 0.5, color: '#e74c3c' },
+      });
+    }
+    viewer.zoomTo(0.85);
+    viewer.rotate(-15, 'x');
+    viewer.rotate(10, 'y');
+    viewer.render();
+  }, [isDark]);
+
+  // 当预览 Tab 变化或数据变化时重新渲染
+  useEffect(() => {
+    if (!previewData || !previewVisible) return;
+
+    let xyzContent = '';
+    let highlightCenterIon = true;
+
+    if (selectedPreviewTab === 'cluster') {
+      xyzContent = previewData.cluster.xyz_content;
+      highlightCenterIon = true;
+    } else if (selectedPreviewTab === 'center_ion') {
+      xyzContent = previewData.center_ion_structure.xyz_content;
+      highlightCenterIon = true;
+    } else if (selectedPreviewTab.startsWith('ligand_')) {
+      const idx = parseInt(selectedPreviewTab.replace('ligand_', ''), 10);
+      const ligand = previewData.ligands[idx];
+      if (ligand) {
+        xyzContent = ligand.xyz_content;
+      }
+      highlightCenterIon = false;
+    }
+
+    // 延迟渲染，确保 Modal 已完全展开
+    const timer = setTimeout(() => {
+      renderMolecule(xyzContent, highlightCenterIon);
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [previewData, previewVisible, selectedPreviewTab, renderMolecule]);
+
   // 生成规划预览
   const handlePlan = async () => {
     if (!selectedMdJobId || selectedStructureIds.length === 0 || selectedCalcTypes.length === 0) {
@@ -867,6 +975,28 @@ export default function PostProcessDetail() {
           width: 120,
           align: 'right',
           render: (e: number | undefined | null) => e != null ? e.toFixed(6) : '-',
+        },
+        {
+          title: '操作',
+          key: 'action',
+          width: 80,
+          align: 'center',
+          render: (_: any, record: PlannedQCTask) => {
+            // 只有 cluster 类型且有 structure_id 的任务才显示预览按钮
+            if (record.task_type === 'cluster' && record.structure_id) {
+              return (
+                <Tooltip title="预览 3D 结构">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EyeOutlined />}
+                    onClick={() => handlePreviewStructure(record.structure_id!)}
+                  />
+                </Tooltip>
+              );
+            }
+            return null;
+          },
         },
       ];
 
@@ -1585,6 +1715,121 @@ export default function PostProcessDetail() {
           </div>
           );
         })()}
+      </Modal>
+
+      {/* 结构预览 Modal */}
+      <Modal
+        title={
+          <Space>
+            <EyeOutlined />
+            <span>结构预览 - {previewData?.cluster_name || ''}</span>
+          </Space>
+        }
+        open={previewVisible}
+        onCancel={() => {
+          setPreviewVisible(false);
+          setPreviewData(null);
+        }}
+        width={800}
+        footer={null}
+        destroyOnClose
+      >
+        {previewLoading ? (
+          <div style={{ textAlign: 'center', padding: 60 }}>
+            <Spin tip="正在加载结构..." />
+          </div>
+        ) : previewData ? (
+          <div>
+            {/* 结构信息摘要 */}
+            <Alert
+              type="info"
+              style={{ marginBottom: 16 }}
+              message={
+                <Space split={<Divider type="vertical" />}>
+                  <span>中心离子: <strong>{previewData.center_ion}</strong></span>
+                  <span>配位数: <strong>{previewData.ligands.length}</strong></span>
+                  <span>总电荷: <strong>{previewData.total_charge}</strong></span>
+                  <span>
+                    配位组成: {Object.entries(previewData.composition)
+                      .filter(([, v]) => v > 0)
+                      .map(([k, v]) => `${k}×${v}`)
+                      .join(', ')}
+                  </span>
+                </Space>
+              }
+            />
+
+            <Row gutter={16}>
+              {/* 左侧：结构列表 */}
+              <Col span={8}>
+                <Card size="small" title="可查看的结构" style={{ height: 420, overflow: 'auto' }}>
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Button
+                      block
+                      type={selectedPreviewTab === 'cluster' ? 'primary' : 'default'}
+                      onClick={() => setSelectedPreviewTab('cluster')}
+                    >
+                      完整 Cluster ({previewData.cluster.atom_count} 原子)
+                    </Button>
+                    <Button
+                      block
+                      type={selectedPreviewTab === 'center_ion' ? 'primary' : 'default'}
+                      onClick={() => setSelectedPreviewTab('center_ion')}
+                    >
+                      中心离子 ({previewData.center_ion})
+                    </Button>
+                    <Divider style={{ margin: '8px 0' }}>配体分子</Divider>
+                    {previewData.ligands.map((ligand, idx) => (
+                      <Button
+                        key={`ligand_${idx}`}
+                        block
+                        type={selectedPreviewTab === `ligand_${idx}` ? 'primary' : 'default'}
+                        onClick={() => setSelectedPreviewTab(`ligand_${idx}`)}
+                      >
+                        {ligand.ligand_label} ({ligand.atom_count} 原子)
+                      </Button>
+                    ))}
+                  </Space>
+                </Card>
+              </Col>
+
+              {/* 右侧：3D 视图 */}
+              <Col span={16}>
+                <Card
+                  size="small"
+                  title={
+                    selectedPreviewTab === 'cluster'
+                      ? '完整 Cluster'
+                      : selectedPreviewTab === 'center_ion'
+                      ? '中心离子'
+                      : selectedPreviewTab.startsWith('ligand_')
+                      ? `配体: ${previewData.ligands[parseInt(selectedPreviewTab.replace('ligand_', ''), 10)]?.ligand_label}`
+                      : '3D 结构'
+                  }
+                  style={{ height: 420 }}
+                >
+                  <div
+                    ref={previewViewerRef}
+                    style={{
+                      width: '100%',
+                      height: 340,
+                      background: isDark ? '#1a1a1a' : '#f8f9fa',
+                      borderRadius: 8,
+                    }}
+                  />
+                  <div style={{
+                    marginTop: 8,
+                    textAlign: 'center',
+                    color: token.colorTextSecondary,
+                    fontSize: 12,
+                  }}>
+                    拖动旋转 | 滚轮缩放 | 右键平移 | 红色球体为中心离子
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );
