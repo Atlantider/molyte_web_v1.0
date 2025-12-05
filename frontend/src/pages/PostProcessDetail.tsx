@@ -265,6 +265,7 @@ export default function PostProcessDetail() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewData, setPreviewData] = useState<DesolvationPreviewResponse | null>(null);
   const [selectedPreviewTab, setSelectedPreviewTab] = useState<string>('cluster');
+  const [previewCalcType, setPreviewCalcType] = useState<string>('');  // 当前预览的计算类型
   const previewViewerRef = useRef<HTMLDivElement>(null);
   const previewViewerInstance = useRef<any>(null);
   const { isDark } = useThemeStore();
@@ -642,10 +643,16 @@ export default function PostProcessDetail() {
   }, []);
 
   // 打开结构预览
-  const handlePreviewStructure = async (structureId: number) => {
+  const handlePreviewStructure = async (structureId: number, calcType: string = '') => {
     setPreviewLoading(true);
     setPreviewVisible(true);
-    setSelectedPreviewTab('cluster');
+    setPreviewCalcType(calcType);
+    // 根据计算类型设置默认选中的 Tab
+    if (calcType === 'BINDING_PAIRWISE') {
+      setSelectedPreviewTab('dimer_0');  // Pairwise 默认显示第一个 dimer
+    } else {
+      setSelectedPreviewTab('cluster');  // 其他默认显示 cluster
+    }
     try {
       const data = await previewDesolvationStructures(structureId);
       setPreviewData(data);
@@ -711,6 +718,14 @@ export default function PostProcessDetail() {
         xyzContent = dimer.xyz_content;
       }
       highlightCenterIon = true;  // 高亮中心离子
+    } else if (selectedPreviewTab.startsWith('cluster_minus_')) {
+      // cluster-minus 结构
+      const idx = parseInt(selectedPreviewTab.replace('cluster_minus_', ''), 10);
+      const cm = previewData.cluster_minus_structures?.[idx];
+      if (cm) {
+        xyzContent = cm.xyz_content;
+      }
+      highlightCenterIon = true;
     } else if (selectedPreviewTab.startsWith('ligand_')) {
       const idx = parseInt(selectedPreviewTab.replace('ligand_', ''), 10);
       const ligand = previewData.ligands[idx];
@@ -963,26 +978,14 @@ export default function PostProcessDetail() {
           title: '状态',
           dataIndex: 'status',
           key: 'status',
-          width: 100,
+          width: 80,
           align: 'center',
-          render: (status: string, record: PlannedQCTask) => {
+          render: (status: string) => {
             if (status === 'reused') {
-              return (
-                <Tooltip title={record.existing_energy != null ? `已有能量: ${record.existing_energy.toFixed(4)} Ha` : '已有结果'}>
-                  <Tag color="success" icon={<CheckCircleOutlined />}>复用</Tag>
-                </Tooltip>
-              );
+              return <Tag color="success" icon={<CheckCircleOutlined />}>复用</Tag>;
             }
             return <Tag color="warning" icon={<ThunderboltOutlined />}>新建</Tag>;
           },
-        },
-        {
-          title: '能量 (Ha)',
-          dataIndex: 'existing_energy',
-          key: 'existing_energy',
-          width: 120,
-          align: 'right',
-          render: (e: number | undefined | null) => e != null ? e.toFixed(6) : '-',
         },
       ];
 
@@ -1009,13 +1012,13 @@ export default function PostProcessDetail() {
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {firstStructureId && (
-                  <Tooltip title="查看所有相关结构的 3D 预览">
+                  <Tooltip title="查看该计算类型需要的所有结构">
                     <Button
                       size="small"
                       icon={<EyeOutlined />}
                       onClick={(e) => {
                         e.stopPropagation();  // 防止展开/折叠
-                        handlePreviewStructure(firstStructureId);
+                        handlePreviewStructure(firstStructureId, req.calc_type);
                       }}
                     >
                       查看结构
@@ -1770,28 +1773,49 @@ export default function PostProcessDetail() {
             />
 
             <Row gutter={16}>
-              {/* 左侧：结构列表 */}
+              {/* 左侧：结构列表 - 根据计算类型显示不同结构 */}
               <Col span={8}>
-                <Card size="small" title="可查看的结构" style={{ height: 420, overflow: 'auto' }}>
+                <Card
+                  size="small"
+                  title={
+                    <span>
+                      可查看的结构
+                      {previewCalcType && (
+                        <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+                          ({CALC_TYPE_INFO[previewCalcType as ClusterCalcType]?.label || previewCalcType})
+                        </Text>
+                      )}
+                    </span>
+                  }
+                  style={{ height: 420, overflow: 'auto' }}
+                >
                   <Space direction="vertical" style={{ width: '100%' }}>
-                    <Button
-                      block
-                      type={selectedPreviewTab === 'cluster' ? 'primary' : 'default'}
-                      onClick={() => setSelectedPreviewTab('cluster')}
-                    >
-                      完整 Cluster ({previewData.cluster.atom_count} 原子)
-                    </Button>
-                    <Button
-                      block
-                      type={selectedPreviewTab === 'center_ion' ? 'primary' : 'default'}
-                      onClick={() => setSelectedPreviewTab('center_ion')}
-                    >
-                      中心离子 ({previewData.center_ion})
-                    </Button>
-                    {/* Dimer 结构（Li + 配体）- 用于 Pairwise Binding */}
-                    {previewData.dimer_structures && previewData.dimer_structures.length > 0 && (
+                    {/* BINDING_TOTAL 和 DESOLVATION_STEPWISE 需要完整 Cluster */}
+                    {(!previewCalcType || ['BINDING_TOTAL', 'DESOLVATION_STEPWISE', 'REDOX', 'REORGANIZATION'].includes(previewCalcType)) && (
+                      <Button
+                        block
+                        type={selectedPreviewTab === 'cluster' ? 'primary' : 'default'}
+                        onClick={() => setSelectedPreviewTab('cluster')}
+                      >
+                        完整 Cluster ({previewData.cluster.atom_count} 原子)
+                      </Button>
+                    )}
+
+                    {/* 所有 Binding 类型都需要中心离子 */}
+                    {(!previewCalcType || ['BINDING_TOTAL', 'BINDING_PAIRWISE', 'DESOLVATION_STEPWISE'].includes(previewCalcType)) && (
+                      <Button
+                        block
+                        type={selectedPreviewTab === 'center_ion' ? 'primary' : 'default'}
+                        onClick={() => setSelectedPreviewTab('center_ion')}
+                      >
+                        中心离子 ({previewData.center_ion})
+                      </Button>
+                    )}
+
+                    {/* BINDING_PAIRWISE 需要 Dimer 结构（Li + 配体）*/}
+                    {previewCalcType === 'BINDING_PAIRWISE' && previewData.dimer_structures && previewData.dimer_structures.length > 0 && (
                       <>
-                        <Divider style={{ margin: '8px 0' }}>Li-配体 Dimer</Divider>
+                        <Divider style={{ margin: '8px 0' }}>Li-配体 Dimer（从 Cluster 提取）</Divider>
                         {previewData.dimer_structures.map((dimer: any, idx: number) => (
                           <Button
                             key={`dimer_${idx}`}
@@ -1805,17 +1829,41 @@ export default function PostProcessDetail() {
                         ))}
                       </>
                     )}
-                    <Divider style={{ margin: '8px 0' }}>单独配体</Divider>
-                    {previewData.ligands.map((ligand: any, idx: number) => (
-                      <Button
-                        key={`ligand_${idx}`}
-                        block
-                        type={selectedPreviewTab === `ligand_${idx}` ? 'primary' : 'default'}
-                        onClick={() => setSelectedPreviewTab(`ligand_${idx}`)}
-                      >
-                        {ligand.ligand_label} ({ligand.atom_count} 原子)
-                      </Button>
-                    ))}
+
+                    {/* DESOLVATION_STEPWISE 需要 Cluster-minus 结构 */}
+                    {previewCalcType === 'DESOLVATION_STEPWISE' && previewData.cluster_minus_structures && previewData.cluster_minus_structures.length > 0 && (
+                      <>
+                        <Divider style={{ margin: '8px 0' }}>Cluster-minus（从 Cluster 提取）</Divider>
+                        {previewData.cluster_minus_structures.map((cm: any, idx: number) => (
+                          <Button
+                            key={`cluster_minus_${idx}`}
+                            block
+                            type={selectedPreviewTab === `cluster_minus_${idx}` ? 'primary' : 'default'}
+                            onClick={() => setSelectedPreviewTab(`cluster_minus_${idx}`)}
+                            style={{ background: selectedPreviewTab === `cluster_minus_${idx}` ? undefined : '#fff7e6' }}
+                          >
+                            {cm.removed_ligand} 已移除 ({cm.atom_count} 原子)
+                          </Button>
+                        ))}
+                      </>
+                    )}
+
+                    {/* 单独配体 - Binding 类型都需要 */}
+                    {(!previewCalcType || ['BINDING_TOTAL', 'BINDING_PAIRWISE', 'DESOLVATION_STEPWISE'].includes(previewCalcType)) && (
+                      <>
+                        <Divider style={{ margin: '8px 0' }}>单独配体（从 Cluster 提取）</Divider>
+                        {previewData.ligands.map((ligand: any, idx: number) => (
+                          <Button
+                            key={`ligand_${idx}`}
+                            block
+                            type={selectedPreviewTab === `ligand_${idx}` ? 'primary' : 'default'}
+                            onClick={() => setSelectedPreviewTab(`ligand_${idx}`)}
+                          >
+                            {ligand.ligand_label} ({ligand.atom_count} 原子)
+                          </Button>
+                        ))}
+                      </>
+                    )}
                   </Space>
                 </Card>
               </Col>
@@ -1831,6 +1879,8 @@ export default function PostProcessDetail() {
                       ? '中心离子'
                       : selectedPreviewTab.startsWith('dimer_')
                       ? `Dimer: ${previewData.dimer_structures?.[parseInt(selectedPreviewTab.replace('dimer_', ''), 10)]?.name}`
+                      : selectedPreviewTab.startsWith('cluster_minus_')
+                      ? `Cluster-minus: ${previewData.cluster_minus_structures?.[parseInt(selectedPreviewTab.replace('cluster_minus_', ''), 10)]?.removed_ligand} 已移除`
                       : selectedPreviewTab.startsWith('ligand_')
                       ? `配体: ${previewData.ligands[parseInt(selectedPreviewTab.replace('ligand_', ''), 10)]?.ligand_label}`
                       : '3D 结构'
