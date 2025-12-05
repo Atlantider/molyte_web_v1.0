@@ -4929,9 +4929,10 @@ echo "QC calculation completed"
             'solvent_model': qc_config.get('solvent_model'),
             'solvent_name': qc_config.get('solvent'),
             'md_job_id': md_job_id,
+            # Cluster Analysis 关联字段
             'cluster_analysis_job_id': cluster_job_id,
             'task_type': task_type,
-            'structure_id': structure_id,
+            'solvation_structure_id': structure_id,
         }
 
         # 调用 API 创建 QC 任务

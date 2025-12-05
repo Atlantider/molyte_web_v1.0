@@ -56,7 +56,14 @@ class QCJob(Base):
 
     # 关联去溶剂化后处理任务（可选）
     desolvation_postprocess_job_id = Column(Integer, ForeignKey("postprocess_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+
+    # 关联 Cluster 高级计算任务（可选）
+    cluster_analysis_job_id = Column(Integer, ForeignKey("advanced_cluster_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
+    # 任务类型标识（用于 Cluster Analysis 结果计算）
+    task_type = Column(String(100), nullable=True, index=True)  # e.g., "cluster", "ion", "ligand_EC", "dimer_EC"
+    # 关联的溶剂化结构 ID（用于 Cluster Analysis）
+    solvation_structure_id = Column(Integer, ForeignKey("solvation_structures.id", ondelete="SET NULL"), nullable=True)
+
     # 分子信息
     molecule_name = Column(String(255), nullable=False)
     smiles = Column(Text, nullable=False, index=True)

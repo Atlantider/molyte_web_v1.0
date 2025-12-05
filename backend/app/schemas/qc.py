@@ -177,6 +177,11 @@ class QCJobCreate(QCJobBase):
     auto_spin: bool = Field(default=True, description="自动计算自旋多重度")
     config: Optional[Dict[str, Any]] = Field(default={}, description="额外配置")
 
+    # Cluster Analysis 关联字段
+    cluster_analysis_job_id: Optional[int] = Field(default=None, description="关联的 Cluster 高级计算任务ID")
+    task_type: Optional[str] = Field(default=None, description="任务类型标识（如 cluster, ion, ligand_EC）")
+    solvation_structure_id: Optional[int] = Field(default=None, description="关联的溶剂化结构ID")
+
     # VIP/VEA 计算选项（用于电化学窗口估计）
     compute_vip_vea: bool = Field(
         default=False,

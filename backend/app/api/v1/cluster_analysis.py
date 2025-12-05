@@ -185,9 +185,11 @@ def _plan_qc_tasks_for_calc_type(
             existing = _find_existing_qc_job(
                 db, lig["smiles"], lig["charge"], 1, functional, basis_set, "ligand"
             )
+            # task_type 使用 ligand_{name} 格式，以便结果计算时能识别配体
+            ligand_task_type = f"ligand_{lig['name']}"
             if existing:
                 task = PlannedQCTask(
-                    task_type="ligand",
+                    task_type=ligand_task_type,
                     description=f"配体 {lig['name']}",
                     smiles=lig["smiles"],
                     charge=lig["charge"],
@@ -199,7 +201,7 @@ def _plan_qc_tasks_for_calc_type(
                 reused_count += 1
             else:
                 task = PlannedQCTask(
-                    task_type="ligand",
+                    task_type=ligand_task_type,
                     description=f"配体 {lig['name']}",
                     smiles=lig["smiles"],
                     charge=lig["charge"],
@@ -243,8 +245,9 @@ def _plan_qc_tasks_for_calc_type(
             comp = s.composition or {}
             for mol_name, count in comp.items():
                 if count > 0 and mol_name != "Li":
+                    # task_type 使用 cluster_minus_{ligand_name} 格式
                     task = PlannedQCTask(
-                        task_type="cluster_minus",
+                        task_type=f"cluster_minus_{mol_name}",
                         description=f"Cluster #{s.id} 去除 {mol_name}",
                         structure_id=s.id,
                         charge=charge_ion,
@@ -305,30 +308,31 @@ def _plan_qc_tasks_for_calc_type(
             new_count += 1
         planned_tasks.append(task)
 
-        # 各配体
+        # 各配体 (使用 ligand_{name} 格式)
         for lig in ligand_info:
             existing = _find_existing_qc_job(
                 db, lig["smiles"], lig["charge"], 1, functional, basis_set, "ligand"
             )
+            ligand_task_type = f"ligand_{lig['name']}"
             if existing:
                 task = PlannedQCTask(
-                    task_type="ligand", description=f"配体 {lig['name']}",
+                    task_type=ligand_task_type, description=f"配体 {lig['name']}",
                     smiles=lig["smiles"], charge=lig["charge"], multiplicity=1,
                     status="reused", existing_qc_job_id=existing.id
                 )
                 reused_count += 1
             else:
                 task = PlannedQCTask(
-                    task_type="ligand", description=f"配体 {lig['name']}",
+                    task_type=ligand_task_type, description=f"配体 {lig['name']}",
                     smiles=lig["smiles"], charge=lig["charge"], multiplicity=1, status="new"
                 )
                 new_count += 1
             planned_tasks.append(task)
 
-        # Li-配体二聚体（需要新计算）
+        # Li-配体二聚体（需要新计算，使用 dimer_{name} 格式）
         for lig in ligand_info:
             task = PlannedQCTask(
-                task_type="dimer",
+                task_type=f"dimer_{lig['name']}",
                 description=f"Li-{lig['name']} 二聚体",
                 smiles=f"[Li+].{lig['smiles']}",
                 charge=1 + lig["charge"],
@@ -635,25 +639,56 @@ def calculate_cluster_analysis_results(
         raise HTTPException(status_code=403, detail="无权访问此任务")
 
     # 获取所有相关的 QC 结果
-    qc_task_plan = job.qc_task_plan or {}
-    all_qc_job_ids = (
-        qc_task_plan.get("reused_qc_jobs", []) +
-        qc_task_plan.get("new_qc_jobs", [])
-    )
+    # 方法1: 通过 cluster_analysis_job_id 直接查询关联的 QC 任务
+    from app.models.qc import QCJob as QCJobModel, QCResult
 
-    # 查询 QC 结果
-    qc_results = {}
-    if all_qc_job_ids:
-        from app.models.qc import QCResult
-        results = db.query(QCResult).filter(QCResult.qc_job_id.in_(all_qc_job_ids)).all()
-        for r in results:
-            qc_results[r.qc_job_id] = {
-                "energy_au": r.energy_au,
-                "energy_ev": r.energy_au * 27.2114 if r.energy_au else None,
-                "homo": r.homo,
-                "lumo": r.lumo,
-                "homo_lumo_gap": r.homo_lumo_gap,
-            }
+    qc_jobs = db.query(QCJobModel).filter(
+        QCJobModel.cluster_analysis_job_id == job_id,
+        QCJobModel.status == QCJobStatus.COMPLETED,
+        QCJobModel.is_deleted == False
+    ).all()
+
+    # 构建 task_type -> energy 的映射
+    qc_results_by_type = {}
+    for qc_job in qc_jobs:
+        if qc_job.results:
+            result = qc_job.results[0] if qc_job.results else None
+            if result and result.energy_au is not None:
+                key = (qc_job.task_type, qc_job.solvation_structure_id)
+                qc_results_by_type[key] = {
+                    "qc_job_id": qc_job.id,
+                    "task_type": qc_job.task_type,
+                    "structure_id": qc_job.solvation_structure_id,
+                    "energy_au": result.energy_au,
+                    "energy_ev": result.energy_au * 27.2114,
+                    "homo": result.homo,
+                    "lumo": result.lumo,
+                    "homo_lumo_gap": result.homo_lumo_gap,
+                }
+
+    # 方法2: 同时从 qc_task_plan 中获取复用的 QC 任务结果
+    qc_task_plan = job.qc_task_plan or {}
+    reused_qc_job_ids = qc_task_plan.get("reused_qc_jobs", [])
+    if reused_qc_job_ids:
+        reused_results = db.query(QCResult).filter(QCResult.qc_job_id.in_(reused_qc_job_ids)).all()
+        for r in reused_results:
+            # 从 planned_tasks 中找到对应的 task_type
+            for task in qc_task_plan.get("planned_qc_tasks", []):
+                if task.get("existing_qc_job_id") == r.qc_job_id:
+                    key = (task.get("task_type"), task.get("structure_id"))
+                    if key not in qc_results_by_type:
+                        qc_results_by_type[key] = {
+                            "qc_job_id": r.qc_job_id,
+                            "task_type": task.get("task_type"),
+                            "structure_id": task.get("structure_id"),
+                            "energy_au": r.energy_au,
+                            "energy_ev": r.energy_au * 27.2114 if r.energy_au else None,
+                            "homo": r.homo,
+                            "lumo": r.lumo,
+                            "homo_lumo_gap": r.homo_lumo_gap,
+                        }
+
+    logger.info(f"Cluster Analysis {job_id}: 找到 {len(qc_results_by_type)} 个 QC 结果")
 
     # 计算各类型结果
     results = {}
@@ -662,17 +697,17 @@ def calculate_cluster_analysis_results(
     for calc_type in calc_types:
         try:
             if calc_type == "BINDING_TOTAL":
-                results["BINDING_TOTAL"] = _calculate_binding_total(job, qc_results, db)
+                results["BINDING_TOTAL"] = _calculate_binding_total(job, qc_results_by_type, db)
             elif calc_type == "BINDING_PAIRWISE":
-                results["BINDING_PAIRWISE"] = _calculate_binding_pairwise(job, qc_results, db)
+                results["BINDING_PAIRWISE"] = _calculate_binding_pairwise(job, qc_results_by_type, db)
             elif calc_type == "DESOLVATION_STEPWISE":
-                results["DESOLVATION_STEPWISE"] = _calculate_desolvation_stepwise(job, qc_results, db)
+                results["DESOLVATION_STEPWISE"] = _calculate_desolvation_stepwise(job, qc_results_by_type, db)
             elif calc_type == "DESOLVATION_FULL":
-                results["DESOLVATION_FULL"] = _calculate_desolvation_full(job, qc_results, db)
+                results["DESOLVATION_FULL"] = _calculate_desolvation_full(job, qc_results_by_type, db)
             elif calc_type == "REDOX":
-                results["REDOX"] = _calculate_redox(job, qc_results, db)
+                results["REDOX"] = _calculate_redox(job, qc_results_by_type, db)
             elif calc_type == "REORGANIZATION":
-                results["REORGANIZATION"] = _calculate_reorganization(job, qc_results, db)
+                results["REORGANIZATION"] = _calculate_reorganization(job, qc_results_by_type, db)
         except Exception as e:
             logger.error(f"计算 {calc_type} 结果失败: {e}")
             results[calc_type] = {"error": str(e)}
@@ -687,96 +722,89 @@ def calculate_cluster_analysis_results(
     return {"status": "ok", "results": results}
 
 
-def _calculate_binding_total(job, qc_results: Dict, db: Session) -> Dict:
-    """计算总 Binding Energy"""
-    # E_bind = E_cluster - (E_ion + Σ n_j × E_ligand_j)
-    planned_tasks = job.qc_task_plan.get("planned_qc_tasks", [])
+def _calculate_binding_total(job, qc_results_by_type: Dict, db: Session) -> Dict:
+    """计算总 Binding Energy
 
-    # 找到 cluster 和 ion 的能量
-    e_cluster = None
+    qc_results_by_type: Dict[(task_type, structure_id), result_dict]
+    """
+    # E_bind = E_cluster - (E_ion + Σ n_j × E_ligand_j)
+
+    # 从 qc_results_by_type 中提取能量
     e_ion = None
     ligand_energies = {}
+    cluster_results = []  # 可能有多个 cluster（多个结构）
 
-    for task in planned_tasks:
-        if task.get("calc_type") != "BINDING_TOTAL":
-            continue
-
-        qc_job_id = task.get("existing_qc_job_id")
-        if not qc_job_id or qc_job_id not in qc_results:
-            continue
-
-        energy = qc_results[qc_job_id].get("energy_au")
-        if energy is None:
-            continue
-
-        task_type = task.get("task_type", "")
-        if task_type == "cluster":
-            e_cluster = energy
-        elif task_type == "ion":
-            e_ion = energy
-        elif task_type.startswith("ligand_"):
+    for (task_type, structure_id), result in qc_results_by_type.items():
+        if task_type == "ion":
+            e_ion = result["energy_au"]
+        elif task_type and task_type.startswith("ligand_"):
             ligand_name = task_type.replace("ligand_", "")
-            ligand_energies[ligand_name] = energy
+            ligand_energies[ligand_name] = result["energy_au"]
+        elif task_type == "cluster" and structure_id:
+            cluster_results.append({
+                "structure_id": structure_id,
+                "energy_au": result["energy_au"]
+            })
 
-    if e_cluster is None:
+    if not cluster_results:
         return {"error": "缺少 cluster 能量"}
     if e_ion is None:
         return {"error": "缺少 ion 能量"}
+    if not ligand_energies:
+        return {"error": "缺少配体能量"}
 
-    # 计算 binding energy（需要知道配体数量）
+    # 计算每个 cluster 的 binding energy
+    binding_results = []
     total_ligand_energy = sum(ligand_energies.values())
-    e_bind_au = e_cluster - (e_ion + total_ligand_energy)
-    e_bind_ev = e_bind_au * 27.2114
-    e_bind_kcal = e_bind_au * 627.509
+
+    for cluster in cluster_results:
+        e_cluster = cluster["energy_au"]
+        e_bind_au = e_cluster - (e_ion + total_ligand_energy)
+        binding_results.append({
+            "structure_id": cluster["structure_id"],
+            "e_cluster_au": e_cluster,
+            "e_bind_au": e_bind_au,
+            "e_bind_ev": e_bind_au * 27.2114,
+            "e_bind_kcal_mol": e_bind_au * 627.509,
+        })
+
+    # 计算平均值
+    avg_bind_au = sum(r["e_bind_au"] for r in binding_results) / len(binding_results)
 
     return {
-        "e_cluster_au": e_cluster,
         "e_ion_au": e_ion,
         "ligand_energies_au": ligand_energies,
-        "e_bind_au": e_bind_au,
-        "e_bind_ev": e_bind_ev,
-        "e_bind_kcal_mol": e_bind_kcal,
+        "cluster_binding_results": binding_results,
+        "average_e_bind_au": avg_bind_au,
+        "average_e_bind_ev": avg_bind_au * 27.2114,
+        "average_e_bind_kcal_mol": avg_bind_au * 627.509,
     }
 
 
-def _calculate_binding_pairwise(job, qc_results: Dict, db: Session) -> Dict:
-    """计算分子-Li Pairwise Binding Energy"""
+def _calculate_binding_pairwise(job, qc_results_by_type: Dict, db: Session) -> Dict:
+    """计算分子-Li Pairwise Binding Energy
+
+    qc_results_by_type: Dict[(task_type, structure_id), result_dict]
+    """
     # E_bind = E(Li-X) - E(Li) - E(X)
-    planned_tasks = job.qc_task_plan.get("planned_qc_tasks", [])
+
+    e_ion = None
+    ligand_energies = {}
+    dimer_energies = {}
+
+    for (task_type, structure_id), result in qc_results_by_type.items():
+        if task_type == "ion":
+            e_ion = result["energy_au"]
+        elif task_type and task_type.startswith("ligand_"):
+            ligand_name = task_type.replace("ligand_", "")
+            ligand_energies[ligand_name] = result["energy_au"]
+        elif task_type and task_type.startswith("dimer_"):
+            ligand_name = task_type.replace("dimer_", "")
+            dimer_energies[ligand_name] = result["energy_au"]
 
     pairwise_results = []
-
-    # 按 dimer 分组
-    dimers = {}
-    for task in planned_tasks:
-        if task.get("calc_type") != "BINDING_PAIRWISE":
-            continue
-
-        task_type = task.get("task_type", "")
-        smiles = task.get("smiles", "")
-        qc_job_id = task.get("existing_qc_job_id")
-
-        if qc_job_id and qc_job_id in qc_results:
-            energy = qc_results[qc_job_id].get("energy_au")
-            if task_type == "ion":
-                dimers["ion"] = energy
-            elif task_type.startswith("ligand_"):
-                ligand_name = task_type.replace("ligand_", "")
-                if "ligands" not in dimers:
-                    dimers["ligands"] = {}
-                dimers["ligands"][ligand_name] = energy
-            elif task_type.startswith("dimer_"):
-                ligand_name = task_type.replace("dimer_", "")
-                if "dimers" not in dimers:
-                    dimers["dimers"] = {}
-                dimers["dimers"][ligand_name] = energy
-
-    e_ion = dimers.get("ion")
-    ligands = dimers.get("ligands", {})
-    dimer_energies = dimers.get("dimers", {})
-
     for ligand_name, e_dimer in dimer_energies.items():
-        e_ligand = ligands.get(ligand_name)
+        e_ligand = ligand_energies.get(ligand_name)
         if e_dimer is not None and e_ligand is not None and e_ion is not None:
             e_bind = e_dimer - e_ion - e_ligand
             pairwise_results.append({
@@ -792,43 +820,36 @@ def _calculate_binding_pairwise(job, qc_results: Dict, db: Session) -> Dict:
     return {"pairwise_bindings": pairwise_results}
 
 
-def _calculate_desolvation_stepwise(job, qc_results: Dict, db: Session) -> Dict:
-    """计算逐级去溶剂化能"""
+def _calculate_desolvation_stepwise(job, qc_results_by_type: Dict, db: Session) -> Dict:
+    """计算逐级去溶剂化能
+
+    qc_results_by_type: Dict[(task_type, structure_id), result_dict]
+    """
     # ΔE_i = E_cluster - (E_minus_i + E_ligand_i)
-    planned_tasks = job.qc_task_plan.get("planned_qc_tasks", [])
 
-    e_cluster = None
-    ligand_energies = {}
-    minus_energies = {}
+    # 按 structure_id 分组
+    cluster_energies = {}  # structure_id -> energy
+    ligand_energies = {}   # ligand_name -> energy
+    minus_energies = {}    # (structure_id, ligand_name) -> energy
 
-    for task in planned_tasks:
-        if task.get("calc_type") != "DESOLVATION_STEPWISE":
-            continue
-
-        qc_job_id = task.get("existing_qc_job_id")
-        if not qc_job_id or qc_job_id not in qc_results:
-            continue
-
-        energy = qc_results[qc_job_id].get("energy_au")
-        if energy is None:
-            continue
-
-        task_type = task.get("task_type", "")
-        if task_type == "cluster":
-            e_cluster = energy
-        elif task_type.startswith("ligand_"):
+    for (task_type, structure_id), result in qc_results_by_type.items():
+        if task_type == "cluster" and structure_id:
+            cluster_energies[structure_id] = result["energy_au"]
+        elif task_type and task_type.startswith("ligand_"):
             ligand_name = task_type.replace("ligand_", "")
-            ligand_energies[ligand_name] = energy
-        elif task_type.startswith("cluster_minus_"):
+            ligand_energies[ligand_name] = result["energy_au"]
+        elif task_type and task_type.startswith("cluster_minus_") and structure_id:
             ligand_name = task_type.replace("cluster_minus_", "")
-            minus_energies[ligand_name] = energy
+            minus_energies[(structure_id, ligand_name)] = result["energy_au"]
 
     stepwise_results = []
-    for ligand_name, e_minus in minus_energies.items():
+    for (structure_id, ligand_name), e_minus in minus_energies.items():
+        e_cluster = cluster_energies.get(structure_id)
         e_ligand = ligand_energies.get(ligand_name)
         if e_cluster is not None and e_ligand is not None:
             delta_e = e_cluster - (e_minus + e_ligand)
             stepwise_results.append({
+                "structure_id": structure_id,
                 "ligand": ligand_name,
                 "e_cluster_au": e_cluster,
                 "e_minus_au": e_minus,
@@ -841,38 +862,34 @@ def _calculate_desolvation_stepwise(job, qc_results: Dict, db: Session) -> Dict:
     return {"stepwise_desolvation": stepwise_results}
 
 
-def _calculate_desolvation_full(job, qc_results: Dict, db: Session) -> Dict:
+def _calculate_desolvation_full(job, qc_results_by_type: Dict, db: Session) -> Dict:
     """计算完全去溶剂化能"""
     # ΔE = E_cluster - (E_ion + Σ E_ligand_i)
     # 实际上与 BINDING_TOTAL 相同
-    return _calculate_binding_total(job, qc_results, db)
+    return _calculate_binding_total(job, qc_results_by_type, db)
 
 
-def _calculate_redox(job, qc_results: Dict, db: Session) -> Dict:
-    """计算氧化还原电位"""
-    # 需要 4 个单点：neutral_gas, charged_gas, neutral_sol, charged_sol
-    planned_tasks = job.qc_task_plan.get("planned_qc_tasks", [])
+def _calculate_redox(job, qc_results_by_type: Dict, db: Session) -> Dict:
+    """计算氧化还原电位
 
+    qc_results_by_type: Dict[(task_type, structure_id), result_dict]
+
+    Redox 计算需要 4 个单点：neutral_gas, charged_gas, neutral_sol, charged_sol
+    task_type 格式: redox_{smiles}_{state} 其中 state = neutral_gas/charged_gas/neutral_sol/charged_sol
+    """
+    # 按 SMILES 分组
     species_results = {}
 
-    for task in planned_tasks:
-        if task.get("calc_type") != "REDOX":
-            continue
-
-        qc_job_id = task.get("existing_qc_job_id")
-        if not qc_job_id or qc_job_id not in qc_results:
-            continue
-
-        energy = qc_results[qc_job_id].get("energy_au")
-        if energy is None:
-            continue
-
-        task_type = task.get("task_type", "")
-        smiles = task.get("smiles", "")
-
-        if smiles not in species_results:
-            species_results[smiles] = {}
-        species_results[smiles][task_type] = energy
+    for (task_type, structure_id), result in qc_results_by_type.items():
+        if task_type and task_type.startswith("redox_"):
+            # 解析 task_type: redox_{smiles}_{state}
+            parts = task_type.split("_", 2)  # ["redox", smiles, state]
+            if len(parts) >= 3:
+                smiles = parts[1]
+                state = parts[2]  # neutral_gas, charged_gas, etc.
+                if smiles not in species_results:
+                    species_results[smiles] = {}
+                species_results[smiles][state] = result["energy_au"]
 
     # 计算电位
     redox_results = []
@@ -901,12 +918,14 @@ def _calculate_redox(job, qc_results: Dict, db: Session) -> Dict:
     return {"redox_potentials": redox_results}
 
 
-def _calculate_reorganization(job, qc_results: Dict, db: Session) -> Dict:
-    """计算 Marcus 重组能"""
+def _calculate_reorganization(job, qc_results_by_type: Dict, db: Session) -> Dict:
+    """计算 Marcus 重组能
+
+    qc_results_by_type: Dict[(task_type, structure_id), result_dict]
+    """
     # λ = (λ_ox + λ_red) / 2
     # λ_ox = E(N|N+) - E(N+|N+)
     # λ_red = E(N+|N) - E(N|N)
-    planned_tasks = job.qc_task_plan.get("planned_qc_tasks", [])
 
     # 这里简化处理，实际需要更复杂的几何优化和单点计算
     return {

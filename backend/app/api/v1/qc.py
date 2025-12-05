@@ -333,7 +333,11 @@ def create_qc_job(
         slurm_cpus=job_data.slurm_cpus or 16,
         slurm_time=job_data.slurm_time or 7200,
         config=config,
-        status=QCJobStatusModel.CREATED
+        status=QCJobStatusModel.CREATED,
+        # Cluster Analysis 关联字段
+        cluster_analysis_job_id=job_data.cluster_analysis_job_id,
+        task_type=job_data.task_type,
+        solvation_structure_id=job_data.solvation_structure_id,
     )
     
     db.add(db_job)
