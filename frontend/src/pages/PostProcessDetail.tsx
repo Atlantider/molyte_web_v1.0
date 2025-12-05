@@ -925,34 +925,20 @@ export default function PostProcessDetail() {
       // QC 任务表格列定义
       const taskColumns: ColumnsType<PlannedQCTask> = [
         {
-          title: '任务类型',
-          dataIndex: 'task_type',
-          key: 'task_type',
-          width: 100,
-          render: (type: string) => {
-            const typeLabels: Record<string, string> = {
-              'molecule': '分子',
-              'cluster': '簇',
-              'dimer': '二聚体',
-              'intermediate': '中间态',
-              'radical_cation': '阳离子自由基',
-              'radical_anion': '阴离子自由基',
-            };
-            return <Tag>{typeLabels[type] || type}</Tag>;
-          },
-        },
-        {
           title: '描述',
           dataIndex: 'description',
           key: 'description',
-          ellipsis: true,
+          render: (desc: string) => (
+            <Tooltip title={desc}>
+              <span style={{ fontSize: 13 }}>{desc}</span>
+            </Tooltip>
+          ),
         },
         {
           title: 'SMILES',
           dataIndex: 'smiles',
           key: 'smiles',
-          width: 180,
-          ellipsis: true,
+          width: 160,
           render: (smiles: string) => smiles ? (
             <Tooltip title={smiles}>
               <Text code style={{ fontSize: 11 }}>{smiles.length > 20 ? smiles.slice(0, 20) + '...' : smiles}</Text>
@@ -963,22 +949,22 @@ export default function PostProcessDetail() {
           title: '电荷',
           dataIndex: 'charge',
           key: 'charge',
-          width: 60,
+          width: 50,
           align: 'center',
           render: (c: number) => c > 0 ? `+${c}` : c,
         },
         {
-          title: '自旋多重度',
+          title: '多重度',
           dataIndex: 'multiplicity',
           key: 'multiplicity',
-          width: 90,
+          width: 60,
           align: 'center',
         },
         {
           title: '状态',
           dataIndex: 'status',
           key: 'status',
-          width: 80,
+          width: 95,
           align: 'center',
           render: (status: string) => {
             if (status === 'reused') {
@@ -1008,12 +994,20 @@ export default function PostProcessDetail() {
         return {
           key: req.calc_type,
           label: (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-              <span>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              flexWrap: 'wrap',
+              gap: 8
+            }}>
+              <span style={{ flex: '1 1 auto', minWidth: 200 }}>
                 {info?.icon} <Text strong>{info?.label || req.calc_type}</Text>
-                <Text type="secondary" style={{ marginLeft: 8 }}>({req.description})</Text>
+                <br />
+                <Text type="secondary" style={{ fontSize: 12 }}>{req.description}</Text>
               </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                 {firstStructureId && (
                   <Tooltip title="查看该计算类型需要的所有结构">
                     <Button
@@ -1163,19 +1157,31 @@ export default function PostProcessDetail() {
             </Card>
           )}
 
-          {/* 自定义样式：区分新建和复用任务行 */}
+          {/* 自定义样式：区分新建和复用任务行，支持 dark mode */}
           <style>{`
             .row-reused {
               background-color: ${token.colorSuccessBg} !important;
             }
+            .row-reused td {
+              color: ${token.colorText} !important;
+            }
             .row-local-reused {
-              background-color: #e6f7ff !important;
+              background-color: ${token.colorInfoBg} !important;
+            }
+            .row-local-reused td {
+              color: ${token.colorText} !important;
             }
             .row-new {
               background-color: ${token.colorWarningBg} !important;
             }
+            .row-new td {
+              color: ${token.colorText} !important;
+            }
             .ant-collapse-header {
               padding: 12px 16px !important;
+            }
+            .ant-table-cell {
+              word-break: break-word !important;
             }
           `}</style>
         </div>

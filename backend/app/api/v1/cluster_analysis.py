@@ -596,6 +596,140 @@ def _plan_qc_tasks_for_calc_type(
                         planned_tasks.append(task)
                         new_count += 1
 
+    if calc_type == ClusterCalcType.REDOX:
+        # Redox 计算需要 4 个单点（热力学循环）：
+        # 1. 中性分子气相 (neutral_gas)
+        # 2. 带电分子气相 (charged_gas)
+        # 3. 中性分子溶液相 (neutral_sol)
+        # 4. 带电分子溶液相 (charged_sol)
+        #
+        # 对于每种配体分子都需要这 4 个计算
+        processed_species = set()
+
+        for s in structures:
+            comp = s.composition or {}
+            for mol_name, count in comp.items():
+                if count > 0 and mol_name not in ["Li", "Na", "K", "Mg", "Ca", "Zn"]:
+                    if mol_name in processed_species:
+                        continue
+                    processed_species.add(mol_name)
+
+                    lig_info = mol_info_from_db.get(mol_name, {}) if mol_info_from_db else {}
+                    lig_smiles = lig_info.get("smiles") or MOLECULE_INFO_MAP.get(mol_name, {}).get("smiles", mol_name)
+                    lig_charge = lig_info.get("charge")
+                    if lig_charge is None:
+                        lig_charge = MOLECULE_INFO_MAP.get(mol_name, {}).get("charge", 0)
+
+                    # 4 个状态的计算
+                    states = [
+                        ("neutral_gas", f"{mol_name} 中性-气相", lig_charge, "gas", None),
+                        ("charged_gas", f"{mol_name} 氧化态-气相", lig_charge + 1, "gas", None),
+                        ("neutral_sol", f"{mol_name} 中性-溶液相", lig_charge, solvent_model, solvent_name),
+                        ("charged_sol", f"{mol_name} 氧化态-溶液相", lig_charge + 1, solvent_model, solvent_name),
+                    ]
+
+                    for state_suffix, desc, charge, sol_model, sol_name in states:
+                        task_type = f"redox_{mol_name}_{state_suffix}"
+
+                        # 尝试全局复用
+                        existing = _find_existing_qc_job(
+                            db, lig_smiles, charge, 1 if (charge - lig_charge) % 2 == 0 else 2,
+                            functional, basis_set, sol_model, sol_name, task_type
+                        )
+
+                        if existing:
+                            task = PlannedQCTask(
+                                task_type=task_type,
+                                description=desc,
+                                smiles=lig_smiles,
+                                charge=charge,
+                                multiplicity=1 if (charge - lig_charge) % 2 == 0 else 2,
+                                status="reused",
+                                existing_qc_job_id=existing.id,
+                                existing_energy=existing.results[0].energy_au if existing.results else None
+                            )
+                            reused_count += 1
+                        else:
+                            task = PlannedQCTask(
+                                task_type=task_type,
+                                description=desc,
+                                smiles=lig_smiles,
+                                charge=charge,
+                                multiplicity=1 if (charge - lig_charge) % 2 == 0 else 2,
+                                status="new"
+                            )
+                            new_count += 1
+                        planned_tasks.append(task)
+
+    if calc_type == ClusterCalcType.REORGANIZATION:
+        # Marcus 重组能需要 4 点计算：
+        # λ = (λ_ox + λ_red) / 2
+        # λ_ox = E(N@N+) - E(N+@N+)  # N几何下的能量 - N+几何下的能量
+        # λ_red = E(N+@N) - E(N@N)   # N+几何下的能量 - N几何下的能量
+        #
+        # 需要：
+        # 1. 中性分子优化几何 (opt_neutral)
+        # 2. 带电分子优化几何 (opt_charged)
+        # 3. 中性几何+带电单点 (sp_charged_at_neutral)
+        # 4. 带电几何+中性单点 (sp_neutral_at_charged)
+
+        processed_species = set()
+
+        for s in structures:
+            comp = s.composition or {}
+            for mol_name, count in comp.items():
+                if count > 0 and mol_name not in ["Li", "Na", "K", "Mg", "Ca", "Zn"]:
+                    if mol_name in processed_species:
+                        continue
+                    processed_species.add(mol_name)
+
+                    lig_info = mol_info_from_db.get(mol_name, {}) if mol_info_from_db else {}
+                    lig_smiles = lig_info.get("smiles") or MOLECULE_INFO_MAP.get(mol_name, {}).get("smiles", mol_name)
+                    lig_charge = lig_info.get("charge")
+                    if lig_charge is None:
+                        lig_charge = MOLECULE_INFO_MAP.get(mol_name, {}).get("charge", 0)
+
+                    # 4 个计算任务
+                    tasks_spec = [
+                        (f"reorg_{mol_name}_opt_neutral", f"{mol_name} 中性态优化", lig_charge, 1, "opt"),
+                        (f"reorg_{mol_name}_opt_charged", f"{mol_name} 氧化态优化", lig_charge + 1, 2, "opt"),
+                        (f"reorg_{mol_name}_sp_charged_at_neutral", f"{mol_name} 氧化态@中性几何", lig_charge + 1, 2, "sp"),
+                        (f"reorg_{mol_name}_sp_neutral_at_charged", f"{mol_name} 中性态@氧化几何", lig_charge, 1, "sp"),
+                    ]
+
+                    for task_type, desc, charge, mult, calc_mode in tasks_spec:
+                        # 优化任务难以复用（需要相同初始几何），单点任务可能复用
+                        existing = None
+                        if calc_mode == "sp":
+                            existing = _find_existing_qc_job(
+                                db, lig_smiles, charge, mult, functional, basis_set,
+                                solvent_model, solvent_name, task_type
+                            )
+
+                        if existing:
+                            task = PlannedQCTask(
+                                task_type=task_type,
+                                description=desc,
+                                smiles=lig_smiles,
+                                charge=charge,
+                                multiplicity=mult,
+                                status="reused",
+                                existing_qc_job_id=existing.id,
+                                existing_energy=existing.results[0].energy_au if existing.results else None
+                            )
+                            reused_count += 1
+                        else:
+                            task = PlannedQCTask(
+                                task_type=task_type,
+                                description=desc,
+                                smiles=lig_smiles,
+                                charge=charge,
+                                multiplicity=mult,
+                                status="new"
+                            )
+                            new_count += 1
+                        planned_tasks.append(task)
+
     # 生成描述
     desc_map = {
         ClusterCalcType.BINDING_TOTAL: "总脱溶剂化能 (E_cluster - E_ion - ΣE_ligand)",
