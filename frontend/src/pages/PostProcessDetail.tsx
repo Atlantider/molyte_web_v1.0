@@ -249,6 +249,16 @@ export default function PostProcessDetail() {
   const [redoxOptions, setRedoxOptions] = useState({ include_molecule: true, include_dimer: true });
   const [reorganizationOptions, setReorganizationOptions] = useState({ include_molecule: true, include_cluster: true });
 
+  // QC 配置
+  const [qcConfig, setQcConfig] = useState({
+    functional: 'B3LYP',
+    basis_set: '6-31G(d)',
+    use_dispersion: true,
+    charge_ion: 1,
+    solvent_model: 'smd',
+    solvent: 'Water',
+  });
+
   // 筛选状态
   const [filterCoordNums, setFilterCoordNums] = useState<number[]>([]);
   const [filterAnions, setFilterAnions] = useState<string[]>([]);
@@ -761,6 +771,7 @@ export default function PostProcessDetail() {
         calc_types: selectedCalcTypes,
         redox_options: selectedCalcTypes.includes('REDOX') ? redoxOptions : undefined,
         reorganization_options: selectedCalcTypes.includes('REORGANIZATION') ? reorganizationOptions : undefined,
+        qc_config: qcConfig,
       });
       setPlanResult(result);
       setCurrentStep(2);  // Step 2: 确认提交页面
@@ -783,6 +794,7 @@ export default function PostProcessDetail() {
         md_job_id: selectedMdJobId,
         solvation_structure_ids: selectedStructureIds,
         calc_types: selectedCalcTypes,
+        qc_config: qcConfig,
       });
       message.success('分析任务已提交');
       navigate(`/workspace/liquid-electrolyte/analysis/${job.id}`);
@@ -1231,14 +1243,23 @@ export default function PostProcessDetail() {
                 style={{ marginBottom: 16 }}
               >
                 <Descriptions column={4} size="small">
-                  <Descriptions.Item label="泛函">B3LYP-D3BJ</Descriptions.Item>
-                  <Descriptions.Item label="基组">def2-SVP</Descriptions.Item>
-                  <Descriptions.Item label="溶剂模型">SMD</Descriptions.Item>
-                  <Descriptions.Item label="精度级别">标准</Descriptions.Item>
+                  <Descriptions.Item label="泛函">
+                    <Tag color="blue">{qcConfig.functional}{qcConfig.use_dispersion ? '-D3BJ' : ''}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="基组">
+                    <Tag color="green">{qcConfig.basis_set}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="溶剂模型">
+                    <Tag color="orange">
+                      {qcConfig.solvent_model === 'gas' ? '气相' : `${qcConfig.solvent_model.toUpperCase()}/${qcConfig.solvent}`}
+                    </Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="色散校正">
+                    <Tag color={qcConfig.use_dispersion ? 'success' : 'default'}>
+                      {qcConfig.use_dispersion ? '已启用' : '未启用'}
+                    </Tag>
+                  </Descriptions.Item>
                 </Descriptions>
-                <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>
-                  提示：当前使用默认计算参数，后续版本将支持自定义配置
-                </Text>
               </Card>
 
               {/* 按计算类型分组的任务详情 */}
@@ -1563,6 +1584,78 @@ export default function PostProcessDetail() {
                     showIcon
                   />
                 )}
+
+                {/* QC 计算参数配置 */}
+                <Divider style={{ margin: '12px 0 8px' }}>
+                  <Space size={4}><SettingOutlined /> 计算参数</Space>
+                </Divider>
+                <Row gutter={[8, 8]}>
+                  <Col span={12}>
+                    <Text type="secondary" style={{ fontSize: 11 }}>泛函</Text>
+                    <Select
+                      size="small"
+                      style={{ width: '100%' }}
+                      value={qcConfig.functional}
+                      onChange={(v) => setQcConfig(prev => ({ ...prev, functional: v }))}
+                    >
+                      <Select.Option value="B3LYP">B3LYP</Select.Option>
+                      <Select.Option value="PBE0">PBE0</Select.Option>
+                      <Select.Option value="M06-2X">M06-2X</Select.Option>
+                      <Select.Option value="wB97X-D">ωB97X-D</Select.Option>
+                    </Select>
+                  </Col>
+                  <Col span={12}>
+                    <Text type="secondary" style={{ fontSize: 11 }}>基组</Text>
+                    <Select
+                      size="small"
+                      style={{ width: '100%' }}
+                      value={qcConfig.basis_set}
+                      onChange={(v) => setQcConfig(prev => ({ ...prev, basis_set: v }))}
+                    >
+                      <Select.Option value="6-31G(d)">6-31G(d)</Select.Option>
+                      <Select.Option value="6-31+G(d,p)">6-31+G(d,p)</Select.Option>
+                      <Select.Option value="6-311++G(d,p)">6-311++G(d,p)</Select.Option>
+                      <Select.Option value="def2-SVP">def2-SVP</Select.Option>
+                      <Select.Option value="def2-TZVP">def2-TZVP</Select.Option>
+                    </Select>
+                  </Col>
+                  <Col span={12}>
+                    <Text type="secondary" style={{ fontSize: 11 }}>溶剂模型</Text>
+                    <Select
+                      size="small"
+                      style={{ width: '100%' }}
+                      value={qcConfig.solvent_model}
+                      onChange={(v) => setQcConfig(prev => ({ ...prev, solvent_model: v }))}
+                    >
+                      <Select.Option value="gas">气相</Select.Option>
+                      <Select.Option value="pcm">PCM</Select.Option>
+                      <Select.Option value="smd">SMD</Select.Option>
+                    </Select>
+                  </Col>
+                  <Col span={12}>
+                    <Text type="secondary" style={{ fontSize: 11 }}>溶剂</Text>
+                    <Select
+                      size="small"
+                      style={{ width: '100%' }}
+                      value={qcConfig.solvent}
+                      onChange={(v) => setQcConfig(prev => ({ ...prev, solvent: v }))}
+                      disabled={qcConfig.solvent_model === 'gas'}
+                    >
+                      <Select.Option value="Water">Water</Select.Option>
+                      <Select.Option value="Acetonitrile">Acetonitrile</Select.Option>
+                      <Select.Option value="DiMethylSulfoxide">DMSO</Select.Option>
+                      <Select.Option value="TetraHydroFuran">THF</Select.Option>
+                    </Select>
+                  </Col>
+                  <Col span={24}>
+                    <Checkbox
+                      checked={qcConfig.use_dispersion}
+                      onChange={(e) => setQcConfig(prev => ({ ...prev, use_dispersion: e.target.checked }))}
+                    >
+                      <Text style={{ fontSize: 12 }}>色散校正 (D3BJ)</Text>
+                    </Checkbox>
+                  </Col>
+                </Row>
               </Card>
             </Col>
 
