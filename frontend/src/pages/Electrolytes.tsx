@@ -31,6 +31,7 @@ import {
   DatePicker,
   Statistic,
   Switch,
+  Descriptions,
   theme,
 } from 'antd';
 import type { MenuProps } from 'antd';
@@ -140,6 +141,10 @@ export default function Electrolytes() {
   const [batchMDQuota, setBatchMDQuota] = useState<any>(null);
   const [createdMDJobIds, setCreatedMDJobIds] = useState<number[]>([]);
   const [batchMDSubmitToCluster, setBatchMDSubmitToCluster] = useState<boolean>(false);
+
+  // 详情弹窗相关状态
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [viewingElectrolyte, setViewingElectrolyte] = useState<ElectrolyteSystem | null>(null);
 
   // 新建项目相关状态
   const [projectModalVisible, setProjectModalVisible] = useState(false);
@@ -535,6 +540,12 @@ export default function Electrolytes() {
     navigate(`/workspace/liquid-electrolyte/md/create/${electrolyte.id}`, {
       state: { electrolyte }
     });
+  };
+
+  // 查看详情
+  const handleViewDetail = (electrolyte: ElectrolyteSystem) => {
+    setViewingElectrolyte(electrolyte);
+    setDetailVisible(true);
   };
 
   // 批量删除
@@ -1204,7 +1215,7 @@ export default function Electrolytes() {
                   fixed: 'left',
                   ellipsis: true,
                   render: (name: string, record: ElectrolyteSystem) => (
-                    <a onClick={() => navigate(`/workspace/electrolytes/${record.id}`)}>
+                    <a onClick={() => handleViewDetail(record)}>
                       {name}
                     </a>
                   ),
@@ -1305,7 +1316,7 @@ export default function Electrolytes() {
                       <Button
                         type="link"
                         size="small"
-                        onClick={() => navigate(`/workspace/electrolytes/${record.id}`)}
+                        onClick={() => handleViewDetail(record)}
                       >
                         详情
                       </Button>
@@ -2353,6 +2364,105 @@ export default function Electrolytes() {
             }}
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 详情弹窗 */}
+      <Modal
+        title={
+          <Space>
+            <ExperimentOutlined />
+            <span>配方详情</span>
+          </Space>
+        }
+        open={detailVisible}
+        onCancel={() => setDetailVisible(false)}
+        footer={[
+          <Button key="edit" type="primary" onClick={() => {
+            setDetailVisible(false);
+            if (viewingElectrolyte) handleOpenModal(viewingElectrolyte, false);
+          }}>
+            编辑
+          </Button>,
+          <Button key="copy" onClick={() => {
+            setDetailVisible(false);
+            if (viewingElectrolyte) handleOpenModal(viewingElectrolyte, true);
+          }}>
+            复制
+          </Button>,
+          <Button key="create" onClick={() => {
+            setDetailVisible(false);
+            if (viewingElectrolyte) handleCreateJob(viewingElectrolyte);
+          }}>
+            创建任务
+          </Button>,
+          <Button key="close" onClick={() => setDetailVisible(false)}>
+            关闭
+          </Button>,
+        ]}
+        width={800}
+        centered
+      >
+        {viewingElectrolyte && (
+          <div>
+            <Descriptions bordered column={2} size="small" style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="配方名称" span={2}>{viewingElectrolyte.name}</Descriptions.Item>
+              <Descriptions.Item label="配方ID">{viewingElectrolyte.id}</Descriptions.Item>
+              <Descriptions.Item label="项目">
+                {projects.find(p => p.id === viewingElectrolyte.project_id)?.name || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="温度">{viewingElectrolyte.temperature} K</Descriptions.Item>
+              <Descriptions.Item label="压力">{viewingElectrolyte.pressure} atm</Descriptions.Item>
+              <Descriptions.Item label="盒子大小">{viewingElectrolyte.box_size ? `${Number(viewingElectrolyte.box_size).toFixed(1)} Å` : '-'}</Descriptions.Item>
+              <Descriptions.Item label="力场">{viewingElectrolyte.force_field || 'OPLS-AA'}</Descriptions.Item>
+              <Descriptions.Item label="状态">
+                <Tag color={
+                  getElectrolyteCategory(viewingElectrolyte) === 'running' ? 'processing' :
+                  getElectrolyteCategory(viewingElectrolyte) === 'completed' ? 'success' :
+                  'default'
+                }>
+                  {getElectrolyteCategory(viewingElectrolyte) === 'running' ? '进行中' :
+                   getElectrolyteCategory(viewingElectrolyte) === 'completed' ? '已完成' : '草稿'}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="关联任务">
+                {jobs.filter(j => j.system_id === viewingElectrolyte.id).length} 个
+              </Descriptions.Item>
+              <Descriptions.Item label="创建时间" span={2}>
+                {new Date(viewingElectrolyte.created_at).toLocaleString('zh-CN')}
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Card title="阳离子" size="small" style={{ marginBottom: 12 }}>
+              {viewingElectrolyte.cations && viewingElectrolyte.cations.length > 0 ? (
+                <Space wrap>
+                  {viewingElectrolyte.cations.map((c, idx) => (
+                    <Tag key={idx} color="blue">{c.name} ({c.number}个)</Tag>
+                  ))}
+                </Space>
+              ) : <span style={{ color: '#999' }}>无</span>}
+            </Card>
+
+            <Card title="阴离子" size="small" style={{ marginBottom: 12 }}>
+              {viewingElectrolyte.anions && viewingElectrolyte.anions.length > 0 ? (
+                <Space wrap>
+                  {viewingElectrolyte.anions.map((a, idx) => (
+                    <Tag key={idx} color="orange">{a.name} ({a.number}个)</Tag>
+                  ))}
+                </Space>
+              ) : <span style={{ color: '#999' }}>无</span>}
+            </Card>
+
+            <Card title="溶剂" size="small">
+              {viewingElectrolyte.solvents && viewingElectrolyte.solvents.length > 0 ? (
+                <Space wrap>
+                  {viewingElectrolyte.solvents.map((s, idx) => (
+                    <Tag key={idx} color="green">{s.name} ({s.number}个)</Tag>
+                  ))}
+                </Space>
+              ) : <span style={{ color: '#999' }}>无</span>}
+            </Card>
+          </div>
+        )}
       </Modal>
     </div>
   );
