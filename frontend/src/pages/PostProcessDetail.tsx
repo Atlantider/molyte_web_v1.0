@@ -81,40 +81,118 @@ const STATUS_CONFIG: Record<string, { color: string; icon: React.ReactNode; text
 const CALC_TYPE_EXTRA: Record<string, {
   meaning: string;
   reuse: string;
-  diagram?: string;
+  diagram: string;
+  diagramTitle: string;
 }> = {
   'BINDING_TOTAL': {
     meaning: '评估整个溶剂化壳层的稳定性，值越负表示离子与溶剂结合越强',
     reuse: '分子能量(Li⁺, EC, DMC等)跨结构/跨类型共享',
+    diagramTitle: '能量分解',
+    diagram: `┌─────────────────────────────────────┐
+│  E(Li⁺·EC₂·DMC₂)  ← 簇能量(1次计算)  │
+└──────────────────┬──────────────────┘
+                   │
+     ┌─────────────┼─────────────┐
+     ↓             ↓             ↓
+ ┌───────┐    ┌────────┐    ┌────────┐
+ │ E(Li⁺)│    │ E(EC)  │    │ E(DMC) │
+ │ (共享)│    │ ×2(共享)│    │ ×2(共享)│
+ └───────┘    └────────┘    └────────┘
+     └─────────────┴─────────────┘
+                   ↓
+         ΔE = E_簇 - E_Li - Σ(n×E_配体)`,
   },
   'BINDING_PAIRWISE': {
     meaning: '比较不同配体与离子的亲和力强弱，指导电解液配方优化',
     reuse: '二聚体能量按离子-配体对复用，单分子能量全局共享',
+    diagramTitle: '配对能量计算',
+    diagram: `┌──────────────────────────────────────────┐
+│            二聚体能量计算                 │
+├────────────────────┬─────────────────────┤
+│    Li-EC 二聚体    │    Li-DMC 二聚体    │
+│   E(Li⁺·EC)       │   E(Li⁺·DMC)        │
+└─────────┬──────────┴──────────┬──────────┘
+          ↓                     ↓
+    ┌─────┴─────┐         ┌─────┴─────┐
+    ↓     ↓     ↓         ↓     ↓     ↓
+ E(Li⁺) E(EC) E(Li-EC)  E(Li⁺) E(DMC) E(Li-DMC)
+    │     │     │         │     │       │
+    └──┬──┘     │         └──┬──┘       │
+       ↓        ↓            ↓          ↓
+  ΔE(Li-EC)=E(Li-EC)-E(Li)-E(EC)
+  ΔE(Li-DMC)=E(Li-DMC)-E(Li)-E(DMC)`,
   },
   'DESOLVATION_STEPWISE': {
     meaning: '分析离子迁移时脱溶剂化能垒，影响离子电导率',
     reuse: '所有中间态组成的能量复用，单分子能量共享',
-    diagram: `完整簇:  Li·EC₂·DMC₂
-              ↙        ↘
-      Li·EC₁·DMC₂    Li·EC₂·DMC₁
-        ↙    ↘        ↙    ↘
-    Li·DMC₂  Li·EC₁·DMC₁  Li·EC₂
-        ↘      ↓      ↓      ↙
-         Li·DMC₁   Li·EC₁
-              ↘    ↙
-               Li⁺`,
+    diagramTitle: '脱溶剂化路径树',
+    diagram: `            Li⁺·EC₂·DMC₂ (完整簇)
+                ↙            ↘
+       Li⁺·EC₁·DMC₂      Li⁺·EC₂·DMC₁
+         ↙      ↘          ↙      ↘
+   Li⁺·DMC₂  Li⁺·EC₁·DMC₁  Li⁺·EC₂
+         ↘       ↓    ↓       ↙
+          Li⁺·DMC₁   Li⁺·EC₁
+                ↘    ↙
+                 Li⁺ (裸离子)
+
+中间态数 = (n₁+1)×(n₂+1)×... - 1
+例: (2+1)×(2+1)-1 = 8 种中间态`,
   },
   'DESOLVATION_FULL': {
     meaning: '与溶剂化能本质相同，计算完全脱溶剂化的总能量',
     reuse: '与 BINDING_TOTAL 共享计算',
+    diagramTitle: '完全脱溶剂化',
+    diagram: `Li⁺·EC₂·DMC₂ ──────→ Li⁺ + 2×EC + 2×DMC
+
+      │                         │
+      ↓                         ↓
+   E_cluster              E_ion + Σ E_ligand
+
+ΔE_desolvation = E_cluster - E_ion - Σ E_ligand`,
   },
   'REDOX': {
     meaning: '预测电解液的电化学稳定窗口（氧化/还原电位）',
     reuse: '每个唯一组成需独立计算氧化态和还原态',
+    diagramTitle: '热力学循环',
+    diagram: `                氧化过程
+    M(gas) ─────────────────→ M⁺(gas) + e⁻
+       │                          │
+  ΔG_solv(M)                 ΔG_solv(M⁺)
+       ↓                          ↓
+    M(sol) ─────────────────→ M⁺(sol) + e⁻
+                ΔG_ox(sol)
+
+E°_ox = -ΔG_ox(sol) / nF
+
+需要计算:
+├─ 中性态气相优化 E(M,gas)
+├─ 氧化态气相优化 E(M⁺,gas)
+├─ 中性态溶剂化 E(M,sol)
+└─ 氧化态溶剂化 E(M⁺,sol)`,
   },
   'REORGANIZATION': {
     meaning: 'Marcus理论电子转移速率常数，评估电极/电解液界面反应动力学',
     reuse: '每个唯一组成需4个计算(2优化+2单点)',
+    diagramTitle: 'Marcus 4点方案',
+    diagram: `        势能面示意图
+    E↑
+     │    ╱╲         ╱╲
+     │   ╱  ╲       ╱  ╲
+     │  ╱    ╲     ╱    ╲
+     │ ╱  R₁  ╲   ╱  R₂  ╲
+     │╱        ╲ ╱        ╲
+     └──────────────────────→ Q
+
+四点计算方案:
+┌────────────────────────────────────┐
+│ 1. 优化态1几何 R₁ → E(R₁,Q₁)      │
+│ 2. 优化态2几何 R₂ → E(R₂,Q₂)      │
+│ 3. 态1几何+态2波函 → E(R₁,Q₂)     │
+│ 4. 态2几何+态1波函 → E(R₂,Q₁)     │
+└────────────────────────────────────┘
+
+λ = ½[E(R₁,Q₂) + E(R₂,Q₁)] - ½[E(R₁,Q₁) + E(R₂,Q₂)]`,
   },
 };
 
@@ -1283,10 +1361,10 @@ export default function PostProcessDetail() {
               </Paragraph>
             </div>
 
-            {/* 路径示意图（仅逐级脱溶剂化） */}
+            {/* 计算路径/流程图 */}
             {extra?.diagram && (
               <div style={{ marginBottom: 16 }}>
-                <Text strong>🌳 脱溶剂化路径示意</Text>
+                <Text strong>🌳 {extra.diagramTitle || '计算流程'}</Text>
                 <pre style={{
                   marginTop: 8,
                   padding: 12,
@@ -1296,12 +1374,10 @@ export default function PostProcessDetail() {
                   fontFamily: 'monospace',
                   whiteSpace: 'pre',
                   overflow: 'auto',
+                  lineHeight: 1.4,
                 }}>
                   {extra.diagram}
                 </pre>
-                <Text type="secondary" style={{ fontSize: 11 }}>
-                  中间态数 = (n₁+1) × (n₂+1) × ... - 1，例如 Li·EC₂·DMC₂ = (2+1)×(2+1)-1 = 8 种
-                </Text>
               </div>
             )}
 
