@@ -304,10 +304,10 @@ export default function PostProcessDetail() {
     return selectedCount > 0 && selectedCount < groupStructures.length;
   }, [groupedStructures, selectedStructureIds]);
 
-  // 计算预估 QC 任务数（分子能量复用，只需算一次）
+  // 计算预估 QC 任务数（跨类型复用分子能量）
   const estimatedQCTasks = useMemo(() => {
     if (selectedStructureIds.length === 0 || selectedCalcTypes.length === 0) {
-      return { total: 0, details: {} as Record<string, number> };
+      return { total: 0, details: {} as Record<string, number>, breakdown: '', baseMonomerCount: 0 };
     }
 
     // 1. 统计唯一组成（簇）
@@ -324,12 +324,9 @@ export default function PostProcessDetail() {
     selectedStructureIds.forEach(id => {
       const structure = structures.find(s => s.id === id);
       if (structure) {
-        // 唯一组成
         const compositionKey = generateClusterName(structure.center_ion, structure.composition);
         uniqueCompositions.add(compositionKey);
-        // 中心离子
         uniqueCenterIons.add(structure.center_ion);
-        // 配体分子
         Object.entries(structure.composition).forEach(([mol, count]) => {
           if (count > 0) {
             uniqueMolecules.add(mol);
@@ -346,64 +343,72 @@ export default function PostProcessDetail() {
     const numPairs = uniquePairs.size;
     const avgLigands = numClusters > 0 ? Math.ceil(totalLigandCount / selectedStructureIds.length) : 4;
 
-    const details: Record<string, number> = {};
-    let total = 0;
-
     /**
-     * 预估逻辑说明：
+     * 跨类型复用策略：
      *
-     * BINDING_TOTAL (溶剂化能):
-     *   ΔE = E(cluster) - E(ion) - Σ E(ligand)
-     *   需要: 每个唯一簇 + 中心离子(共享) + 每种配体分子(共享)
-     *   = numClusters + numCenterIons + numMolecules
+     * 共享的基础分子能量（只算一次）:
+     *   - 离子能量: numCenterIons（如 Li⁺）
+     *   - 配体能量: numMolecules（如 EC, DMC, PF6）
      *
-     * BINDING_PAIRWISE (分子配位能):
-     *   计算 Li-EC, Li-DMC 等每种离子-配体对的结合能
-     *   需要: 每种离子-配体二聚体 + 离子 + 配体
-     *   = numPairs(二聚体) + numCenterIons + numMolecules
-     *
-     * DESOLVATION_STEPWISE (逐级脱溶剂化):
-     *   [Li·ABCD] → [Li·ABC] + D → [Li·AB] + C → ...
-     *   每个簇需要计算所有中间态
-     *   = numClusters × avgLigands(中间态) + numCenterIons + numMolecules
-     *
-     * REDOX (氧化还原电位):
-     *   需要中性态和离子态的几何优化 + 溶剂化能
-     *   = numClusters × 4 (2态 × 2计算)
-     *
-     * REORGANIZATION (Marcus重组能):
-     *   λ = E(R1,Q2) + E(R2,Q1) - E(R1,Q1) - E(R2,Q2)
-     *   = numClusters × 4
+     * 各类型独有计算:
+     *   - BINDING_TOTAL: 簇能量 (numClusters)
+     *   - BINDING_PAIRWISE: 二聚体能量 (numPairs，如 Li-EC, Li-DMC)
+     *   - DESOLVATION_STEPWISE: 簇能量 + 中间态 (numClusters * avgLigands)
+     *   - REDOX: 2态优化 + 2溶剂化 (numClusters * 4)
+     *   - REORGANIZATION: 2优化 + 2单点 (numClusters * 4)
      */
+
+    // 判断哪些类型需要基础分子能量
+    const needsMonomerEnergy = selectedCalcTypes.some(t =>
+      ['BINDING_TOTAL', 'BINDING_PAIRWISE', 'DESOLVATION_STEPWISE'].includes(t)
+    );
+
+    // 计算基础分子能量（跨类型共享，只算一次）
+    const baseMonomerCount = needsMonomerEnergy ? (numCenterIons + numMolecules) : 0;
+
+    // 计算各类型独有的任务
+    const details: Record<string, number> = {};
+    let typeSpecificTotal = 0;
+
     selectedCalcTypes.forEach(calcType => {
       let count = 0;
       switch (calcType) {
         case 'BINDING_TOTAL':
-          // 簇能量(每个唯一组成) + 离子能量(共享) + 配体能量(共享)
-          count = numClusters + numCenterIons + numMolecules;
+          // 只需要簇能量，分子能量共享
+          count = numClusters;
           break;
         case 'BINDING_PAIRWISE':
-          // 离子-配体二聚体(每种对) + 离子(共享) + 配体(共享)
-          count = numPairs + numCenterIons + numMolecules;
+          // 只需要二聚体能量，分子能量共享
+          count = numPairs;
           break;
         case 'DESOLVATION_STEPWISE':
-          // 每个簇的所有中间态 + 离子 + 配体
-          count = numClusters * avgLigands + numCenterIons + numMolecules;
+          // 簇 + 所有中间态（每去掉一个配体一个中间态）
+          // 对于 CN=4 的簇，需要: 完整簇 + 去1个 + 去2个 + 去3个 ≈ avgLigands 个
+          count = numClusters * avgLigands;
           break;
         case 'REDOX':
-          // 每个簇: 氧化态优化 + 还原态优化 + 溶剂化校正
+          // 每个簇: 还原态优化 + 氧化态优化 + 还原态溶剂化 + 氧化态溶剂化
           count = numClusters * 4;
           break;
         case 'REORGANIZATION':
-          // Marcus: 4个单点能计算/簇
+          // Marcus 4点: R_q优化 + R_{q+1}优化 + 2个交叉单点
           count = numClusters * 4;
           break;
       }
       details[calcType] = count;
-      total += count;
+      typeSpecificTotal += count;
     });
 
-    return { total, details };
+    // 总任务 = 基础分子能量(共享) + 各类型独有任务
+    const total = baseMonomerCount + typeSpecificTotal;
+
+    // 生成明细说明
+    const breakdownParts: string[] = [];
+    if (baseMonomerCount > 0) {
+      breakdownParts.push(`共享分子: ${numCenterIons}离子 + ${numMolecules}配体`);
+    }
+
+    return { total, details, breakdown: breakdownParts.join(', '), baseMonomerCount };
   }, [selectedStructureIds, selectedCalcTypes, structures]);
 
   // 加载已完成的 MD Jobs
@@ -979,16 +984,24 @@ export default function PostProcessDetail() {
 
                 {selectedCalcTypes.length > 0 && selectedStructureIds.length > 0 ? (
                   <>
+                    {/* 共享的基础分子能量 */}
+                    {estimatedQCTasks.baseMonomerCount > 0 && (
+                      <Row justify="space-between" style={{ marginBottom: 4, background: token.colorSuccessBg, padding: '2px 6px', borderRadius: 4 }}>
+                        <Col><Text style={{ fontSize: 11 }}>🔗 共享分子能量</Text></Col>
+                        <Col><Text style={{ fontSize: 11 }}>{estimatedQCTasks.baseMonomerCount}</Text></Col>
+                      </Row>
+                    )}
+                    {/* 各类型独有任务 */}
                     {Object.entries(estimatedQCTasks.details).map(([calcType, count]) => (
                       <Row key={calcType} justify="space-between" style={{ marginBottom: 4 }}>
                         <Col><Text style={{ fontSize: 12 }}>{CALC_TYPE_INFO[calcType as ClusterCalcType]?.icon} {CALC_TYPE_INFO[calcType as ClusterCalcType]?.label}</Text></Col>
-                        <Col><Text strong>~{count}</Text></Col>
+                        <Col><Text strong>{count}</Text></Col>
                       </Row>
                     ))}
                     <Divider style={{ margin: '6px 0' }} />
                     <Row justify="space-between">
                       <Col><Text strong>总计</Text></Col>
-                      <Col><Text strong style={{ color: token.colorPrimary, fontSize: 16 }}>~{estimatedQCTasks.total}</Text></Col>
+                      <Col><Text strong style={{ color: token.colorPrimary, fontSize: 16 }}>{estimatedQCTasks.total}</Text></Col>
                     </Row>
                   </>
                 ) : (
