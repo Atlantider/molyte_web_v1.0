@@ -402,22 +402,90 @@ def _plan_qc_tasks_for_calc_type(
         planned_tasks.append(task)
 
     if calc_type == ClusterCalcType.DESOLVATION_STEPWISE:
-        # Stepwise 需要 cluster_minus 结构（每个结构每种配体一个）
+        # Stepwise 需要所有中间态的 cluster_minus 结构
+        # 例如 Li·EC₂·DMC 需要计算：
+        #   - Li·EC₂·DMC (完整 cluster，已在上面添加)
+        #   - Li·EC·DMC (移除1个EC)
+        #   - Li·DMC (移除2个EC)
+        #   - Li·EC₂ (移除1个DMC)
+        #   - Li·EC (移除1个EC和1个DMC)
+        #   - Li (裸离子，需要 ion 任务)
+
+        from itertools import product
+
         for s in structures:
             comp = s.composition or {}
-            for mol_name, count in comp.items():
-                if count > 0 and mol_name != "Li":
-                    # task_type 使用 cluster_minus_{ligand_name} 格式
-                    task = PlannedQCTask(
-                        task_type=f"cluster_minus_{mol_name}",
-                        description=f"Cluster #{s.id} 去除 {mol_name}",
-                        structure_id=s.id,
-                        charge=charge_ion,
-                        multiplicity=1,
-                        status="new"  # cluster_minus 很难复用，每个结构不同
-                    )
-                    planned_tasks.append(task)
-                    new_count += 1
+            # 提取配体及其数量（排除中心离子）
+            ligand_counts = {k: v for k, v in comp.items()
+                           if v > 0 and k not in ["Li", "Na", "K", "Mg", "Ca", "Zn"]}
+
+            if not ligand_counts:
+                continue
+
+            # 生成所有可能的中间态组合
+            # 对于每个配体，可以保留 0 到 count 个
+            ligand_names = list(ligand_counts.keys())
+            ranges = [range(ligand_counts[name] + 1) for name in ligand_names]
+
+            for combo in product(*ranges):
+                # combo 是每个配体保留的数量
+                remaining = dict(zip(ligand_names, combo))
+
+                # 跳过完整 cluster（已在上面添加）
+                if remaining == ligand_counts:
+                    continue
+
+                # 跳过裸离子（需要单独的 ion 任务）
+                if all(c == 0 for c in combo):
+                    continue
+
+                # 生成描述：Li·EC₁·DMC₂ 格式
+                parts = [f"{name}_{remaining[name]}" for name in ligand_names if remaining[name] > 0]
+                desc_parts = [f"{name}×{remaining[name]}" for name in ligand_names if remaining[name] > 0]
+
+                task_type = f"cluster_minus_{'_'.join(parts)}"
+                description = f"中间态 Li·{'·'.join(desc_parts)}"
+
+                task = PlannedQCTask(
+                    task_type=task_type,
+                    description=description,
+                    structure_id=s.id,
+                    charge=charge_ion,
+                    multiplicity=1,
+                    status="new"
+                )
+                planned_tasks.append(task)
+                new_count += 1
+
+        # Stepwise 还需要 ion 能量（最终态）
+        li_smiles = "[Li+]"
+        existing = _find_existing_qc_job(
+            db, li_smiles, 1, 1, functional, basis_set,
+            solvent_model, solvent_name, "ion"
+        )
+        if existing:
+            task = PlannedQCTask(
+                task_type="ion",
+                description="Li+ 离子（最终态）",
+                smiles=li_smiles,
+                charge=1,
+                multiplicity=1,
+                status="reused",
+                existing_qc_job_id=existing.id,
+                existing_energy=existing.results[0].energy_au if existing.results else None
+            )
+            reused_count += 1
+        else:
+            task = PlannedQCTask(
+                task_type="ion",
+                description="Li+ 离子（最终态）",
+                smiles=li_smiles,
+                charge=1,
+                multiplicity=1,
+                status="new"
+            )
+            new_count += 1
+        planned_tasks.append(task)
 
     if calc_type == ClusterCalcType.DESOLVATION_FULL:
         # Full desolvation 需要 ion 能量（全局可复用）
@@ -607,22 +675,24 @@ def plan_cluster_analysis(
                 task_key = (task.task_type, task.smiles, None, task.charge)
 
             if task.status == "reused":
-                # 已经在数据库中找到复用
+                # 已经在数据库中找到复用（全局复用）
+                # 更新描述添加标识
+                task.description = f"{task.description}【全局复用】"
                 updated_tasks.append(task)
                 reused_count += 1
             elif task_key in planned_in_request:
-                # 本次请求中已经规划过（跨计算类型复用）
+                # 本次请求中已经规划过（局部复用 - 跨计算类型）
                 first_task = planned_in_request[task_key]
                 updated_task = PlannedQCTask(
                     task_type=task.task_type,
-                    description=f"{task.description}（同请求复用）",
+                    description=f"{task.description}【局部复用】",
                     smiles=task.smiles,
                     structure_id=task.structure_id,
                     charge=task.charge,
                     multiplicity=task.multiplicity,
-                    status="reused",  # 标记为复用
-                    existing_qc_job_id=first_task.existing_qc_job_id,
-                    existing_energy=first_task.existing_energy
+                    status="local_reused",  # 局部复用状态
+                    existing_qc_job_id=None,  # 还没有 job
+                    existing_energy=None
                 )
                 updated_tasks.append(updated_task)
                 reused_count += 1

@@ -42,7 +42,7 @@ export interface PlannedQCTask {
   structure_id?: number;
   charge: number;
   multiplicity: number;
-  status: 'new' | 'reused' | 'pending';
+  status: 'new' | 'reused' | 'local_reused' | 'pending';
   existing_qc_job_id?: number;
   existing_energy?: number;
 }

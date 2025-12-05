@@ -982,7 +982,10 @@ export default function PostProcessDetail() {
           align: 'center',
           render: (status: string) => {
             if (status === 'reused') {
-              return <Tag color="success" icon={<CheckCircleOutlined />}>复用</Tag>;
+              return <Tag color="success" icon={<CheckCircleOutlined />}>全局复用</Tag>;
+            }
+            if (status === 'local_reused') {
+              return <Tag color="cyan" icon={<CheckCircleOutlined />}>局部复用</Tag>;
             }
             return <Tag color="warning" icon={<ThunderboltOutlined />}>新建</Tag>;
           },
@@ -1038,7 +1041,10 @@ export default function PostProcessDetail() {
               size="small"
               pagination={false}
               scroll={{ y: 300 }}
-              rowClassName={(record) => record.status === 'reused' ? 'row-reused' : 'row-new'}
+              rowClassName={(record) =>
+                record.status === 'reused' ? 'row-reused' :
+                record.status === 'local_reused' ? 'row-local-reused' : 'row-new'
+              }
             />
           ),
         };
@@ -1161,6 +1167,9 @@ export default function PostProcessDetail() {
           <style>{`
             .row-reused {
               background-color: ${token.colorSuccessBg} !important;
+            }
+            .row-local-reused {
+              background-color: #e6f7ff !important;
             }
             .row-new {
               background-color: ${token.colorWarningBg} !important;
