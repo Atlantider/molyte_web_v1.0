@@ -1432,17 +1432,23 @@ class PollingWorker:
         self.logger.info(f"创建 Redox QC 任务: {name}, {calc_type}, solvent={solvent_model}")
 
         try:
+            # 提取基础分子名称（去掉 _charged, _sol, _opt 等后缀）
+            # 这样可以实现全局复用：Li-PF6_sol 和 Li-PF6 都用 Li-PF6 作为基础名称
+            import re
+            base_molecule_name = re.sub(r'(_charged|_sol|_opt|_sp_ox_at_neutral|_sp_neutral_at_ox|_neutral_opt|_oxidized_opt)+$', '', name)
+
             # 1. 构建 QC 任务创建请求
             config = {
                 'job_type': calc_type,  # SP, OPT, or FREQ
                 'use_dispersion': use_dispersion,
                 'source': 'redox_thermodynamic_cycle',
-                'parent_redox_job_id': parent_job_id
+                'parent_redox_job_id': parent_job_id,
+                'original_task_name': name  # 保留原始名称用于日志
             }
 
             qc_job_data = {
                 'smiles': smiles,
-                'molecule_name': name,
+                'molecule_name': base_molecule_name,  # 使用基础名称，便于复用
                 'molecule_type': 'redox_species',
                 'charge': charge,
                 'spin_multiplicity': multiplicity,
@@ -4937,9 +4943,43 @@ echo "QC calculation completed"
                 'solvent_name': solvent_name
             }
 
+        # 从 task_type 提取分子名称，用于全局复用匹配
+        # task_type 格式：
+        #   - ion -> Li+
+        #   - ligand_{name} -> {name} (如 ligand_PF6 -> PF6)
+        #   - dimer_{name} -> {name} (如 dimer_Li-PF6 -> Li-PF6)
+        #   - redox_mol_{name}_{state} -> {name} (如 redox_mol_PF6_neutral_gas -> PF6)
+        #   - redox_dimer_{name}_{state} -> {name} (如 redox_dimer_Li-PF6_neutral_sol -> Li-PF6)
+        #   - cluster / cluster_minus_* -> 使用 task_type（这些依赖具体结构，不复用）
+        import re
+        if task_type == 'ion':
+            molecule_name = 'Li+'
+        elif task_type.startswith('ligand_'):
+            molecule_name = task_type.replace('ligand_', '')
+        elif task_type.startswith('dimer_'):
+            molecule_name = task_type.replace('dimer_', '')
+        elif task_type.startswith('redox_mol_'):
+            # redox_mol_{name}_{state} -> 提取 name 部分
+            # 状态后缀：neutral_gas, charged_gas, neutral_sol, charged_sol
+            match = re.match(r'redox_mol_(.+)_(neutral|charged)_(gas|sol)$', task_type)
+            if match:
+                molecule_name = match.group(1)
+            else:
+                molecule_name = task_type.replace('redox_mol_', '').rsplit('_', 2)[0]
+        elif task_type.startswith('redox_dimer_'):
+            # redox_dimer_{name}_{state} -> 提取 name 部分
+            match = re.match(r'redox_dimer_(.+)_(neutral|charged)_(gas|sol)$', task_type)
+            if match:
+                molecule_name = match.group(1)
+            else:
+                molecule_name = task_type.replace('redox_dimer_', '').rsplit('_', 2)[0]
+        else:
+            # cluster, cluster_minus_* 等依赖具体结构，使用完整 task_type
+            molecule_name = task_type
+
         # 构建 QC 任务配置
         qc_job_config = {
-            'molecule_name': f"cluster_{cluster_job_id}_{task_type}",
+            'molecule_name': molecule_name,
             'smiles': smiles,
             'charge': charge,
             'spin_multiplicity': multiplicity,
