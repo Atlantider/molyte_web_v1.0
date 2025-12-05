@@ -32,6 +32,7 @@ import {
   Statistic,
   Switch,
   Descriptions,
+  Popconfirm,
   theme,
 } from 'antd';
 import type { MenuProps } from 'antd';
@@ -1309,7 +1310,7 @@ export default function Electrolytes() {
                 {
                   title: '操作',
                   key: 'actions',
-                  width: 250,
+                  width: 320,
                   fixed: 'right',
                   render: (_: any, record: ElectrolyteSystem) => (
                     <Space size="small">
@@ -1341,6 +1342,21 @@ export default function Electrolytes() {
                       >
                         创建任务
                       </Button>
+                      <Popconfirm
+                        title="确定要删除这个配方吗？"
+                        description="删除后将无法恢复，相关的计算任务也会被删除。"
+                        onConfirm={() => handleDelete(record.id)}
+                        okText="确定"
+                        cancelText="取消"
+                      >
+                        <Button
+                          type="link"
+                          size="small"
+                          danger
+                        >
+                          删除
+                        </Button>
+                      </Popconfirm>
                     </Space>
                   ),
                 },
