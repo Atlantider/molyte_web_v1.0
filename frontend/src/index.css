@@ -82,3 +82,34 @@ code {
   background: rgba(255, 255, 255, 0.08) !important;
 }
 
+/* 固定列背景色 - 浅色主题 */
+.ant-table-cell-fix-left,
+.ant-table-cell-fix-right {
+  background: #ffffff !important;
+}
+
+.ant-table-thead > tr > .ant-table-cell-fix-left,
+.ant-table-thead > tr > .ant-table-cell-fix-right {
+  background: #fafafa !important;
+}
+
+.ant-table-tbody > tr:hover > .ant-table-cell-fix-left,
+.ant-table-tbody > tr:hover > .ant-table-cell-fix-right {
+  background: #fafafa !important;
+}
+
+/* 固定列背景色 - 深色主题 */
+[data-theme='dark'] .ant-table-cell-fix-left,
+[data-theme='dark'] .ant-table-cell-fix-right {
+  background: #1f1f1f !important;
+}
+
+[data-theme='dark'] .ant-table-thead > tr > .ant-table-cell-fix-left,
+[data-theme='dark'] .ant-table-thead > tr > .ant-table-cell-fix-right {
+  background: #1a1a1a !important;
+}
+
+[data-theme='dark'] .ant-table-tbody > tr:hover > .ant-table-cell-fix-left,
+[data-theme='dark'] .ant-table-tbody > tr:hover > .ant-table-cell-fix-right {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
