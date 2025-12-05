@@ -483,7 +483,8 @@ async def preview_desolvation_structures(
     from app.tasks.desolvation import (
         parse_solvation_cluster,
         generate_cluster_minus_xyz,
-        generate_center_ion_xyz
+        generate_center_ion_xyz,
+        generate_dimer_xyz
     )
     from app.models.result import ResultSummary
 
@@ -541,6 +542,8 @@ async def preview_desolvation_structures(
         "ligands": [],
         # 每个 cluster_minus
         "cluster_minus_structures": [],
+        # 每种配体类型的 dimer（Li + 配体）结构（用于 pairwise binding）
+        "dimer_structures": [],
         # 中心离子（用于 full 模式）
         "center_ion_structure": {
             "name": cluster_data['center_ion'],
@@ -600,6 +603,32 @@ async def preview_desolvation_structures(
 
     # 添加配体类型统计到响应
     response["ligand_type_summary"] = ligand_type_counts
+
+    # 生成每种配体类型的 dimer 结构（Li + 配体）
+    # 每种类型只生成一个代表性的 dimer
+    dimer_processed_types = set()
+    for ligand in cluster_data['ligands']:
+        ltype = ligand['ligand_type']
+        if ltype not in dimer_processed_types:
+            dimer_processed_types.add(ltype)
+            try:
+                dimer_xyz = generate_dimer_xyz(cluster_data, ligand)
+                dimer_name = f"{cluster_data['center_ion']}-{ltype}"
+                dimer_charge = cluster_data['center_ion_charge'] + ligand['charge']
+
+                xyz_lines = dimer_xyz.strip().split('\n')
+                atom_count = int(xyz_lines[0]) if xyz_lines else 0
+
+                response["dimer_structures"].append({
+                    "name": dimer_name,
+                    "ligand_type": ltype,
+                    "xyz_content": dimer_xyz,
+                    "atom_count": atom_count,
+                    "charge": dimer_charge,
+                    "source_ligand_id": ligand['ligand_id']
+                })
+            except Exception as e:
+                logger.warning(f"Failed to generate dimer for {ltype}: {e}")
 
     return response
 

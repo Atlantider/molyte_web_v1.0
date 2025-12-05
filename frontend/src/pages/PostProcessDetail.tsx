@@ -703,6 +703,14 @@ export default function PostProcessDetail() {
     } else if (selectedPreviewTab === 'center_ion') {
       xyzContent = previewData.center_ion_structure.xyz_content;
       highlightCenterIon = true;
+    } else if (selectedPreviewTab.startsWith('dimer_')) {
+      // dimer 结构（Li + 配体）
+      const idx = parseInt(selectedPreviewTab.replace('dimer_', ''), 10);
+      const dimer = previewData.dimer_structures?.[idx];
+      if (dimer) {
+        xyzContent = dimer.xyz_content;
+      }
+      highlightCenterIon = true;  // 高亮中心离子
     } else if (selectedPreviewTab.startsWith('ligand_')) {
       const idx = parseInt(selectedPreviewTab.replace('ligand_', ''), 10);
       const ligand = previewData.ligands[idx];
@@ -979,10 +987,10 @@ export default function PostProcessDetail() {
         {
           title: '操作',
           key: 'action',
-          width: 80,
+          width: 100,
           align: 'center',
           render: (_: any, record: PlannedQCTask) => {
-            // 只有 cluster 类型且有 structure_id 的任务才显示预览按钮
+            // cluster 类型且有 structure_id 的任务显示 3D 预览按钮
             if (record.task_type === 'cluster' && record.structure_id) {
               return (
                 <Tooltip title="预览 3D 结构">
@@ -991,6 +999,24 @@ export default function PostProcessDetail() {
                     size="small"
                     icon={<EyeOutlined />}
                     onClick={() => handlePreviewStructure(record.structure_id!)}
+                  />
+                </Tooltip>
+              );
+            }
+            // 有 SMILES 的任务显示 PubChem 链接
+            if (record.smiles) {
+              return (
+                <Tooltip title="在 PubChem 查看分子结构">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EyeOutlined />}
+                    onClick={() => {
+                      window.open(
+                        `https://pubchem.ncbi.nlm.nih.gov/#query=${encodeURIComponent(record.smiles!)}`,
+                        '_blank'
+                      );
+                    }}
                   />
                 </Tooltip>
               );
@@ -1778,8 +1804,25 @@ export default function PostProcessDetail() {
                     >
                       中心离子 ({previewData.center_ion})
                     </Button>
-                    <Divider style={{ margin: '8px 0' }}>配体分子</Divider>
-                    {previewData.ligands.map((ligand, idx) => (
+                    {/* Dimer 结构（Li + 配体）- 用于 Pairwise Binding */}
+                    {previewData.dimer_structures && previewData.dimer_structures.length > 0 && (
+                      <>
+                        <Divider style={{ margin: '8px 0' }}>Li-配体 Dimer</Divider>
+                        {previewData.dimer_structures.map((dimer: any, idx: number) => (
+                          <Button
+                            key={`dimer_${idx}`}
+                            block
+                            type={selectedPreviewTab === `dimer_${idx}` ? 'primary' : 'default'}
+                            onClick={() => setSelectedPreviewTab(`dimer_${idx}`)}
+                            style={{ background: selectedPreviewTab === `dimer_${idx}` ? undefined : '#e6f7e6' }}
+                          >
+                            {dimer.name} ({dimer.atom_count} 原子)
+                          </Button>
+                        ))}
+                      </>
+                    )}
+                    <Divider style={{ margin: '8px 0' }}>单独配体</Divider>
+                    {previewData.ligands.map((ligand: any, idx: number) => (
                       <Button
                         key={`ligand_${idx}`}
                         block
@@ -1802,6 +1845,8 @@ export default function PostProcessDetail() {
                       ? '完整 Cluster'
                       : selectedPreviewTab === 'center_ion'
                       ? '中心离子'
+                      : selectedPreviewTab.startsWith('dimer_')
+                      ? `Dimer: ${previewData.dimer_structures?.[parseInt(selectedPreviewTab.replace('dimer_', ''), 10)]?.name}`
                       : selectedPreviewTab.startsWith('ligand_')
                       ? `配体: ${previewData.ligands[parseInt(selectedPreviewTab.replace('ligand_', ''), 10)]?.ligand_label}`
                       : '3D 结构'

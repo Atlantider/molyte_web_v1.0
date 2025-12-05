@@ -90,7 +90,11 @@ def _find_existing_qc_job(
     molecule_type: str = None
 ) -> Optional[QCJob]:
     """查找已有的、相同配置的 QC 任务"""
-    query = db.query(QCJob).filter(
+    from sqlalchemy.orm import joinedload
+
+    query = db.query(QCJob).options(
+        joinedload(QCJob.results)  # 预加载 results 关系
+    ).filter(
         QCJob.smiles == smiles,
         QCJob.charge == charge,
         QCJob.spin_multiplicity == multiplicity,
@@ -99,12 +103,19 @@ def _find_existing_qc_job(
         QCJob.status == QCJobStatus.COMPLETED,
         QCJob.is_deleted == False
     )
-    
+
     if molecule_type:
         query = query.filter(QCJob.molecule_type == molecule_type)
-    
+
     # 获取最近完成的
-    return query.order_by(desc(QCJob.finished_at)).first()
+    job = query.order_by(desc(QCJob.finished_at)).first()
+
+    if job:
+        logger.debug(f"Found existing QC job {job.id} for {smiles}, charge={charge}, results count={len(job.results) if job.results else 0}")
+        if job.results:
+            logger.debug(f"  Energy: {job.results[0].energy_au}")
+
+    return job
 
 
 # 常见分子的 SMILES 和电荷信息（用作后备）
@@ -410,7 +421,12 @@ def _plan_qc_tasks_for_calc_type(
         planned_tasks.append(task)
 
     if calc_type == ClusterCalcType.BINDING_PAIRWISE:
-        # Pairwise binding: 需要 Li+、各配体、Li-配体二聚体
+        # Pairwise binding:
+        # 1. Li+ 离子能量
+        # 2. 各配体能量（从 cluster 中提取的实际几何结构）
+        # 3. Li-配体二聚体（从 cluster 中提取 Li+ 和某个配体的组合）
+
+        # 1. Li+ 离子
         li_smiles = "[Li+]"
         existing = _find_existing_qc_job(db, li_smiles, 1, 1, functional, basis_set, "ion")
         if existing:
@@ -421,7 +437,8 @@ def _plan_qc_tasks_for_calc_type(
                 charge=1,
                 multiplicity=1,
                 status="reused",
-                existing_qc_job_id=existing.id
+                existing_qc_job_id=existing.id,
+                existing_energy=existing.results[0].energy_au if existing.results else None
             )
             reused_count += 1
         else:
@@ -432,39 +449,51 @@ def _plan_qc_tasks_for_calc_type(
             new_count += 1
         planned_tasks.append(task)
 
-        # 各配体 (使用 ligand_{name} 格式)
-        for lig in ligand_info:
-            existing = _find_existing_qc_job(
-                db, lig["smiles"], lig["charge"], 1, functional, basis_set, "ligand"
-            )
-            ligand_task_type = f"ligand_{lig['name']}"
-            if existing:
-                task = PlannedQCTask(
-                    task_type=ligand_task_type, description=f"配体 {lig['name']}",
-                    smiles=lig["smiles"], charge=lig["charge"], multiplicity=1,
-                    status="reused", existing_qc_job_id=existing.id
-                )
-                reused_count += 1
-            else:
-                task = PlannedQCTask(
-                    task_type=ligand_task_type, description=f"配体 {lig['name']}",
-                    smiles=lig["smiles"], charge=lig["charge"], multiplicity=1, status="new"
-                )
-                new_count += 1
-            planned_tasks.append(task)
+        # 2 & 3. 从每个 cluster 结构中提取 dimer（Li+ 加上某种配体）
+        # 每种配体只需要一个代表性的 dimer
+        # 同时也记录配体任务（使用 cluster 中提取的实际几何结构）
+        processed_ligand_types = set()  # 记录已处理的配体类型，避免重复
 
-        # Li-配体二聚体（需要新计算，使用 dimer_{name} 格式）
-        for lig in ligand_info:
-            task = PlannedQCTask(
-                task_type=f"dimer_{lig['name']}",
-                description=f"Li-{lig['name']} 二聚体",
-                smiles=f"[Li+].{lig['smiles']}",
-                charge=1 + lig["charge"],
-                multiplicity=1,
-                status="new"
-            )
-            planned_tasks.append(task)
-            new_count += 1
+        for s in structures:
+            comp = s.composition or {}
+            for mol_name, count in comp.items():
+                if count > 0 and mol_name not in ["Li", "Na", "K", "Mg", "Ca", "Zn"]:
+                    if mol_name not in processed_ligand_types:
+                        processed_ligand_types.add(mol_name)
+
+                        # 配体任务（从 cluster 中提取的几何结构，需要新计算）
+                        lig_info = mol_info_from_db.get(mol_name, {}) if mol_info_from_db else {}
+                        lig_smiles = lig_info.get("smiles") or MOLECULE_INFO_MAP.get(mol_name, {}).get("smiles", mol_name)
+                        lig_charge = lig_info.get("charge")
+                        if lig_charge is None:
+                            lig_charge = MOLECULE_INFO_MAP.get(mol_name, {}).get("charge", 0)
+
+                        # 配体任务 - 需要从 cluster 中提取真实几何结构
+                        task = PlannedQCTask(
+                            task_type=f"ligand_{mol_name}",
+                            description=f"配体 {mol_name}（从 cluster 提取）",
+                            smiles=lig_smiles,
+                            charge=lig_charge,
+                            multiplicity=1,
+                            status="new",
+                            structure_id=s.id  # 关联到源 cluster，用于提取几何结构
+                        )
+                        planned_tasks.append(task)
+                        new_count += 1
+
+                        # Li-配体 dimer 任务 - 从 cluster 中提取 Li+ 和该配体
+                        dimer_charge = charge_ion + lig_charge
+                        task = PlannedQCTask(
+                            task_type=f"dimer_{mol_name}",
+                            description=f"Li-{mol_name} 二聚体（从 cluster 提取）",
+                            smiles=f"[Li+].{lig_smiles}",  # 仅用于标识，实际几何从 cluster 提取
+                            charge=dimer_charge,
+                            multiplicity=1,
+                            status="new",
+                            structure_id=s.id  # 关联到源 cluster
+                        )
+                        planned_tasks.append(task)
+                        new_count += 1
 
     # 生成描述
     desc_map = {

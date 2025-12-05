@@ -1551,6 +1551,48 @@ def generate_center_ion_xyz(cluster_data: Dict[str, Any]) -> str:
     return '\n'.join(xyz_lines)
 
 
+def generate_dimer_xyz(cluster_data: Dict[str, Any], ligand: Dict[str, Any]) -> str:
+    """
+    生成 Li-配体 dimer 的 XYZ 内容（用于 pairwise binding 计算）
+
+    从 cluster 中提取中心离子和指定配体，保留其真实几何配置
+
+    Args:
+        cluster_data: parse_solvation_cluster 返回的数据
+        ligand: 配体信息 {'ligand_id', 'ligand_type', 'atom_indices', ...}
+
+    Returns:
+        XYZ 格式字符串
+    """
+    all_atoms = cluster_data['all_atoms']
+
+    if not all_atoms:
+        raise ValueError("No atoms in cluster data")
+
+    # 收集中心离子（索引0）和指定配体的原子
+    dimer_atoms = [all_atoms[0]]  # 中心离子
+
+    ligand_indices = set(ligand['atom_indices'])
+    for i, atom in enumerate(all_atoms[1:], start=1):
+        # i-1 因为 ligand atom_indices 是从 0 开始的（不包括中心离子）
+        if (i - 1) in ligand_indices:
+            dimer_atoms.append(atom)
+
+    # 生成 XYZ
+    center_ion = cluster_data.get('center_ion', 'Li')
+    ligand_type = ligand.get('ligand_type', 'Unknown')
+
+    xyz_lines = [
+        str(len(dimer_atoms)),
+        f"{center_ion}-{ligand_type} dimer (from cluster)"
+    ]
+
+    for element, x, y, z in dimer_atoms:
+        xyz_lines.append(f"{element} {x:.6f} {y:.6f} {z:.6f}")
+
+    return '\n'.join(xyz_lines)
+
+
 def summarize_by_type(per_ligand_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     按配体类型汇总统计

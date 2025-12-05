@@ -136,6 +136,15 @@ export interface ClusterMinusPreview {
   charge: number;
 }
 
+export interface DimerPreview {
+  name: string;
+  ligand_type: string;
+  xyz_content: string;
+  atom_count: number;
+  charge: number;
+  source_ligand_id: number;
+}
+
 export interface DesolvationPreviewResponse {
   structure_id: number;
   cluster_name: string;
@@ -145,6 +154,7 @@ export interface DesolvationPreviewResponse {
   cluster: StructurePreview;
   ligands: LigandPreview[];
   cluster_minus_structures: ClusterMinusPreview[];
+  dimer_structures?: DimerPreview[];  // Li-配体 dimer（用于 pairwise binding）
   center_ion_structure: StructurePreview;
 }
 
