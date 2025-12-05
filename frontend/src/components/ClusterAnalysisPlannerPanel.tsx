@@ -91,9 +91,11 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
   // QC 配置
   const [qcConfig, setQcConfig] = useState({
     functional: 'B3LYP',
-    basis_set: '6-31G*',
+    basis_set: '6-31G(d)',
     use_dispersion: true,
     charge_ion: 1,
+    solvent_model: 'smd',  // 默认使用 SMD 溶剂模型
+    solvent: 'Water',      // 默认溶剂
   });
 
   // 加载溶剂化结构
@@ -597,8 +599,110 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
               )}
             </Card>
 
-            {/* 步骤 3: 规划预览 */}
-            <Card type="inner" title="步骤 3: 规划与提交" style={{ marginBottom: 16 }}>
+            {/* 步骤 3: QC 计算参数配置 */}
+            <Card type="inner" title="步骤 3: 计算参数配置" style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col span={6}>
+                  <div style={{ marginBottom: 8 }}>
+                    <Text strong>泛函</Text>
+                  </div>
+                  <Select
+                    style={{ width: '100%' }}
+                    value={qcConfig.functional}
+                    onChange={(value) => setQcConfig(prev => ({ ...prev, functional: value }))}
+                  >
+                    <Select.OptGroup label="GGA 泛函">
+                      <Select.Option value="B3LYP">B3LYP</Select.Option>
+                      <Select.Option value="PBE0">PBE0</Select.Option>
+                    </Select.OptGroup>
+                    <Select.OptGroup label="Meta-GGA 泛函">
+                      <Select.Option value="M06-2X">M06-2X</Select.Option>
+                      <Select.Option value="wB97X-D">ωB97X-D</Select.Option>
+                    </Select.OptGroup>
+                  </Select>
+                </Col>
+                <Col span={6}>
+                  <div style={{ marginBottom: 8 }}>
+                    <Text strong>基组</Text>
+                  </div>
+                  <Select
+                    style={{ width: '100%' }}
+                    value={qcConfig.basis_set}
+                    onChange={(value) => setQcConfig(prev => ({ ...prev, basis_set: value }))}
+                  >
+                    <Select.OptGroup label="Pople 基组">
+                      <Select.Option value="6-31G(d)">6-31G(d)</Select.Option>
+                      <Select.Option value="6-31+G(d,p)">6-31+G(d,p)</Select.Option>
+                      <Select.Option value="6-311++G(d,p)">6-311++G(d,p)</Select.Option>
+                    </Select.OptGroup>
+                    <Select.OptGroup label="Karlsruhe 基组">
+                      <Select.Option value="def2-SVP">def2-SVP</Select.Option>
+                      <Select.Option value="def2-TZVP">def2-TZVP</Select.Option>
+                    </Select.OptGroup>
+                  </Select>
+                </Col>
+                <Col span={6}>
+                  <div style={{ marginBottom: 8 }}>
+                    <Text strong>溶剂模型</Text>
+                  </div>
+                  <Select
+                    style={{ width: '100%' }}
+                    value={qcConfig.solvent_model}
+                    onChange={(value) => setQcConfig(prev => ({ ...prev, solvent_model: value }))}
+                  >
+                    <Select.Option value="gas">气相 (无溶剂)</Select.Option>
+                    <Select.Option value="pcm">PCM</Select.Option>
+                    <Select.Option value="smd">SMD</Select.Option>
+                  </Select>
+                </Col>
+                <Col span={6}>
+                  <div style={{ marginBottom: 8 }}>
+                    <Text strong>溶剂</Text>
+                  </div>
+                  <Select
+                    style={{ width: '100%' }}
+                    value={qcConfig.solvent}
+                    onChange={(value) => setQcConfig(prev => ({ ...prev, solvent: value }))}
+                    disabled={qcConfig.solvent_model === 'gas'}
+                  >
+                    <Select.Option value="Water">Water</Select.Option>
+                    <Select.Option value="Acetonitrile">Acetonitrile</Select.Option>
+                    <Select.Option value="DMSO">DMSO</Select.Option>
+                    <Select.Option value="THF">THF</Select.Option>
+                    <Select.Option value="Methanol">Methanol</Select.Option>
+                    <Select.Option value="Ethanol">Ethanol</Select.Option>
+                    <Select.Option value="DiethylEther">DiethylEther</Select.Option>
+                  </Select>
+                </Col>
+              </Row>
+              <Row gutter={16} style={{ marginTop: 16 }}>
+                <Col span={6}>
+                  <Checkbox
+                    checked={qcConfig.use_dispersion}
+                    onChange={(e) => setQcConfig(prev => ({ ...prev, use_dispersion: e.target.checked }))}
+                  >
+                    色散校正 (D3BJ)
+                  </Checkbox>
+                </Col>
+                <Col span={18}>
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={
+                      <span>
+                        当前配置：<Tag color="blue">{qcConfig.functional}</Tag>
+                        <Tag color="green">{qcConfig.basis_set}</Tag>
+                        <Tag color="orange">{qcConfig.solvent_model === 'gas' ? '气相' : `${qcConfig.solvent_model.toUpperCase()}/${qcConfig.solvent}`}</Tag>
+                        {qcConfig.use_dispersion && <Tag color="purple">+D3BJ</Tag>}
+                      </span>
+                    }
+                  />
+                </Col>
+              </Row>
+            </Card>
+
+            {/* 步骤 4: 规划预览 */}
+            <Card type="inner" title="步骤 4: 规划与提交" style={{ marginBottom: 16 }}>
               <Space>
                 <Button
                   type="primary"

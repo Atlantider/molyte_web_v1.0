@@ -4924,6 +4924,18 @@ echo "QC calculation completed"
         charge = task.get('charge', 0)
         multiplicity = task.get('multiplicity', 1)
 
+        # 获取溶剂配置
+        solvent_model = qc_config.get('solvent_model') or 'gas'
+        solvent_name = qc_config.get('solvent') or qc_config.get('solvent_name')
+
+        # 构建溶剂配置对象（符合 QCJobCreate schema）
+        solvent_config = None
+        if solvent_model and solvent_model.lower() != 'gas':
+            solvent_config = {
+                'model': solvent_model.lower(),
+                'solvent_name': solvent_name
+            }
+
         # 构建 QC 任务配置
         qc_job_config = {
             'molecule_name': f"cluster_{cluster_job_id}_{task_type}",
@@ -4931,9 +4943,8 @@ echo "QC calculation completed"
             'charge': charge,
             'spin_multiplicity': multiplicity,
             'functional': qc_config.get('functional', 'B3LYP'),
-            'basis_set': qc_config.get('basis_set', '6-31G*'),
-            'solvent_model': qc_config.get('solvent_model'),
-            'solvent_name': qc_config.get('solvent'),
+            'basis_set': qc_config.get('basis_set', '6-31G(d)'),
+            'solvent_config': solvent_config,
             'md_job_id': md_job_id,
             # Cluster Analysis 关联字段
             'cluster_analysis_job_id': cluster_job_id,
