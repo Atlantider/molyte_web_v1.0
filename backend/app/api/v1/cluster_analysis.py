@@ -584,15 +584,60 @@ def plan_cluster_analysis(
 
     # 为每个计算类型规划 QC 任务
     calc_requirements = []
-    total_new = 0
-    total_reused = 0
     warnings = []
+
+    # 跨计算类型复用追踪：记录本次请求中已规划的任务
+    # key = (task_type_base, smiles, charge) -> 第一次出现的任务信息
+    planned_in_request: Dict[tuple, PlannedQCTask] = {}
 
     for calc_type in request.calc_types:
         req = _plan_qc_tasks_for_calc_type(db, calc_type, structures, qc_config, mol_info_from_db)
+
+        # 更新任务状态：如果任务已经在之前的计算类型中规划过，标记为"跨类型复用"
+        updated_tasks = []
+        new_count = 0
+        reused_count = 0
+
+        for task in req.required_qc_tasks:
+            # 生成唯一键：基础任务类型 + smiles/structure_id + charge
+            # 注意：ligand_EC 和 ligand_EC 应该匹配，但 cluster 需要用 structure_id 区分
+            if task.structure_id:
+                task_key = (task.task_type, None, task.structure_id, task.charge)
+            else:
+                task_key = (task.task_type, task.smiles, None, task.charge)
+
+            if task.status == "reused":
+                # 已经在数据库中找到复用
+                updated_tasks.append(task)
+                reused_count += 1
+            elif task_key in planned_in_request:
+                # 本次请求中已经规划过（跨计算类型复用）
+                first_task = planned_in_request[task_key]
+                updated_task = PlannedQCTask(
+                    task_type=task.task_type,
+                    description=f"{task.description}（同请求复用）",
+                    smiles=task.smiles,
+                    structure_id=task.structure_id,
+                    charge=task.charge,
+                    multiplicity=task.multiplicity,
+                    status="reused",  # 标记为复用
+                    existing_qc_job_id=first_task.existing_qc_job_id,
+                    existing_energy=first_task.existing_energy
+                )
+                updated_tasks.append(updated_task)
+                reused_count += 1
+            else:
+                # 新任务，记录到追踪表
+                planned_in_request[task_key] = task
+                updated_tasks.append(task)
+                new_count += 1
+
+        # 更新 requirements
+        req.required_qc_tasks = updated_tasks
+        req.new_tasks_count = new_count
+        req.reused_tasks_count = reused_count
+
         calc_requirements.append(req)
-        total_new += req.new_tasks_count
-        total_reused += req.reused_tasks_count
 
         # 添加警告
         if calc_type == ClusterCalcType.REORGANIZATION:
@@ -600,20 +645,18 @@ def plan_cluster_analysis(
         if calc_type == ClusterCalcType.REDOX:
             warnings.append("⚠️ Redox 计算对方法/基组敏感，结果仅供参考")
 
-    # 去重统计（同一个 QC 任务可能被多个计算类型复用）
-    seen_tasks = set()
-    unique_new = 0
-    unique_reused = 0
-
+    # 统计唯一任务数
+    unique_new = len([t for t in planned_in_request.values() if t.status == "new"])
+    unique_reused_from_db = sum(1 for req in calc_requirements
+                                 for task in req.required_qc_tasks
+                                 if task.status == "reused" and task.existing_qc_job_id)
+    # 去重计算跨类型复用
+    seen_reused = set()
     for req in calc_requirements:
         for task in req.required_qc_tasks:
-            task_key = (task.task_type, task.smiles, task.structure_id, task.charge)
-            if task_key not in seen_tasks:
-                seen_tasks.add(task_key)
-                if task.status == "reused":
-                    unique_reused += 1
-                else:
-                    unique_new += 1
+            if task.status == "reused" and task.existing_qc_job_id:
+                seen_reused.add(task.existing_qc_job_id)
+    unique_reused = len(seen_reused)
 
     # 预估计算时间（粗略估计）
     estimated_hours = unique_new * 0.5  # 每个新任务约 0.5 小时
