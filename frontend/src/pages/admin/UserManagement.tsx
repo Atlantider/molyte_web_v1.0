@@ -212,16 +212,14 @@ const UserManagement: React.FC = () => {
       title: 'ID',
       dataIndex: 'id',
       key: 'id',
-      width: 80,
-      fixed: 'left' as const,
+      width: 50,
       sorter: (a: UserListItem, b: UserListItem) => a.id - b.id,
     },
     {
       title: '用户名',
       dataIndex: 'username',
       key: 'username',
-      width: 150,
-      fixed: 'left' as const,
+      width: 120,
       sorter: (a: UserListItem, b: UserListItem) => a.username.localeCompare(b.username),
       render: (text: string, record: UserListItem) => (
         <a onClick={() => navigate(`/workspace/admin/users/${record.id}`)}>
@@ -233,7 +231,7 @@ const UserManagement: React.FC = () => {
       title: '邮箱',
       dataIndex: 'email',
       key: 'email',
-      width: 200,
+      width: 180,
       ellipsis: true,
       sorter: (a: UserListItem, b: UserListItem) => a.email.localeCompare(b.email),
     },
@@ -241,7 +239,7 @@ const UserManagement: React.FC = () => {
       title: '角色',
       dataIndex: 'role',
       key: 'role',
-      width: 100,
+      width: 80,
       filters: [
         { text: '管理员', value: 'ADMIN' },
         { text: '高级用户', value: 'PREMIUM' },
@@ -263,7 +261,7 @@ const UserManagement: React.FC = () => {
       title: '状态',
       dataIndex: 'is_active',
       key: 'is_active',
-      width: 80,
+      width: 70,
       filters: [
         { text: '激活', value: true },
         { text: '禁用', value: false },
@@ -273,36 +271,29 @@ const UserManagement: React.FC = () => {
         <Switch
           checked={isActive}
           onChange={(checked) => handleStatusChange(record.id, checked)}
+          size="small"
         />
       ),
     },
     {
-      title: 'CPU配额',
+      title: 'CPU时',
       dataIndex: 'total_cpu_hours',
       key: 'total_cpu_hours',
-      width: 120,
+      width: 80,
       sorter: (a: UserListItem, b: UserListItem) => a.total_cpu_hours - b.total_cpu_hours,
-      render: (hours: number) => `${hours.toFixed(1)} h`,
+      render: (hours: number) => `${hours.toFixed(0)}h`,
     },
     {
-      title: '每日限制',
-      dataIndex: 'daily_job_limit',
-      key: 'daily_job_limit',
-      width: 100,
-      sorter: (a: UserListItem, b: UserListItem) => a.daily_job_limit - b.daily_job_limit,
+      title: '日/并发',
+      key: 'limits',
+      width: 80,
+      render: (_: any, record: UserListItem) => `${record.daily_job_limit}/${record.concurrent_job_limit}`,
     },
     {
-      title: '并发限制',
-      dataIndex: 'concurrent_job_limit',
-      key: 'concurrent_job_limit',
-      width: 100,
-      sorter: (a: UserListItem, b: UserListItem) => a.concurrent_job_limit - b.concurrent_job_limit,
-    },
-    {
-      title: '用户类型',
+      title: '类型',
       dataIndex: 'user_type',
       key: 'user_type',
-      width: 100,
+      width: 70,
       filters: [
         { text: '学生', value: 'STUDENT' },
         { text: '研究者', value: 'RESEARCHER' },
@@ -323,50 +314,34 @@ const UserManagement: React.FC = () => {
       title: '组织',
       dataIndex: 'organization',
       key: 'organization',
-      width: 150,
+      width: 120,
       ellipsis: true,
     },
     {
-      title: '可用队列',
+      title: '队列',
       dataIndex: 'allowed_partitions',
       key: 'allowed_partitions',
-      width: 200,
+      width: 80,
       render: (partitions: string[] | null) => {
         if (!partitions || partitions.length === 0) {
-          return <Tag color="red">全部</Tag>;
+          return <Tag color="default">全部</Tag>;
         }
-        return (
-          <Space size={4} wrap>
-            {partitions.map((p) => (
-              <Tag key={p} color="blue" style={{ margin: 0 }}>
-                {p}
-              </Tag>
-            ))}
-          </Space>
-        );
+        if (partitions.length === 1) {
+          return <Tag color="blue">{partitions[0]}</Tag>;
+        }
+        return <Tag color="blue">{partitions.length}个</Tag>;
       },
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      width: 180,
-      sorter: (a: UserListItem, b: UserListItem) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-      defaultSortOrder: 'descend' as const,
-      render: (time: string) => new Date(time).toLocaleString('zh-CN'),
     },
     {
       title: '操作',
       key: 'actions',
-      width: 180,
-      fixed: 'right' as const,
+      width: 120,
       render: (_: any, record: UserListItem) => (
-        <Space size="small">
+        <Space size={4}>
           <Button
             type="link"
             size="small"
-            icon={<EditOutlined />}
+            style={{ padding: '0 4px' }}
             onClick={() => handleEdit(record)}
           >
             编辑
@@ -377,7 +352,7 @@ const UserManagement: React.FC = () => {
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button type="link" size="small" danger style={{ padding: '0 4px' }}>
               删除
             </Button>
           </Popconfirm>
@@ -568,7 +543,7 @@ const UserManagement: React.FC = () => {
           columns={columns}
           rowKey="id"
           loading={loading}
-          scroll={{ x: 1600 }}
+          scroll={{ x: 1000 }}
           pagination={{
             pageSize: 20,
             showSizeChanger: true,

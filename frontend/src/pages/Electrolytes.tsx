@@ -1199,21 +1199,19 @@ export default function Electrolytes() {
                 showTotal: (total) => `共 ${total} 个配方`,
                 pageSizeOptions: ['10', '20', '50', '100'],
               }}
-              scroll={{ x: 1700 }}
+              scroll={{ x: 1200 }}
               columns={[
                 {
                   title: 'ID',
                   dataIndex: 'id',
                   key: 'id',
-                  width: 80,
-                  fixed: 'left',
+                  width: 60,
                 },
                 {
                   title: '配方名称',
                   dataIndex: 'name',
                   key: 'name',
-                  width: 250,
-                  fixed: 'left',
+                  width: 200,
                   ellipsis: true,
                   render: (name: string, record: ElectrolyteSystem) => (
                     <a onClick={() => handleViewDetail(record)}>
@@ -1222,19 +1220,9 @@ export default function Electrolytes() {
                   ),
                 },
                 {
-                  title: '项目',
-                  dataIndex: 'project_id',
-                  key: 'project_id',
-                  width: 150,
-                  render: (projectId: number) => {
-                    const project = projects.find(p => p.id === projectId);
-                    return project?.name || '-';
-                  },
-                },
-                {
                   title: '阳离子',
                   key: 'cations',
-                  width: 150,
+                  width: 100,
                   render: (_: any, record: ElectrolyteSystem) => {
                     if (!record.cations || record.cations.length === 0) return '-';
                     return (
@@ -1249,7 +1237,7 @@ export default function Electrolytes() {
                 {
                   title: '阴离子',
                   key: 'anions',
-                  width: 150,
+                  width: 100,
                   render: (_: any, record: ElectrolyteSystem) => {
                     if (!record.anions || record.anions.length === 0) return '-';
                     return (
@@ -1264,7 +1252,7 @@ export default function Electrolytes() {
                 {
                   title: '溶剂',
                   key: 'solvents',
-                  width: 150,
+                  width: 120,
                   render: (_: any, record: ElectrolyteSystem) => {
                     if (!record.solvents || record.solvents.length === 0) return '-';
                     return (
@@ -1279,7 +1267,7 @@ export default function Electrolytes() {
                 {
                   title: '状态',
                   key: 'status',
-                  width: 100,
+                  width: 80,
                   render: (_: any, record: ElectrolyteSystem) => {
                     const category = getElectrolyteCategory(record);
                     const statusConfig: Record<string, { color: string; text: string }> = {
@@ -1292,31 +1280,21 @@ export default function Electrolytes() {
                   },
                 },
                 {
-                  title: '任务数',
+                  title: '任务',
                   key: 'job_count',
-                  width: 100,
+                  width: 60,
+                  align: 'center' as const,
                   render: (_: any, record: ElectrolyteSystem) => {
                     const relatedJobs = jobs.filter(j => j.system_id === record.id);
                     return relatedJobs.length;
                   },
                 },
                 {
-                  title: '创建时间',
-                  dataIndex: 'created_at',
-                  key: 'created_at',
-                  width: 160,
-                  render: (time: string) => {
-                    const d = new Date(time);
-                    return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
-                  },
-                },
-                {
                   title: '操作',
                   key: 'actions',
-                  width: 260,
-                  fixed: 'right',
+                  width: 220,
                   render: (_: any, record: ElectrolyteSystem) => (
-                    <Space size={0} split={<span style={{ color: '#d9d9d9', margin: '0 2px' }}>|</span>}>
+                    <Space size={4}>
                       <Button type="link" size="small" style={{ padding: '0 4px' }} onClick={() => handleViewDetail(record)}>
                         详情
                       </Button>

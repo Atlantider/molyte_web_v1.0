@@ -968,20 +968,19 @@ export default function Jobs() {
                 showTotal: (total) => `共 ${total} 个任务`,
                 pageSizeOptions: ['10', '20', '50', '100'],
               }}
-              scroll={{ x: 1200 }}
+              scroll={{ x: 1100 }}
               columns={[
                 {
                   title: 'ID',
                   dataIndex: 'id',
                   key: 'id',
-                  width: 80,
-                  fixed: 'left',
+                  width: 60,
                 },
                 {
                   title: '任务名称',
                   key: 'job_name',
-                  width: 200,
-                  fixed: 'left',
+                  width: 180,
+                  ellipsis: true,
                   render: (_: any, record: MDJob) => (
                     <a onClick={() => navigate(`/workspace/liquid-electrolyte/md/${record.id}`)}>
                       {record.config?.job_name || `任务 #${record.id}`}
@@ -990,12 +989,13 @@ export default function Jobs() {
                 },
                 // 仅管理员可见：提交用户列
                 ...(user?.role === UserRole.ADMIN ? [{
-                  title: '提交用户',
+                  title: '用户',
                   key: 'username',
-                  width: 150,
+                  width: 100,
+                  ellipsis: true,
                   render: (_: any, record: MDJob) => (
                     <Tooltip title={record.user_email || '未知邮箱'}>
-                      <Text>{record.username || '未知用户'}</Text>
+                      <Text>{record.username || '未知'}</Text>
                     </Tooltip>
                   ),
                 }] : []),
@@ -1003,63 +1003,52 @@ export default function Jobs() {
                   title: '状态',
                   dataIndex: 'status',
                   key: 'status',
-                  width: 120,
+                  width: 90,
                   render: (status: JobStatus) => {
-                    const statusConfig: Record<JobStatus, { color: string; text: string; icon: any }> = {
-                      [JobStatus.CREATED]: { color: 'default', text: '待配置', icon: <ClockCircleOutlined /> },
-                      [JobStatus.QUEUED]: { color: 'processing', text: '排队中', icon: <ClockCircleOutlined /> },
-                      [JobStatus.RUNNING]: { color: 'processing', text: '运行中', icon: <RocketOutlined /> },
-                      [JobStatus.POSTPROCESSING]: { color: 'processing', text: '后处理', icon: <RocketOutlined /> },
-                      [JobStatus.COMPLETED]: { color: 'success', text: '已完成', icon: <CheckCircleOutlined /> },
-                      [JobStatus.FAILED]: { color: 'error', text: '失败', icon: <CloseCircleOutlined /> },
-                      [JobStatus.CANCELLED]: { color: 'default', text: '已取消', icon: <CloseCircleOutlined /> },
+                    const statusConfig: Record<JobStatus, { color: string; text: string }> = {
+                      [JobStatus.CREATED]: { color: 'default', text: '待配置' },
+                      [JobStatus.QUEUED]: { color: 'processing', text: '排队中' },
+                      [JobStatus.RUNNING]: { color: 'processing', text: '运行中' },
+                      [JobStatus.POSTPROCESSING]: { color: 'processing', text: '后处理' },
+                      [JobStatus.COMPLETED]: { color: 'success', text: '已完成' },
+                      [JobStatus.FAILED]: { color: 'error', text: '失败' },
+                      [JobStatus.CANCELLED]: { color: 'default', text: '已取消' },
                     };
                     const config = statusConfig[status] || statusConfig[JobStatus.CREATED];
-                    return (
-                      <Tag color={config.color} icon={config.icon}>
-                        {config.text}
-                      </Tag>
-                    );
+                    return <Tag color={config.color}>{config.text}</Tag>;
                   },
                 },
                 {
                   title: '配方',
                   dataIndex: 'system_id',
                   key: 'system_id',
-                  width: 200,
+                  width: 150,
+                  ellipsis: true,
                   render: (systemId: number) => {
                     const electrolyte = electrolytes.find(e => e.id === systemId);
                     return electrolyte?.name || '-';
                   },
                 },
                 {
-                  title: 'Slurm Job ID',
+                  title: 'Slurm',
                   dataIndex: 'slurm_job_id',
                   key: 'slurm_job_id',
-                  width: 120,
+                  width: 80,
                   render: (id: number | null) => id || '-',
                 },
                 {
                   title: '分区',
                   key: 'slurm_partition',
-                  width: 100,
+                  width: 70,
                   render: (_: any, record: MDJob) => {
                     const partition = record.config?.slurm_partition;
                     return partition ? <Tag color="blue">{partition}</Tag> : '-';
                   },
                 },
                 {
-                  title: '创建时间',
-                  dataIndex: 'created_at',
-                  key: 'created_at',
-                  width: 180,
-                  render: (time: string) => new Date(time).toLocaleString('zh-CN'),
-                },
-                {
                   title: '操作',
                   key: 'actions',
-                  width: 280,
-                  fixed: 'right',
+                  width: 200,
                   render: (_: any, record: MDJob) => {
                     const canCancel = record.status === JobStatus.QUEUED || record.status === JobStatus.RUNNING;
                     const canResubmit = record.status === JobStatus.FAILED || record.status === JobStatus.CANCELLED || record.status === JobStatus.COMPLETED;
@@ -1067,61 +1056,28 @@ export default function Jobs() {
                     const canConfigure = record.status === JobStatus.CREATED || record.status === JobStatus.CANCELLED;
 
                     return (
-                      <Space size="small" wrap>
-                        {/* 详情 */}
-                        <Button
-                          type="link"
-                          size="small"
-                          onClick={() => navigate(`/workspace/liquid-electrolyte/md/${record.id}`)}
-                        >
+                      <Space size={4}>
+                        <Button type="link" size="small" style={{ padding: '0 4px' }} onClick={() => navigate(`/workspace/liquid-electrolyte/md/${record.id}`)}>
                           详情
                         </Button>
-                        {/* 配置参数 - CREATED 或 CANCELLED 状态 */}
                         {canConfigure && (
-                          <Button
-                            type="link"
-                            size="small"
-                            onClick={() => navigate(`/workspace/liquid-electrolyte/md/create/${record.system_id}`, { state: { jobId: record.id } })}
-                          >
+                          <Button type="link" size="small" style={{ padding: '0 4px' }} onClick={() => navigate(`/workspace/liquid-electrolyte/md/create/${record.system_id}`, { state: { jobId: record.id } })}>
                             配置
                           </Button>
                         )}
-                        {/* 取消 - QUEUED 或 RUNNING 状态 */}
                         {canCancel && (
-                          <Popconfirm
-                            title="确定要取消这个任务吗？"
-                            description="取消后任务将停止运行。"
-                            onConfirm={() => handleCancel(record.id)}
-                            okText="确定"
-                            cancelText="取消"
-                          >
-                            <Button type="link" size="small" danger>
-                              取消
-                            </Button>
+                          <Popconfirm title="确定取消?" onConfirm={() => handleCancel(record.id)} okText="确定" cancelText="取消">
+                            <Button type="link" size="small" style={{ padding: '0 4px' }} danger>取消</Button>
                           </Popconfirm>
                         )}
-                        {/* 重新提交 - FAILED、CANCELLED 或 COMPLETED 状态 */}
                         {canResubmit && (
-                          <Button
-                            type="link"
-                            size="small"
-                            onClick={() => handleOpenResubmitModal(record)}
-                          >
-                            重新提交
+                          <Button type="link" size="small" style={{ padding: '0 4px' }} onClick={() => handleOpenResubmitModal(record)}>
+                            重提
                           </Button>
                         )}
-                        {/* 删除 - 非运行中和非排队中 */}
                         {canDelete && (
-                          <Popconfirm
-                            title="确定要删除这个任务吗？"
-                            description="删除后不可恢复。"
-                            onConfirm={() => handleDelete(record.id)}
-                            okText="确定"
-                            cancelText="取消"
-                          >
-                            <Button type="link" size="small" danger>
-                              删除
-                            </Button>
+                          <Popconfirm title="确定删除?" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
+                            <Button type="link" size="small" style={{ padding: '0 4px' }} danger>删除</Button>
                           </Popconfirm>
                         )}
                       </Space>
