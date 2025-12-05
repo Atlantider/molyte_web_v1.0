@@ -1199,7 +1199,7 @@ export default function Electrolytes() {
                 showTotal: (total) => `共 ${total} 个配方`,
                 pageSizeOptions: ['10', '20', '50', '100'],
               }}
-              scroll={{ x: 1400 }}
+              scroll={{ x: 1700 }}
               columns={[
                 {
                   title: 'ID',
@@ -1304,43 +1304,30 @@ export default function Electrolytes() {
                   title: '创建时间',
                   dataIndex: 'created_at',
                   key: 'created_at',
-                  width: 180,
-                  render: (time: string) => new Date(time).toLocaleString('zh-CN'),
+                  width: 160,
+                  render: (time: string) => {
+                    const d = new Date(time);
+                    return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+                  },
                 },
                 {
                   title: '操作',
                   key: 'actions',
-                  width: 320,
+                  width: 260,
                   fixed: 'right',
                   render: (_: any, record: ElectrolyteSystem) => (
-                    <Space size="small">
-                      <Button
-                        type="link"
-                        size="small"
-                        onClick={() => handleViewDetail(record)}
-                      >
+                    <Space size={0} split={<span style={{ color: '#d9d9d9', margin: '0 2px' }}>|</span>}>
+                      <Button type="link" size="small" style={{ padding: '0 4px' }} onClick={() => handleViewDetail(record)}>
                         详情
                       </Button>
-                      <Button
-                        type="link"
-                        size="small"
-                        onClick={() => handleOpenModal(record, false)}
-                      >
+                      <Button type="link" size="small" style={{ padding: '0 4px' }} onClick={() => handleOpenModal(record, false)}>
                         编辑
                       </Button>
-                      <Button
-                        type="link"
-                        size="small"
-                        onClick={() => handleOpenModal(record, true)}
-                      >
+                      <Button type="link" size="small" style={{ padding: '0 4px' }} onClick={() => handleOpenModal(record, true)}>
                         复制
                       </Button>
-                      <Button
-                        type="link"
-                        size="small"
-                        onClick={() => handleCreateJob(record)}
-                      >
-                        创建任务
+                      <Button type="link" size="small" style={{ padding: '0 4px' }} onClick={() => handleCreateJob(record)}>
+                        创建
                       </Button>
                       <Popconfirm
                         title="确定要删除这个配方吗？"
@@ -1349,11 +1336,7 @@ export default function Electrolytes() {
                         okText="确定"
                         cancelText="取消"
                       >
-                        <Button
-                          type="link"
-                          size="small"
-                          danger
-                        >
+                        <Button type="link" size="small" style={{ padding: '0 4px' }} danger>
                           删除
                         </Button>
                       </Popconfirm>
