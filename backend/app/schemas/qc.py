@@ -248,7 +248,12 @@ class QCJobInDB(QCJobBase):
     log_file: Optional[str] = None
     error_message: Optional[str] = None
     config: Dict[str, Any] = {}
-    solvent_config: Optional[SolventConfig] = None  # 溶剂配置
+
+    # 溶剂环境（数据库字段）
+    solvent_model: Optional[str] = None  # 溶剂模型（数据库字段）
+    solvent_name: Optional[str] = None  # 溶剂名称（数据库字段）
+    solvent_config: Optional[SolventConfig] = None  # 溶剂配置（构建的对象）
+
     accuracy_level: Optional[QCAccuracyLevel] = None  # 精度等级
     slurm_partition: Optional[str] = None  # Slurm队列
     slurm_cpus: Optional[int] = None  # CPU核心数
