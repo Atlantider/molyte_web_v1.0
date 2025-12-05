@@ -37,14 +37,29 @@ app.add_middleware(
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle validation errors with detailed logging"""
     logger.error(f"Validation error for {request.method} {request.url}")
-    logger.error(f"Request body: {await request.body()}")
+    try:
+        body = await request.body()
+        logger.error(f"Request body: {body}")
+    except Exception:
+        pass
     logger.error(f"Validation errors: {exc.errors()}")
+
+    # 安全地处理 body，避免 FormData 序列化问题
+    body_content = None
+    if exc.body is not None:
+        try:
+            if hasattr(exc.body, '__dict__'):
+                body_content = str(exc.body)
+            else:
+                body_content = exc.body
+        except Exception:
+            body_content = None
 
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "detail": exc.errors(),
-            "body": exc.body
+            "body": body_content
         }
     )
 
