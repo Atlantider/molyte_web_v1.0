@@ -107,32 +107,150 @@ def _find_existing_qc_job(
     return query.order_by(desc(QCJob.finished_at)).first()
 
 
-def _get_ligand_smiles_from_composition(composition: Dict[str, int]) -> List[Dict[str, Any]]:
-    """从 composition 获取配体 SMILES 列表"""
-    # 常见溶剂和阴离子的 SMILES 映射
-    SMILES_MAP = {
-        "EC": "C1COC(=O)O1",
-        "DMC": "COC(=O)OC",
-        "EMC": "CCOC(=O)OC",
-        "DEC": "CCOC(=O)OCC",
-        "PC": "CC1COC(=O)O1",
-        "FEC": "FC1COC(=O)O1",
-        "VC": "C=C1COC(=O)O1",
-        "PF6": "F[P-](F)(F)(F)(F)F",
-        "FSI": "FS(=O)(=O)[N-]S(=O)(=O)F",
-        "TFSI": "FC(F)(F)S(=O)(=O)[N-]S(=O)(=O)C(F)(F)F",
-        "BF4": "F[B-](F)(F)F",
-    }
-    
+# 常见分子的 SMILES 和电荷信息（用作后备）
+MOLECULE_INFO_MAP = {
+    # 阳离子
+    "Li": {"smiles": "[Li+]", "charge": 1},
+    "Na": {"smiles": "[Na+]", "charge": 1},
+    "K": {"smiles": "[K+]", "charge": 1},
+    "Mg": {"smiles": "[Mg+2]", "charge": 2},
+    "Ca": {"smiles": "[Ca+2]", "charge": 2},
+    "Zn": {"smiles": "[Zn+2]", "charge": 2},
+    # 阴离子
+    "PF6": {"smiles": "F[P-](F)(F)(F)(F)F", "charge": -1},
+    "BF4": {"smiles": "F[B-](F)(F)F", "charge": -1},
+    "TFSI": {"smiles": "FC(F)(F)S(=O)(=O)[N-]S(=O)(=O)C(F)(F)F", "charge": -1},
+    "FSI": {"smiles": "FS(=O)(=O)[N-]S(=O)(=O)F", "charge": -1},
+    "DFOB": {"smiles": "FB1OC(=O)C(=O)O[B-]1F", "charge": -1},
+    "ClO4": {"smiles": "[O-]Cl(=O)(=O)=O", "charge": -1},
+    "NO3": {"smiles": "[O-][N+](=O)[O-]", "charge": -1},
+    "OTf": {"smiles": "[O-]S(=O)(=O)C(F)(F)F", "charge": -1},
+    "F": {"smiles": "[F-]", "charge": -1},
+    "Cl": {"smiles": "[Cl-]", "charge": -1},
+    # 碳酸酯溶剂
+    "EC": {"smiles": "C1COC(=O)O1", "charge": 0},
+    "PC": {"smiles": "CC1COC(=O)O1", "charge": 0},
+    "DMC": {"smiles": "COC(=O)OC", "charge": 0},
+    "DEC": {"smiles": "CCOC(=O)OCC", "charge": 0},
+    "EMC": {"smiles": "CCOC(=O)OC", "charge": 0},
+    "FEC": {"smiles": "FC1COC(=O)O1", "charge": 0},
+    "VC": {"smiles": "C=C1COC(=O)O1", "charge": 0},
+    # 醚类溶剂
+    "DME": {"smiles": "COCCOC", "charge": 0},
+    "DOL": {"smiles": "C1COCO1", "charge": 0},
+    "TEGDME": {"smiles": "COCCOCCOCCOCCOC", "charge": 0},
+    "DEGDME": {"smiles": "COCCOCCOC", "charge": 0},
+    # 其他溶剂
+    "MPN": {"smiles": "CCCCC#N", "charge": 0},  # 3-Methoxypropionitrile
+    "AN": {"smiles": "CC#N", "charge": 0},      # Acetonitrile
+    "THF": {"smiles": "C1CCOC1", "charge": 0},
+    "DMSO": {"smiles": "CS(=O)C", "charge": 0},
+    "TTE": {"smiles": "FC(F)(F)C(F)(F)OCC(F)(F)F", "charge": 0},  # 1,1,2,2-tetrafluoroethyl-2,2,3,3-tetrafluoropropyl ether
+}
+
+
+def _get_molecule_info_from_md_job(db: Session, md_job: MDJob) -> Dict[str, Dict[str, Any]]:
+    """
+    从 MD 任务获取分子信息（SMILES 和电荷）
+
+    优先级：
+    1. ResultSummary.molecule_structures（来自 MD 模拟结果）
+    2. ElectrolyteSystem 的阴离子和溶剂配置
+    3. 后备映射表
+    """
+    from app.models.result import ResultSummary
+    from app.models.electrolyte import ElectrolyteSystem
+
+    mol_info: Dict[str, Dict[str, Any]] = {}
+
+    # 1. 尝试从 ResultSummary 获取
+    result_summary = db.query(ResultSummary).filter(
+        ResultSummary.md_job_id == md_job.id
+    ).first()
+
+    if result_summary and result_summary.molecule_structures:
+        for mol in result_summary.molecule_structures:
+            name = mol.get('name')
+            if name:
+                smiles = mol.get('smiles')
+                # total_charge 是浮点数，需要四舍五入
+                charge = round(mol.get('total_charge', 0)) if mol.get('total_charge') is not None else None
+                if smiles:
+                    mol_info[name] = {"smiles": smiles, "charge": charge}
+                    logger.debug(f"Got molecule info from ResultSummary: {name} -> smiles={smiles}, charge={charge}")
+
+    # 2. 尝试从 ElectrolyteSystem 获取（补充 ResultSummary 中缺失的）
+    if md_job.system_id:
+        electrolyte = db.query(ElectrolyteSystem).filter(
+            ElectrolyteSystem.id == md_job.system_id
+        ).first()
+
+        if electrolyte:
+            # 从阴离子配置获取
+            for anion in (electrolyte.anions or []):
+                name = anion.get('name')
+                if name and name not in mol_info:
+                    smiles = anion.get('smiles')
+                    charge = anion.get('charge', -1)
+                    if smiles:
+                        mol_info[name] = {"smiles": smiles, "charge": charge}
+                        logger.debug(f"Got anion info from ElectrolyteSystem: {name} -> smiles={smiles}, charge={charge}")
+
+            # 从溶剂配置获取
+            for solvent in (electrolyte.solvents or []):
+                name = solvent.get('name')
+                if name and name not in mol_info:
+                    smiles = solvent.get('smiles')
+                    charge = solvent.get('charge', 0)
+                    if smiles:
+                        mol_info[name] = {"smiles": smiles, "charge": charge}
+                        logger.debug(f"Got solvent info from ElectrolyteSystem: {name} -> smiles={smiles}, charge={charge}")
+
+    return mol_info
+
+
+def _get_ligand_smiles_from_composition(
+    composition: Dict[str, int],
+    mol_info_from_db: Optional[Dict[str, Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
+    """
+    从 composition 获取配体 SMILES 列表
+
+    Args:
+        composition: 配位组成，如 {"EC": 2, "PF6": 1}
+        mol_info_from_db: 从数据库获取的分子信息（优先使用）
+    """
+    mol_info_from_db = mol_info_from_db or {}
+
     ligands = []
     for mol_name, count in composition.items():
-        if count > 0 and mol_name != "Li":
-            smiles = SMILES_MAP.get(mol_name, mol_name)
+        if count > 0 and mol_name not in ["Li", "Na", "K", "Mg", "Ca", "Zn"]:  # 排除阳离子
+            # 优先使用数据库中的信息
+            if mol_name in mol_info_from_db:
+                info = mol_info_from_db[mol_name]
+                smiles = info.get("smiles", mol_name)
+                charge = info.get("charge")
+                # 如果 charge 是 None，尝试从后备映射获取
+                if charge is None and mol_name in MOLECULE_INFO_MAP:
+                    charge = MOLECULE_INFO_MAP[mol_name]["charge"]
+                elif charge is None:
+                    charge = 0  # 默认中性
+            # 后备：使用映射表
+            elif mol_name in MOLECULE_INFO_MAP:
+                info = MOLECULE_INFO_MAP[mol_name]
+                smiles = info["smiles"]
+                charge = info["charge"]
+            else:
+                # 未知分子，使用名称作为占位符
+                smiles = mol_name
+                charge = 0
+                logger.warning(f"Unknown molecule {mol_name}, using name as SMILES placeholder")
+
             ligands.append({
                 "name": mol_name,
                 "smiles": smiles,
                 "count": count,
-                "charge": -1 if mol_name in ["PF6", "FSI", "TFSI", "BF4"] else 0
+                "charge": charge
             })
     return ligands
 
@@ -141,27 +259,30 @@ def _plan_qc_tasks_for_calc_type(
     db: Session,
     calc_type: ClusterCalcType,
     structures: List[SolvationStructure],
-    qc_config: Dict[str, Any]
+    qc_config: Dict[str, Any],
+    mol_info_from_db: Optional[Dict[str, Dict[str, Any]]] = None
 ) -> CalcTypeRequirements:
     """为某个计算类型规划 QC 任务"""
     functional = qc_config.get("functional", "B3LYP")
     basis_set = qc_config.get("basis_set", "6-31G*")
     charge_ion = qc_config.get("charge_ion", 1)
-    
+
     planned_tasks: List[PlannedQCTask] = []
     new_count = 0
     reused_count = 0
-    
+
     # 收集所有需要的配体类型
     all_ligand_types = set()
     for s in structures:
         comp = s.composition or {}
         for mol_name, count in comp.items():
-            if count > 0 and mol_name != "Li":
+            if count > 0 and mol_name not in ["Li", "Na", "K", "Mg", "Ca", "Zn"]:
                 all_ligand_types.add(mol_name)
-    
+
+    # 使用从数据库获取的分子信息
     ligand_info = _get_ligand_smiles_from_composition(
-        {name: 1 for name in all_ligand_types}
+        {name: 1 for name in all_ligand_types},
+        mol_info_from_db
     )
     
     # 根据计算类型规划任务
@@ -392,6 +513,10 @@ def plan_cluster_analysis(
     if not structures:
         raise HTTPException(status_code=400, detail="未找到符合条件的溶剂化结构")
 
+    # 从 MD 任务获取分子信息
+    mol_info_from_db = _get_molecule_info_from_md_job(db, md_job)
+    logger.info(f"Got molecule info from MD job {md_job.id}: {list(mol_info_from_db.keys())}")
+
     # QC 配置
     qc_config = request.qc_config.model_dump() if request.qc_config else {}
 
@@ -402,7 +527,7 @@ def plan_cluster_analysis(
     warnings = []
 
     for calc_type in request.calc_types:
-        req = _plan_qc_tasks_for_calc_type(db, calc_type, structures, qc_config)
+        req = _plan_qc_tasks_for_calc_type(db, calc_type, structures, qc_config, mol_info_from_db)
         calc_requirements.append(req)
         total_new += req.new_tasks_count
         total_reused += req.reused_tasks_count
@@ -467,6 +592,9 @@ def submit_cluster_analysis(
     if not structures:
         raise HTTPException(status_code=400, detail="未找到符合条件的溶剂化结构")
 
+    # 从 MD 任务获取分子信息
+    mol_info_from_db = _get_molecule_info_from_md_job(db, md_job)
+
     # QC 配置
     qc_config = request.qc_config.model_dump() if request.qc_config else {}
 
@@ -475,7 +603,7 @@ def submit_cluster_analysis(
     reused_qc_jobs = []
 
     for calc_type in request.calc_types:
-        req = _plan_qc_tasks_for_calc_type(db, calc_type, structures, qc_config)
+        req = _plan_qc_tasks_for_calc_type(db, calc_type, structures, qc_config, mol_info_from_db)
         for task in req.required_qc_tasks:
             task_dict = task.model_dump()
             task_dict["calc_type"] = calc_type.value
@@ -585,12 +713,16 @@ def add_calc_types_to_job(
         SolvationStructure.id.in_(structure_ids)
     ).all()
 
+    # 获取 MD 任务和分子信息
+    md_job = db.query(MDJob).filter(MDJob.id == job.md_job_id).first()
+    mol_info_from_db = _get_molecule_info_from_md_job(db, md_job) if md_job else None
+
     # 规划新的 QC 任务
     new_requirements = []
     for calc_type in request.additional_calc_types:
         if calc_type.value in job.calc_types:
             continue  # 跳过已有的计算类型
-        req = _plan_qc_tasks_for_calc_type(db, calc_type, structures, job.qc_config)
+        req = _plan_qc_tasks_for_calc_type(db, calc_type, structures, job.qc_config, mol_info_from_db)
         new_requirements.append(req)
 
     # 检查与已有 QC 任务的复用
