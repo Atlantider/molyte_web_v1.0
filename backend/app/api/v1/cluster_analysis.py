@@ -320,12 +320,15 @@ def _plan_qc_tasks_for_calc_type(
     )
     
     # 根据计算类型规划任务
-    if calc_type in [ClusterCalcType.BINDING_TOTAL, ClusterCalcType.DESOLVATION_STEPWISE, 
+    if calc_type in [ClusterCalcType.BINDING_TOTAL, ClusterCalcType.DESOLVATION_STEPWISE,
                      ClusterCalcType.DESOLVATION_FULL]:
         # 这些计算需要 cluster 和 ligand 能量
-        
+
         # 1. Cluster 任务 (每个结构一个)
+        first_structure_id = None  # 记录第一个结构 ID，用于配体提取
         for s in structures:
+            if first_structure_id is None:
+                first_structure_id = s.id
             # Cluster 任务通常没有预先的 SMILES，需要从 xyz 生成
             task = PlannedQCTask(
                 task_type="cluster",
@@ -337,38 +340,25 @@ def _plan_qc_tasks_for_calc_type(
             )
             planned_tasks.append(task)
             new_count += 1
-        
-        # 2. Ligand 任务 (每种配体一个，全局可复用)
+
+        # 2. Ligand 任务 (每种配体一个，从 cluster 中提取几何结构)
+        # 注意：配体几何结构从 cluster 中提取，不使用 RDKit 生成
+        # 这样可以和 BINDING_PAIRWISE 等共享相同的配体任务
         for lig in ligand_info:
-            existing = _find_existing_qc_job(
-                db, lig["smiles"], lig["charge"], 1, functional, basis_set,
-                solvent_model, solvent_name, "ligand"
-            )
             # task_type 使用 ligand_{name} 格式，以便结果计算时能识别配体
             ligand_task_type = f"ligand_{lig['name']}"
-            if existing:
-                task = PlannedQCTask(
-                    task_type=ligand_task_type,
-                    description=f"配体 {lig['name']}",
-                    smiles=lig["smiles"],
-                    charge=lig["charge"],
-                    multiplicity=1,
-                    status="reused",
-                    existing_qc_job_id=existing.id,
-                    existing_energy=existing.results[0].energy_au if existing.results else None
-                )
-                reused_count += 1
-            else:
-                task = PlannedQCTask(
-                    task_type=ligand_task_type,
-                    description=f"配体 {lig['name']}",
-                    smiles=lig["smiles"],
-                    charge=lig["charge"],
-                    multiplicity=1,
-                    status="new"
-                )
-                new_count += 1
+            # 配体从 cluster 提取，需要新计算（几何结构依赖源 cluster）
+            task = PlannedQCTask(
+                task_type=ligand_task_type,
+                description=f"配体 {lig['name']}（从 cluster 提取）",
+                smiles=lig["smiles"],
+                charge=lig["charge"],
+                multiplicity=1,
+                status="new",
+                structure_id=first_structure_id  # 关联到源 cluster
+            )
             planned_tasks.append(task)
+            new_count += 1
     
     if calc_type == ClusterCalcType.BINDING_TOTAL:
         # Binding 需要 ion 能量（全局可复用）
@@ -801,11 +791,15 @@ def plan_cluster_analysis(
         reused_count = 0
 
         for task in req.required_qc_tasks:
-            # 生成唯一键：基础任务类型 + smiles/structure_id + charge
-            # 注意：ligand_EC 和 ligand_EC 应该匹配，但 cluster 需要用 structure_id 区分
-            if task.structure_id:
+            # 生成唯一键用于跨计算类型复用检测
+            # 策略：
+            # - cluster/intermediate 类型：用 structure_id 区分（不同 cluster 不复用）
+            # - ligand/dimer/ion 等类型：用 task_type + smiles + charge 匹配（可跨类型复用）
+            if task.task_type in ["cluster", "intermediate"]:
+                # 这些任务依赖具体的 cluster 结构，用 structure_id 区分
                 task_key = (task.task_type, None, task.structure_id, task.charge)
             else:
+                # ligand_XX, dimer_XX, ion 等可以跨类型复用
                 task_key = (task.task_type, task.smiles, None, task.charge)
 
             if task.status == "reused":
