@@ -28,6 +28,7 @@ import {
   Statistic,
   Table,
   Switch,
+  Popconfirm,
   theme,
 } from 'antd';
 import {
@@ -1057,38 +1058,75 @@ export default function Jobs() {
                 {
                   title: '操作',
                   key: 'actions',
-                  width: 200,
+                  width: 280,
                   fixed: 'right',
-                  render: (_: any, record: MDJob) => (
-                    <Space size="small">
-                      <Button
-                        type="link"
-                        size="small"
-                        onClick={() => navigate(`/workspace/liquid-electrolyte/md/${record.id}`)}
-                      >
-                        详情
-                      </Button>
-                      {(record.status === JobStatus.QUEUED || record.status === JobStatus.RUNNING) && (
+                  render: (_: any, record: MDJob) => {
+                    const canCancel = record.status === JobStatus.QUEUED || record.status === JobStatus.RUNNING;
+                    const canResubmit = record.status === JobStatus.FAILED || record.status === JobStatus.CANCELLED || record.status === JobStatus.COMPLETED;
+                    const canDelete = record.status !== JobStatus.QUEUED && record.status !== JobStatus.RUNNING;
+                    const canConfigure = record.status === JobStatus.CREATED || record.status === JobStatus.CANCELLED;
+
+                    return (
+                      <Space size="small" wrap>
+                        {/* 详情 */}
                         <Button
                           type="link"
                           size="small"
-                          danger
-                          onClick={() => handleCancel(record.id)}
+                          onClick={() => navigate(`/workspace/liquid-electrolyte/md/${record.id}`)}
                         >
-                          取消
+                          详情
                         </Button>
-                      )}
-                      {(record.status === JobStatus.FAILED || record.status === JobStatus.CANCELLED) && (
-                        <Button
-                          type="link"
-                          size="small"
-                          onClick={() => handleOpenResubmitModal(record)}
-                        >
-                          重新提交
-                        </Button>
-                      )}
-                    </Space>
-                  ),
+                        {/* 配置参数 - CREATED 或 CANCELLED 状态 */}
+                        {canConfigure && (
+                          <Button
+                            type="link"
+                            size="small"
+                            onClick={() => navigate(`/workspace/liquid-electrolyte/md/create/${record.system_id}`, { state: { jobId: record.id } })}
+                          >
+                            配置
+                          </Button>
+                        )}
+                        {/* 取消 - QUEUED 或 RUNNING 状态 */}
+                        {canCancel && (
+                          <Popconfirm
+                            title="确定要取消这个任务吗？"
+                            description="取消后任务将停止运行。"
+                            onConfirm={() => handleCancel(record.id)}
+                            okText="确定"
+                            cancelText="取消"
+                          >
+                            <Button type="link" size="small" danger>
+                              取消
+                            </Button>
+                          </Popconfirm>
+                        )}
+                        {/* 重新提交 - FAILED、CANCELLED 或 COMPLETED 状态 */}
+                        {canResubmit && (
+                          <Button
+                            type="link"
+                            size="small"
+                            onClick={() => handleOpenResubmitModal(record)}
+                          >
+                            重新提交
+                          </Button>
+                        )}
+                        {/* 删除 - 非运行中和非排队中 */}
+                        {canDelete && (
+                          <Popconfirm
+                            title="确定要删除这个任务吗？"
+                            description="删除后不可恢复。"
+                            onConfirm={() => handleDelete(record.id)}
+                            okText="确定"
+                            cancelText="取消"
+                          >
+                            <Button type="link" size="small" danger>
+                              删除
+                            </Button>
+                          </Popconfirm>
+                        )}
+                      </Space>
+                    );
+                  },
                 },
               ]}
             />
