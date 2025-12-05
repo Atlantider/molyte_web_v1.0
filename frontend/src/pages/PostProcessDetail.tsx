@@ -40,6 +40,10 @@ import {
   CloseCircleOutlined,
   SendOutlined,
   InfoCircleOutlined,
+  BulbOutlined,
+  AppstoreOutlined,
+  UnorderedListOutlined,
+  CalculatorOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -53,7 +57,7 @@ import {
   type ClusterCalcType,
   type ClusterAnalysisPlanResponse,
 } from '../api/clusterAnalysis';
-import { getMDJobs, getMDJob, getSolvationStructures, type SolvationStructure } from '../api/jobs';
+import { getMDJobs, getMDJob, getSolvationStructures, autoSelectSolvationStructures, type SolvationStructure, type AutoSelectResponse } from '../api/jobs';
 import type { MDJob } from '../types';
 import { JobStatus } from '../types';
 import ClusterAnalysisResultsPanel from '../components/ClusterAnalysisResultsPanel';
@@ -113,6 +117,13 @@ export default function PostProcessDetail() {
   const [filterCoordNums, setFilterCoordNums] = useState<number[]>([]);
   const [filterAnions, setFilterAnions] = useState<string[]>([]);
   const [filterSolvents, setFilterSolvents] = useState<string[]>([]);
+
+  // 视图模式: list = 列表视图, grouped = 分组视图
+  const [viewMode, setViewMode] = useState<'list' | 'grouped'>('list');
+  // 智能选择加载状态
+  const [autoSelectLoading, setAutoSelectLoading] = useState(false);
+  // 展开的分组
+  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
 
   // 从 composition 生成簇名称，如 Na1MP2PF6
   const generateClusterName = (centerIon: string, composition: Record<string, number>): string => {
@@ -184,6 +195,135 @@ export default function PostProcessDetail() {
     setFilterAnions([]);
     setFilterSolvents([]);
   };
+
+  // 按组成分组的结构
+  const groupedStructures = useMemo(() => {
+    const groups: Record<string, { structures: SolvationStructure[]; count: number; percentage: number }> = {};
+    const total = structures.length;
+
+    structures.forEach(s => {
+      const key = generateClusterName(s.center_ion, s.composition);
+      if (!groups[key]) {
+        groups[key] = { structures: [], count: 0, percentage: 0 };
+      }
+      groups[key].structures.push(s);
+      groups[key].count++;
+    });
+
+    // 计算百分比
+    Object.keys(groups).forEach(key => {
+      groups[key].percentage = total > 0 ? (groups[key].count / total) * 100 : 0;
+    });
+
+    return groups;
+  }, [structures]);
+
+  // 分组列表（按数量排序）
+  const sortedGroupKeys = useMemo(() => {
+    return Object.keys(groupedStructures).sort(
+      (a, b) => groupedStructures[b].count - groupedStructures[a].count
+    );
+  }, [groupedStructures]);
+
+  // 获取结构的组成键
+  const getStructureGroupKey = useCallback((s: SolvationStructure) => {
+    return generateClusterName(s.center_ion, s.composition);
+  }, []);
+
+  // 智能选择：每种组成选1个
+  const handleAutoSelect = useCallback(async () => {
+    if (!selectedMdJobId) return;
+    setAutoSelectLoading(true);
+    try {
+      const result = await autoSelectSolvationStructures(selectedMdJobId);
+      const ids = result.selected_structures.map(s => s.id);
+      setSelectedStructureIds(ids);
+      message.success(`已智能选择 ${ids.length} 个结构（覆盖 ${result.unique_compositions} 种组成）`);
+    } catch (err) {
+      console.error('Auto select failed:', err);
+      message.error('智能选择失败');
+    } finally {
+      setAutoSelectLoading(false);
+    }
+  }, [selectedMdJobId]);
+
+  // 每种组成选N个
+  const selectNPerGroup = useCallback((n: number) => {
+    const ids: number[] = [];
+    Object.values(groupedStructures).forEach(group => {
+      const selected = group.structures.slice(0, n).map(s => s.id);
+      ids.push(...selected);
+    });
+    setSelectedStructureIds(ids);
+    message.success(`已选择 ${ids.length} 个结构（每种组成最多 ${n} 个）`);
+  }, [groupedStructures]);
+
+  // 选择某个分组的全部结构
+  const selectGroup = useCallback((groupKey: string, select: boolean) => {
+    const groupStructures = groupedStructures[groupKey]?.structures || [];
+    const groupIds = groupStructures.map(s => s.id);
+    if (select) {
+      setSelectedStructureIds(prev => [...new Set([...prev, ...groupIds])]);
+    } else {
+      setSelectedStructureIds(prev => prev.filter(id => !groupIds.includes(id)));
+    }
+  }, [groupedStructures]);
+
+  // 检查分组是否全选
+  const isGroupAllSelected = useCallback((groupKey: string) => {
+    const groupStructures = groupedStructures[groupKey]?.structures || [];
+    return groupStructures.length > 0 && groupStructures.every(s => selectedStructureIds.includes(s.id));
+  }, [groupedStructures, selectedStructureIds]);
+
+  // 检查分组是否部分选中
+  const isGroupPartiallySelected = useCallback((groupKey: string) => {
+    const groupStructures = groupedStructures[groupKey]?.structures || [];
+    const selectedCount = groupStructures.filter(s => selectedStructureIds.includes(s.id)).length;
+    return selectedCount > 0 && selectedCount < groupStructures.length;
+  }, [groupedStructures, selectedStructureIds]);
+
+  // 计算预估 QC 任务数
+  const estimatedQCTasks = useMemo(() => {
+    const numStructures = selectedStructureIds.length;
+    if (numStructures === 0 || selectedCalcTypes.length === 0) {
+      return { total: 0, details: {} as Record<string, number> };
+    }
+
+    const details: Record<string, number> = {};
+    let total = 0;
+
+    // 估算每种计算类型需要的 QC 任务数
+    selectedCalcTypes.forEach(calcType => {
+      let count = 0;
+      switch (calcType) {
+        case 'BINDING_TOTAL':
+        case 'DESOLVATION_FULL':
+          // cluster + ion + 每种配体 ≈ 2-5 个任务/结构
+          count = numStructures * 3;
+          break;
+        case 'BINDING_PAIRWISE':
+          // 每个配体一个 dimer + ligand ≈ 2*配体数/结构
+          count = numStructures * 6;
+          break;
+        case 'DESOLVATION_STEPWISE':
+          // cluster + 每个配体的 (cluster-i + ligand) ≈ 配位数*2+1
+          count = numStructures * 12;
+          break;
+        case 'REDOX':
+          // gas优化 + freq + solvent = 3 * 2状态 = 6/结构
+          count = numStructures * 6;
+          break;
+        case 'REORGANIZATION':
+          // 2个几何 * 4个能量 = 8/结构
+          count = numStructures * 8;
+          break;
+      }
+      details[calcType] = count;
+      total += count;
+    });
+
+    return { total, details };
+  }, [selectedStructureIds, selectedCalcTypes]);
 
   // 加载已完成的 MD Jobs
   const loadMdJobs = useCallback(async () => {
@@ -295,11 +435,11 @@ export default function PostProcessDetail() {
     }
   };
 
-  // 结构选择表格列 - 精简设计
+  // 结构选择表格列
   const structureColumns: ColumnsType<SolvationStructure> = [
     {
       title: '',
-      width: 32,
+      width: 40,
       render: (_, record) => (
         <Checkbox
           checked={selectedStructureIds.includes(record.id)}
@@ -314,51 +454,78 @@ export default function PostProcessDetail() {
       ),
     },
     {
+      title: '#',
+      dataIndex: 'id',
+      width: 60,
+      render: (id: number) => <Text type="secondary">#{id}</Text>,
+    },
+    {
       title: '簇名称',
       key: 'cluster_name',
-      width: 160,
+      width: 150,
       render: (_, record) => (
-        <Space size={4}>
-          <Text type="secondary" style={{ fontSize: 11 }}>#{record.id}</Text>
-          <Text strong style={{ fontFamily: 'monospace', color: token.colorPrimary }}>
-            {generateClusterName(record.center_ion, record.composition)}
-          </Text>
-        </Space>
+        <Text strong style={{ fontFamily: 'monospace' }}>
+          {generateClusterName(record.center_ion, record.composition)}
+        </Text>
       ),
     },
     {
       title: '组成',
       dataIndex: 'composition',
+      width: 200,
       render: (comp: Record<string, number>) => {
         if (!comp || Object.keys(comp).length === 0) return '-';
-        // 紧凑显示：溶剂用绿色，阴离子用橙色
-        const anionList = ['PF6', 'TFSI', 'FSI', 'BF4', 'ClO4', 'DFOB', 'BOB'];
         return (
-          <span style={{ fontSize: 12 }}>
+          <Space size={4} wrap>
             {Object.entries(comp)
               .filter(([_, count]) => count > 0)
-              .map(([mol, count], idx) => {
-                const isAnion = anionList.some(a => mol.toUpperCase().includes(a));
-                return (
-                  <Tag
-                    key={mol}
-                    color={isAnion ? 'orange' : 'green'}
-                    style={{ margin: '1px 2px', padding: '0 4px', fontSize: 11 }}
-                  >
-                    {mol}×{count}
-                  </Tag>
-                );
-              })}
-          </span>
+              .map(([mol, count]) => (
+                <Tag key={mol} color="cyan" style={{ margin: 0 }}>{mol}×{count}</Tag>
+              ))}
+          </Space>
         );
       },
     },
     {
       title: 'CN',
       dataIndex: 'coordination_num',
-      width: 45,
+      width: 55,
       align: 'center' as const,
-      render: (cn: number) => <Text strong>{cn ?? '-'}</Text>,
+      render: (cn: number) => <Tag color="blue">{cn ?? '-'}</Tag>,
+    },
+    {
+      title: '帧号',
+      dataIndex: 'snapshot_frame',
+      width: 70,
+      align: 'center' as const,
+      render: (frame: number) => <Text type="secondary">{frame ?? '-'}</Text>,
+    },
+    {
+      title: '占比',
+      key: 'percentage',
+      width: 80,
+      align: 'center' as const,
+      render: (_, record) => {
+        const groupKey = getStructureGroupKey(record);
+        const group = groupedStructures[groupKey];
+        const pct = group?.percentage || 0;
+        return (
+          <Tooltip title={`该组成共 ${group?.count || 0} 个`}>
+            <Text type="secondary">{pct.toFixed(1)}%</Text>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: '组内',
+      key: 'group_count',
+      width: 60,
+      align: 'center' as const,
+      render: (_, record) => {
+        const groupKey = getStructureGroupKey(record);
+        const group = groupedStructures[groupKey];
+        return <Tag>{group?.count || 0}</Tag>;
+      },
     },
   ];
 
@@ -417,118 +584,284 @@ export default function PostProcessDetail() {
 
       {/* Step 1: 选择结构 */}
       {currentStep >= 1 && selectedMdJobId && (
-        <Card
-          size="small"
-          style={{ marginBottom: 24 }}
-          title={
-            <Row justify="space-between" align="middle" style={{ width: '100%' }}>
-              <Col>
-                <Space size="small">
-                  <Text strong>选择溶剂化结构</Text>
+        <Row gutter={16}>
+          <Col span={18}>
+            <Card
+              title={
+                <Space>
+                  <span>选择溶剂化结构</span>
                   <Tag color="blue">#{selectedMdJobId}</Tag>
                   {selectedMdJob?.config?.job_name && (
-                    <Text type="secondary" style={{ fontSize: 12 }}>{selectedMdJob.config.job_name}</Text>
+                    <Text type="secondary">{selectedMdJob.config.job_name}</Text>
                   )}
                 </Space>
-              </Col>
-              <Col>
-                <Space size="small">
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    已选 <Text strong style={{ color: token.colorPrimary }}>{selectedStructureIds.length}</Text> / {filteredStructures.length} 个
-                  </Text>
-                  <Button size="small" type="link" onClick={() => setSelectedStructureIds(filteredStructures.map(s => s.id))}>
-                    全选
-                  </Button>
-                  <Button size="small" type="link" onClick={() => setSelectedStructureIds([])}>
-                    清空
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
-          }
-        >
-          <Spin spinning={loading}>
-            {structures.length === 0 ? (
-              <Empty description="未找到溶剂化结构，请先在 MD 详情页提取结构" />
-            ) : (
-              <>
-                {/* 筛选区域 - 紧凑内联 */}
-                <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                  <Space size={4}>
-                    <Text type="secondary" style={{ fontSize: 12 }}>配位数:</Text>
-                    <Select
-                      mode="multiple"
-                      size="small"
-                      style={{ minWidth: 100 }}
-                      placeholder="全部"
-                      value={filterCoordNums}
-                      onChange={setFilterCoordNums}
-                      options={filterOptions.coordNums.map(n => ({ value: n, label: n }))}
-                      allowClear
-                      maxTagCount={1}
+              }
+              style={{ marginBottom: 24 }}
+              extra={
+                <Space.Compact>
+                  <Tooltip title="列表视图">
+                    <Button
+                      icon={<UnorderedListOutlined />}
+                      type={viewMode === 'list' ? 'primary' : 'default'}
+                      onClick={() => setViewMode('list')}
                     />
-                  </Space>
-                  <Space size={4}>
-                    <Text type="secondary" style={{ fontSize: 12 }}>阴离子:</Text>
-                    <Select
-                      mode="multiple"
-                      size="small"
-                      style={{ minWidth: 100 }}
-                      placeholder="全部"
-                      value={filterAnions}
-                      onChange={setFilterAnions}
-                      options={filterOptions.anions.map(a => ({ value: a, label: a }))}
-                      allowClear
-                      maxTagCount={1}
+                  </Tooltip>
+                  <Tooltip title="分组视图">
+                    <Button
+                      icon={<AppstoreOutlined />}
+                      type={viewMode === 'grouped' ? 'primary' : 'default'}
+                      onClick={() => setViewMode('grouped')}
                     />
-                  </Space>
-                  <Space size={4}>
-                    <Text type="secondary" style={{ fontSize: 12 }}>溶剂:</Text>
-                    <Select
-                      mode="multiple"
-                      size="small"
-                      style={{ minWidth: 100 }}
-                      placeholder="全部"
-                      value={filterSolvents}
-                      onChange={setFilterSolvents}
-                      options={filterOptions.solvents.map(s => ({ value: s, label: s }))}
-                      allowClear
-                      maxTagCount={1}
-                    />
-                  </Space>
-                  {(filterCoordNums.length > 0 || filterAnions.length > 0 || filterSolvents.length > 0) && (
-                    <Button size="small" type="link" onClick={resetFilters} style={{ padding: 0 }}>
-                      重置
-                    </Button>
-                  )}
-                </div>
+                  </Tooltip>
+                </Space.Compact>
+              }
+            >
+              <Spin spinning={loading}>
+                {structures.length === 0 ? (
+                  <Empty description="未找到溶剂化结构，请先在 MD 详情页提取结构" />
+                ) : (
+                  <>
+                    {/* 智能选择和筛选区域 */}
+                    <Card size="small" style={{ marginBottom: 16, background: token.colorBgLayout }}>
+                      <Row gutter={[16, 12]} align="middle">
+                        <Col flex="auto">
+                          <Space wrap>
+                            <Text strong>快速选择:</Text>
+                            <Button
+                              size="small"
+                              icon={<BulbOutlined />}
+                              loading={autoSelectLoading}
+                              onClick={handleAutoSelect}
+                            >
+                              每种组成1个
+                            </Button>
+                            <Button size="small" onClick={() => selectNPerGroup(3)}>
+                              每种组成3个
+                            </Button>
+                            <Button size="small" onClick={() => setSelectedStructureIds(filteredStructures.map(s => s.id))}>
+                              全选当前
+                            </Button>
+                            <Button size="small" onClick={() => setSelectedStructureIds([])}>
+                              清空
+                            </Button>
+                          </Space>
+                        </Col>
+                      </Row>
+                      <Divider style={{ margin: '12px 0' }} />
+                      <Row gutter={[16, 8]} align="middle">
+                        <Col>
+                          <Space>
+                            <Text type="secondary">配位数:</Text>
+                            <Select
+                              mode="multiple"
+                              style={{ minWidth: 100 }}
+                              placeholder="全部"
+                              value={filterCoordNums}
+                              onChange={setFilterCoordNums}
+                              options={filterOptions.coordNums.map(n => ({ value: n, label: `${n}` }))}
+                              allowClear
+                              maxTagCount={2}
+                              size="small"
+                            />
+                          </Space>
+                        </Col>
+                        <Col>
+                          <Space>
+                            <Text type="secondary">阴离子:</Text>
+                            <Select
+                              mode="multiple"
+                              style={{ minWidth: 120 }}
+                              placeholder="全部"
+                              value={filterAnions}
+                              onChange={setFilterAnions}
+                              options={filterOptions.anions.map(a => ({ value: a, label: a }))}
+                              allowClear
+                              maxTagCount={2}
+                              size="small"
+                            />
+                          </Space>
+                        </Col>
+                        <Col>
+                          <Space>
+                            <Text type="secondary">溶剂:</Text>
+                            <Select
+                              mode="multiple"
+                              style={{ minWidth: 120 }}
+                              placeholder="全部"
+                              value={filterSolvents}
+                              onChange={setFilterSolvents}
+                              options={filterOptions.solvents.map(s => ({ value: s, label: s }))}
+                              allowClear
+                              maxTagCount={2}
+                              size="small"
+                            />
+                          </Space>
+                        </Col>
+                        <Col>
+                          <Button size="small" onClick={resetFilters}>重置</Button>
+                        </Col>
+                      </Row>
+                    </Card>
 
-                <Table
-                  columns={structureColumns}
-                  dataSource={filteredStructures}
-                  rowKey="id"
-                  size="small"
-                  pagination={{
-                    size: 'small',
-                    pageSize: 15,
-                    showSizeChanger: false,
-                    showTotal: (t) => `${t} 条`,
-                    style: { marginBottom: 0 }
-                  }}
-                />
-                <div style={{ marginTop: 12, textAlign: 'right' }}>
-                  <Button
-                    type="primary"
-                    disabled={selectedStructureIds.length === 0}
-                    onClick={() => setCurrentStep(2)}
-                  >
-                    下一步：选择计算类型
-                  </Button>
-                </div>
-              </>
-            )}
-          </Spin>
-        </Card>
+                    {/* 统计信息 */}
+                    <Alert
+                      type="info"
+                      message={
+                        <Row justify="space-between" align="middle">
+                          <Col>
+                            <Space split={<Divider type="vertical" />}>
+                              <span>已选 <Text strong style={{ color: token.colorPrimary }}>{selectedStructureIds.length}</Text> 个结构</span>
+                              <span>覆盖 <Text strong>{Object.keys(groupedStructures).filter(k =>
+                                groupedStructures[k].structures.some(s => selectedStructureIds.includes(s.id))
+                              ).length}</Text> 种组成</span>
+                              <span>共 <Text strong>{sortedGroupKeys.length}</Text> 种 / {structures.length} 个</span>
+                            </Space>
+                          </Col>
+                        </Row>
+                      }
+                      style={{ marginBottom: 16 }}
+                    />
+
+                    {/* 分组视图 */}
+                    {viewMode === 'grouped' ? (
+                      <div style={{ maxHeight: 500, overflow: 'auto' }}>
+                        {sortedGroupKeys
+                          .filter(key => {
+                            // 应用筛选
+                            const group = groupedStructures[key];
+                            return group.structures.some(s => filteredStructures.includes(s));
+                          })
+                          .map(groupKey => {
+                            const group = groupedStructures[groupKey];
+                            const groupFilteredStructures = group.structures.filter(s => filteredStructures.includes(s));
+                            const isAllSelected = isGroupAllSelected(groupKey);
+                            const isPartial = isGroupPartiallySelected(groupKey);
+                            const selectedInGroup = group.structures.filter(s => selectedStructureIds.includes(s.id)).length;
+
+                            return (
+                              <Card
+                                key={groupKey}
+                                size="small"
+                                style={{ marginBottom: 8 }}
+                                title={
+                                  <Space>
+                                    <Checkbox
+                                      checked={isAllSelected}
+                                      indeterminate={isPartial}
+                                      onChange={(e) => selectGroup(groupKey, e.target.checked)}
+                                    />
+                                    <Text strong style={{ fontFamily: 'monospace' }}>{groupKey}</Text>
+                                    <Tag color="blue">{group.count} 个</Tag>
+                                    <Tag color="purple">{group.percentage.toFixed(1)}%</Tag>
+                                    {selectedInGroup > 0 && (
+                                      <Tag color="green">已选 {selectedInGroup}</Tag>
+                                    )}
+                                  </Space>
+                                }
+                                extra={
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    onClick={() => {
+                                      if (expandedGroups.includes(groupKey)) {
+                                        setExpandedGroups(expandedGroups.filter(k => k !== groupKey));
+                                      } else {
+                                        setExpandedGroups([...expandedGroups, groupKey]);
+                                      }
+                                    }}
+                                  >
+                                    {expandedGroups.includes(groupKey) ? '收起' : '展开'}
+                                  </Button>
+                                }
+                              >
+                                {expandedGroups.includes(groupKey) && (
+                                  <Table
+                                    columns={structureColumns.filter(c => c.key !== 'cluster_name' && c.key !== 'percentage' && c.key !== 'group_count')}
+                                    dataSource={groupFilteredStructures}
+                                    rowKey="id"
+                                    size="small"
+                                    pagination={false}
+                                  />
+                                )}
+                              </Card>
+                            );
+                          })}
+                      </div>
+                    ) : (
+                      /* 列表视图 */
+                      <Table
+                        columns={structureColumns}
+                        dataSource={filteredStructures}
+                        rowKey="id"
+                        size="small"
+                        pagination={{ pageSize: 15, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
+                        scroll={{ x: 800 }}
+                      />
+                    )}
+
+                    <div style={{ marginTop: 16, textAlign: 'right' }}>
+                      <Button
+                        type="primary"
+                        disabled={selectedStructureIds.length === 0}
+                        onClick={() => setCurrentStep(2)}
+                      >
+                        下一步：选择计算类型
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </Spin>
+            </Card>
+          </Col>
+
+          {/* 右侧实时预估面板 */}
+          <Col span={6}>
+            <Card
+              title={
+                <Space>
+                  <CalculatorOutlined />
+                  <span>计算预估</span>
+                </Space>
+              }
+              size="small"
+              style={{ position: 'sticky', top: 80 }}
+            >
+              <Statistic
+                title="已选结构"
+                value={selectedStructureIds.length}
+                suffix={`/ ${structures.length}`}
+                style={{ marginBottom: 16 }}
+              />
+              <Statistic
+                title="覆盖组成类型"
+                value={Object.keys(groupedStructures).filter(k =>
+                  groupedStructures[k].structures.some(s => selectedStructureIds.includes(s.id))
+                ).length}
+                suffix={`/ ${sortedGroupKeys.length}`}
+                style={{ marginBottom: 16 }}
+              />
+              <Divider style={{ margin: '12px 0' }} />
+              {selectedCalcTypes.length > 0 ? (
+                <>
+                  <Text type="secondary" style={{ fontSize: 12 }}>预估 QC 任务数：</Text>
+                  {Object.entries(estimatedQCTasks.details).map(([calcType, count]) => (
+                    <div key={calcType} style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0' }}>
+                      <Text style={{ fontSize: 12 }}>{CALC_TYPE_INFO[calcType as ClusterCalcType]?.icon} {CALC_TYPE_INFO[calcType as ClusterCalcType]?.label}</Text>
+                      <Text strong style={{ fontSize: 12 }}>~{count}</Text>
+                    </div>
+                  ))}
+                  <Divider style={{ margin: '8px 0' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Text strong>总计</Text>
+                    <Text strong style={{ color: token.colorPrimary }}>~{estimatedQCTasks.total} 个</Text>
+                  </div>
+                </>
+              ) : (
+                <Text type="secondary" style={{ fontSize: 12 }}>请在下一步选择计算类型后查看预估</Text>
+              )}
+            </Card>
+          </Col>
+        </Row>
       )}
 
       {/* Step 2: 选择计算类型 */}
