@@ -27,6 +27,7 @@ import {
   Progress,
   Tooltip,
   Divider,
+  Collapse,
   theme,
 } from 'antd';
 import {
@@ -44,6 +45,7 @@ import {
   AppstoreOutlined,
   UnorderedListOutlined,
   CalculatorOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -56,6 +58,8 @@ import {
   type AdvancedClusterJob,
   type ClusterCalcType,
   type ClusterAnalysisPlanResponse,
+  type CalcTypeRequirements,
+  type PlannedQCTask,
 } from '../api/clusterAnalysis';
 import { getMDJobs, getMDJob, getSolvationStructures, autoSelectSolvationStructures, type SolvationStructure, type AutoSelectResponse } from '../api/jobs';
 import type { MDJob } from '../types';
@@ -785,85 +789,243 @@ export default function PostProcessDetail() {
       groupedStructures[k].structures.some(s => selectedStructureIds.includes(s.id))
     ).length;
 
-    // Step 2: 确认提交
+    // Step 2: 确认提交 - 详细任务规划页面
     if (currentStep === 2) {
+      // QC 任务表格列定义
+      const taskColumns: ColumnsType<PlannedQCTask> = [
+        {
+          title: '任务类型',
+          dataIndex: 'task_type',
+          key: 'task_type',
+          width: 100,
+          render: (type: string) => {
+            const typeLabels: Record<string, string> = {
+              'molecule': '分子',
+              'cluster': '簇',
+              'dimer': '二聚体',
+              'intermediate': '中间态',
+              'radical_cation': '阳离子自由基',
+              'radical_anion': '阴离子自由基',
+            };
+            return <Tag>{typeLabels[type] || type}</Tag>;
+          },
+        },
+        {
+          title: '描述',
+          dataIndex: 'description',
+          key: 'description',
+          ellipsis: true,
+        },
+        {
+          title: 'SMILES',
+          dataIndex: 'smiles',
+          key: 'smiles',
+          width: 180,
+          ellipsis: true,
+          render: (smiles: string) => smiles ? (
+            <Tooltip title={smiles}>
+              <Text code style={{ fontSize: 11 }}>{smiles.length > 20 ? smiles.slice(0, 20) + '...' : smiles}</Text>
+            </Tooltip>
+          ) : '-',
+        },
+        {
+          title: '电荷',
+          dataIndex: 'charge',
+          key: 'charge',
+          width: 60,
+          align: 'center',
+          render: (c: number) => c > 0 ? `+${c}` : c,
+        },
+        {
+          title: '自旋多重度',
+          dataIndex: 'multiplicity',
+          key: 'multiplicity',
+          width: 90,
+          align: 'center',
+        },
+        {
+          title: '状态',
+          dataIndex: 'status',
+          key: 'status',
+          width: 100,
+          align: 'center',
+          render: (status: string, record: PlannedQCTask) => {
+            if (status === 'reused') {
+              return (
+                <Tooltip title={record.existing_energy !== undefined ? `已有能量: ${record.existing_energy.toFixed(4)} Ha` : '已有结果'}>
+                  <Tag color="success" icon={<CheckCircleOutlined />}>复用</Tag>
+                </Tooltip>
+              );
+            }
+            return <Tag color="warning" icon={<ThunderboltOutlined />}>新建</Tag>;
+          },
+        },
+        {
+          title: '能量 (Ha)',
+          dataIndex: 'existing_energy',
+          key: 'existing_energy',
+          width: 120,
+          align: 'right',
+          render: (e: number | undefined) => e !== undefined ? e.toFixed(6) : '-',
+        },
+      ];
+
+      // 构建 Collapse 项
+      const collapseItems = planResult?.calc_requirements.map((req: CalcTypeRequirements) => {
+        const info = CALC_TYPE_INFO[req.calc_type as ClusterCalcType];
+        return {
+          key: req.calc_type,
+          label: (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <span>
+                {info?.icon} <Text strong>{info?.label || req.calc_type}</Text>
+                <Text type="secondary" style={{ marginLeft: 8 }}>({req.description})</Text>
+              </span>
+              <span>
+                <Tag color="warning">新建 {req.new_tasks_count}</Tag>
+                <Tag color="success">复用 {req.reused_tasks_count}</Tag>
+              </span>
+            </div>
+          ),
+          children: (
+            <Table
+              dataSource={req.required_qc_tasks}
+              columns={taskColumns}
+              rowKey={(record, index) => `${record.task_type}-${record.smiles || record.structure_id}-${index}`}
+              size="small"
+              pagination={false}
+              scroll={{ y: 300 }}
+              rowClassName={(record) => record.status === 'reused' ? 'row-reused' : 'row-new'}
+            />
+          ),
+        };
+      }) || [];
+
       return (
-        <div style={{ padding: '24px 48px' }}>
+        <div style={{ padding: '24px 48px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
           {/* 返回按钮 */}
           <Button type="link" onClick={() => setCurrentStep(1)} style={{ marginBottom: 16, padding: 0 }}>
             ← 返回修改配置
           </Button>
 
-          <Card title="确认提交分析任务">
-            {planResult ? (
-              <>
-                <Row gutter={24} style={{ marginBottom: 24 }}>
+          {planResult ? (
+            <>
+              {/* 统计概览 */}
+              <Card title="📋 任务规划概览" style={{ marginBottom: 16 }}>
+                <Row gutter={24}>
                   <Col span={6}>
-                    <Statistic title="选中结构" value={planResult.selected_structures_count} suffix="个" />
+                    <Statistic
+                      title="选中结构"
+                      value={planResult.selected_structures_count}
+                      suffix="个"
+                      prefix={<AppstoreOutlined />}
+                    />
                   </Col>
                   <Col span={6}>
-                    <Statistic title="新建 QC 任务" value={planResult.total_new_qc_tasks} valueStyle={{ color: token.colorWarning }} />
+                    <Statistic
+                      title="新建 QC 任务"
+                      value={planResult.total_new_qc_tasks}
+                      valueStyle={{ color: token.colorWarning }}
+                      prefix={<ThunderboltOutlined />}
+                    />
                   </Col>
                   <Col span={6}>
-                    <Statistic title="复用 QC 任务" value={planResult.total_reused_qc_tasks} valueStyle={{ color: token.colorSuccess }} />
+                    <Statistic
+                      title="复用 QC 任务"
+                      value={planResult.total_reused_qc_tasks}
+                      valueStyle={{ color: token.colorSuccess }}
+                      prefix={<CheckCircleOutlined />}
+                    />
                   </Col>
                   <Col span={6}>
-                    <Statistic title="预估计算时间" value={planResult.estimated_compute_hours.toFixed(1)} suffix="核时" />
+                    <Statistic
+                      title="预估计算时间"
+                      value={planResult.estimated_compute_hours.toFixed(1)}
+                      suffix="核时"
+                      prefix={<ClockCircleOutlined />}
+                    />
                   </Col>
                 </Row>
+              </Card>
 
-                <Divider>计算类型详情</Divider>
+              {/* 计算参数配置 */}
+              <Card
+                title={<><SettingOutlined /> 计算参数配置</>}
+                size="small"
+                style={{ marginBottom: 16 }}
+              >
+                <Descriptions column={4} size="small">
+                  <Descriptions.Item label="泛函">B3LYP-D3BJ</Descriptions.Item>
+                  <Descriptions.Item label="基组">def2-SVP</Descriptions.Item>
+                  <Descriptions.Item label="溶剂模型">SMD</Descriptions.Item>
+                  <Descriptions.Item label="精度级别">标准</Descriptions.Item>
+                </Descriptions>
+                <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>
+                  提示：当前使用默认计算参数，后续版本将支持自定义配置
+                </Text>
+              </Card>
 
-                <Row gutter={[16, 16]}>
-                  {planResult.calc_requirements.map(req => (
-                    <Col key={req.calc_type} span={8}>
-                      <Card size="small" style={{ textAlign: 'center' }}>
-                        <Text strong>
-                          {CALC_TYPE_INFO[req.calc_type as ClusterCalcType]?.icon}
-                          {' '}{CALC_TYPE_INFO[req.calc_type as ClusterCalcType]?.label}
-                        </Text>
-                        <div style={{ marginTop: 8 }}>
-                          <Tag color="blue">新建 {req.new_tasks_count}</Tag>
-                          <Tag color="green">复用 {req.reused_tasks_count}</Tag>
-                        </div>
-                      </Card>
-                    </Col>
-                  ))}
-                </Row>
+              {/* 按计算类型分组的任务详情 */}
+              <Card
+                title={<><UnorderedListOutlined /> QC 任务详情 (按计算类型分组)</>}
+                style={{ marginBottom: 16 }}
+              >
+                <Collapse
+                  items={collapseItems}
+                  defaultActiveKey={planResult.calc_requirements.map(r => r.calc_type)}
+                  style={{ background: 'transparent' }}
+                />
+              </Card>
 
-                {planResult.warnings.length > 0 && (
-                  <Alert
-                    type="warning"
-                    message="注意事项"
-                    description={
-                      <ul style={{ margin: 0, paddingLeft: 20 }}>
-                        {planResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
-                      </ul>
-                    }
-                    style={{ marginTop: 24 }}
-                  />
-                )}
+              {/* 警告信息 */}
+              {planResult.warnings.length > 0 && (
+                <Alert
+                  type="warning"
+                  message="注意事项"
+                  description={
+                    <ul style={{ margin: 0, paddingLeft: 20 }}>
+                      {planResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                    </ul>
+                  }
+                  style={{ marginBottom: 16 }}
+                />
+              )}
 
-                <div style={{ marginTop: 32, textAlign: 'center' }}>
-                  <Button
-                    type="primary"
-                    size="large"
-                    icon={<SendOutlined />}
-                    loading={submitLoading}
-                    onClick={handleSubmit}
-                    style={{ paddingLeft: 48, paddingRight: 48, height: 48 }}
-                  >
-                    提交分析任务
-                  </Button>
-                </div>
-              </>
-            ) : (
+              {/* 提交按钮 */}
+              <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                <Button
+                  type="primary"
+                  size="large"
+                  icon={<SendOutlined />}
+                  loading={submitLoading}
+                  onClick={handleSubmit}
+                  style={{ paddingLeft: 48, paddingRight: 48, height: 48 }}
+                >
+                  提交分析任务
+                </Button>
+              </div>
+            </>
+          ) : (
+            <Card>
               <div style={{ textAlign: 'center', padding: 48 }}>
                 <Spin size="large" />
                 <div style={{ marginTop: 16 }}><Text type="secondary">正在生成规划...</Text></div>
               </div>
-            )}
-          </Card>
+            </Card>
+          )}
+
+          {/* 自定义样式：区分新建和复用任务行 */}
+          <style>{`
+            .row-reused {
+              background-color: ${token.colorSuccessBg} !important;
+            }
+            .row-new {
+              background-color: ${token.colorWarningBg} !important;
+            }
+            .ant-collapse-header {
+              padding: 12px 16px !important;
+            }
+          `}</style>
         </div>
       );
     }
