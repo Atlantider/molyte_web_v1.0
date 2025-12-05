@@ -295,11 +295,11 @@ export default function PostProcessDetail() {
     }
   };
 
-  // 结构选择表格列
+  // 结构选择表格列 - 精简设计
   const structureColumns: ColumnsType<SolvationStructure> = [
     {
       title: '',
-      width: 40,
+      width: 32,
       render: (_, record) => (
         <Checkbox
           checked={selectedStructureIds.includes(record.id)}
@@ -314,60 +314,51 @@ export default function PostProcessDetail() {
       ),
     },
     {
-      title: '#',
-      dataIndex: 'id',
-      width: 50,
-      render: (id: number) => <Text type="secondary">{id}</Text>,
-    },
-    {
       title: '簇名称',
       key: 'cluster_name',
-      width: 140,
+      width: 160,
       render: (_, record) => (
-        <Text strong style={{ fontFamily: 'monospace' }}>
-          {generateClusterName(record.center_ion, record.composition)}
-        </Text>
+        <Space size={4}>
+          <Text type="secondary" style={{ fontSize: 11 }}>#{record.id}</Text>
+          <Text strong style={{ fontFamily: 'monospace', color: token.colorPrimary }}>
+            {generateClusterName(record.center_ion, record.composition)}
+          </Text>
+        </Space>
       ),
     },
     {
       title: '组成',
       dataIndex: 'composition',
-      width: 220,
       render: (comp: Record<string, number>) => {
         if (!comp || Object.keys(comp).length === 0) return '-';
+        // 紧凑显示：溶剂用绿色，阴离子用橙色
+        const anionList = ['PF6', 'TFSI', 'FSI', 'BF4', 'ClO4', 'DFOB', 'BOB'];
         return (
-          <Space size={4} wrap>
+          <span style={{ fontSize: 12 }}>
             {Object.entries(comp)
               .filter(([_, count]) => count > 0)
-              .map(([mol, count]) => (
-                <Tag key={mol} color="cyan" style={{ margin: 0 }}>{mol}:{count}</Tag>
-              ))}
-          </Space>
+              .map(([mol, count], idx) => {
+                const isAnion = anionList.some(a => mol.toUpperCase().includes(a));
+                return (
+                  <Tag
+                    key={mol}
+                    color={isAnion ? 'orange' : 'green'}
+                    style={{ margin: '1px 2px', padding: '0 4px', fontSize: 11 }}
+                  >
+                    {mol}×{count}
+                  </Tag>
+                );
+              })}
+          </span>
         );
       },
     },
     {
       title: 'CN',
       dataIndex: 'coordination_num',
-      width: 50,
+      width: 45,
       align: 'center' as const,
-      render: (cn: number) => <Tag color="blue">{cn ?? '-'}</Tag>,
-    },
-    {
-      title: 'MD任务',
-      key: 'md_job',
-      width: 120,
-      render: () => (
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {selectedMdJob?.config?.job_name || `Job #${selectedMdJobId}`}
-        </Text>
-      ),
-    },
-    {
-      title: '描述',
-      dataIndex: 'description',
-      ellipsis: true,
-      render: (desc: string) => <Text type="secondary">{desc || '-'}</Text>,
+      render: (cn: number) => <Text strong>{cn ?? '-'}</Text>,
     },
   ];
 
@@ -427,25 +418,33 @@ export default function PostProcessDetail() {
       {/* Step 1: 选择结构 */}
       {currentStep >= 1 && selectedMdJobId && (
         <Card
-          title={
-            <Space>
-              <span>选择溶剂化结构</span>
-              <Tag color="blue">MD Job #{selectedMdJobId}</Tag>
-              {selectedMdJob?.config?.job_name && (
-                <Text type="secondary">({selectedMdJob.config.job_name})</Text>
-              )}
-            </Space>
-          }
+          size="small"
           style={{ marginBottom: 24 }}
-          extra={
-            <Space>
-              <Button size="small" onClick={() => setSelectedStructureIds(filteredStructures.map(s => s.id))}>
-                全选当前
-              </Button>
-              <Button size="small" onClick={() => setSelectedStructureIds([])}>
-                清空
-              </Button>
-            </Space>
+          title={
+            <Row justify="space-between" align="middle" style={{ width: '100%' }}>
+              <Col>
+                <Space size="small">
+                  <Text strong>选择溶剂化结构</Text>
+                  <Tag color="blue">#{selectedMdJobId}</Tag>
+                  {selectedMdJob?.config?.job_name && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>{selectedMdJob.config.job_name}</Text>
+                  )}
+                </Space>
+              </Col>
+              <Col>
+                <Space size="small">
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    已选 <Text strong style={{ color: token.colorPrimary }}>{selectedStructureIds.length}</Text> / {filteredStructures.length} 个
+                  </Text>
+                  <Button size="small" type="link" onClick={() => setSelectedStructureIds(filteredStructures.map(s => s.id))}>
+                    全选
+                  </Button>
+                  <Button size="small" type="link" onClick={() => setSelectedStructureIds([])}>
+                    清空
+                  </Button>
+                </Space>
+              </Col>
+            </Row>
           }
         >
           <Spin spinning={loading}>
@@ -453,81 +452,71 @@ export default function PostProcessDetail() {
               <Empty description="未找到溶剂化结构，请先在 MD 详情页提取结构" />
             ) : (
               <>
-                {/* 筛选区域 */}
-                <Card size="small" style={{ marginBottom: 16, background: token.colorBgLayout }}>
-                  <Row gutter={[16, 12]} align="middle">
-                    <Col>
-                      <Space>
-                        <Text strong>配位数:</Text>
-                        <Select
-                          mode="multiple"
-                          style={{ minWidth: 120 }}
-                          placeholder="全部"
-                          value={filterCoordNums}
-                          onChange={setFilterCoordNums}
-                          options={filterOptions.coordNums.map(n => ({ value: n, label: `CN=${n}` }))}
-                          allowClear
-                          maxTagCount={2}
-                        />
-                      </Space>
-                    </Col>
-                    <Col>
-                      <Space>
-                        <Text strong>阴离子:</Text>
-                        <Select
-                          mode="multiple"
-                          style={{ minWidth: 150 }}
-                          placeholder="全部"
-                          value={filterAnions}
-                          onChange={setFilterAnions}
-                          options={filterOptions.anions.map(a => ({ value: a, label: a }))}
-                          allowClear
-                          maxTagCount={2}
-                        />
-                      </Space>
-                    </Col>
-                    <Col>
-                      <Space>
-                        <Text strong>溶剂:</Text>
-                        <Select
-                          mode="multiple"
-                          style={{ minWidth: 150 }}
-                          placeholder="全部"
-                          value={filterSolvents}
-                          onChange={setFilterSolvents}
-                          options={filterOptions.solvents.map(s => ({ value: s, label: s }))}
-                          allowClear
-                          maxTagCount={2}
-                        />
-                      </Space>
-                    </Col>
-                    <Col>
-                      <Button size="small" onClick={resetFilters}>重置筛选</Button>
-                    </Col>
-                  </Row>
-                </Card>
-
-                {/* 统计信息 */}
-                <Alert
-                  type="info"
-                  message={
-                    <Space split={<Divider type="vertical" />}>
-                      <span>已选择 <Text strong>{selectedStructureIds.length}</Text> 个结构</span>
-                      <span>当前显示 <Text strong>{filteredStructures.length}</Text> / {structures.length} 个</span>
-                    </Space>
-                  }
-                  style={{ marginBottom: 16 }}
-                />
+                {/* 筛选区域 - 紧凑内联 */}
+                <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                  <Space size={4}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>配位数:</Text>
+                    <Select
+                      mode="multiple"
+                      size="small"
+                      style={{ minWidth: 100 }}
+                      placeholder="全部"
+                      value={filterCoordNums}
+                      onChange={setFilterCoordNums}
+                      options={filterOptions.coordNums.map(n => ({ value: n, label: n }))}
+                      allowClear
+                      maxTagCount={1}
+                    />
+                  </Space>
+                  <Space size={4}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>阴离子:</Text>
+                    <Select
+                      mode="multiple"
+                      size="small"
+                      style={{ minWidth: 100 }}
+                      placeholder="全部"
+                      value={filterAnions}
+                      onChange={setFilterAnions}
+                      options={filterOptions.anions.map(a => ({ value: a, label: a }))}
+                      allowClear
+                      maxTagCount={1}
+                    />
+                  </Space>
+                  <Space size={4}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>溶剂:</Text>
+                    <Select
+                      mode="multiple"
+                      size="small"
+                      style={{ minWidth: 100 }}
+                      placeholder="全部"
+                      value={filterSolvents}
+                      onChange={setFilterSolvents}
+                      options={filterOptions.solvents.map(s => ({ value: s, label: s }))}
+                      allowClear
+                      maxTagCount={1}
+                    />
+                  </Space>
+                  {(filterCoordNums.length > 0 || filterAnions.length > 0 || filterSolvents.length > 0) && (
+                    <Button size="small" type="link" onClick={resetFilters} style={{ padding: 0 }}>
+                      重置
+                    </Button>
+                  )}
+                </div>
 
                 <Table
                   columns={structureColumns}
                   dataSource={filteredStructures}
                   rowKey="id"
                   size="small"
-                  pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
-                  scroll={{ x: 700 }}
+                  pagination={{
+                    size: 'small',
+                    pageSize: 15,
+                    showSizeChanger: false,
+                    showTotal: (t) => `${t} 条`,
+                    style: { marginBottom: 0 }
+                  }}
                 />
-                <div style={{ marginTop: 16, textAlign: 'right' }}>
+                <div style={{ marginTop: 12, textAlign: 'right' }}>
                   <Button
                     type="primary"
                     disabled={selectedStructureIds.length === 0}
