@@ -77,7 +77,48 @@ const STATUS_CONFIG: Record<string, { color: string; icon: React.ReactNode; text
   CANCELLED: { color: 'default', icon: <CloseCircleOutlined />, text: '已取消' },
 };
 
-// 计算类型选项（合并 BINDING_TOTAL 和 DESOLVATION_FULL，它们本质相同）
+// 计算类型详细信息（补充物理意义、复用逻辑、路径图）
+const CALC_TYPE_EXTRA: Record<string, {
+  meaning: string;
+  reuse: string;
+  diagram?: string;
+}> = {
+  'BINDING_TOTAL': {
+    meaning: '评估整个溶剂化壳层的稳定性，值越负表示离子与溶剂结合越强',
+    reuse: '分子能量(Li⁺, EC, DMC等)跨结构/跨类型共享',
+  },
+  'BINDING_PAIRWISE': {
+    meaning: '比较不同配体与离子的亲和力强弱，指导电解液配方优化',
+    reuse: '二聚体能量按离子-配体对复用，单分子能量全局共享',
+  },
+  'DESOLVATION_STEPWISE': {
+    meaning: '分析离子迁移时脱溶剂化能垒，影响离子电导率',
+    reuse: '所有中间态组成的能量复用，单分子能量共享',
+    diagram: `完整簇:  Li·EC₂·DMC₂
+              ↙        ↘
+      Li·EC₁·DMC₂    Li·EC₂·DMC₁
+        ↙    ↘        ↙    ↘
+    Li·DMC₂  Li·EC₁·DMC₁  Li·EC₂
+        ↘      ↓      ↓      ↙
+         Li·DMC₁   Li·EC₁
+              ↘    ↙
+               Li⁺`,
+  },
+  'DESOLVATION_FULL': {
+    meaning: '与溶剂化能本质相同，计算完全脱溶剂化的总能量',
+    reuse: '与 BINDING_TOTAL 共享计算',
+  },
+  'REDOX': {
+    meaning: '预测电解液的电化学稳定窗口（氧化/还原电位）',
+    reuse: '每个唯一组成需独立计算氧化态和还原态',
+  },
+  'REORGANIZATION': {
+    meaning: 'Marcus理论电子转移速率常数，评估电极/电解液界面反应动力学',
+    reuse: '每个唯一组成需4个计算(2优化+2单点)',
+  },
+};
+
+// 计算类型选项
 const CALC_TYPE_OPTIONS: { value: ClusterCalcType; label: string; description: string; riskLevel: string }[] = [
   { value: 'BINDING_TOTAL', label: '溶剂化能', description: '整个溶剂化簇的形成/脱溶剂化能', riskLevel: 'low' },
   { value: 'BINDING_PAIRWISE', label: '分子配位能', description: '单分子与离子的结合能对比', riskLevel: 'low' },
@@ -123,6 +164,9 @@ export default function PostProcessDetail() {
   const [autoSelectLoading, setAutoSelectLoading] = useState(false);
   // 展开的分组
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  // 计算类型详情弹窗
+  const [calcTypeDetailVisible, setCalcTypeDetailVisible] = useState(false);
+  const [selectedCalcTypeForDetail, setSelectedCalcTypeForDetail] = useState<ClusterCalcType | null>(null);
 
   // 数字转下标
   const toSubscript = (num: number): string => {
@@ -907,7 +951,7 @@ export default function PostProcessDetail() {
             <Col span={8} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               <Card
                 size="small"
-                title={<Space><ThunderboltOutlined /> 计算类型 <Text type="secondary" style={{ fontSize: 12 }}>点击查看详情</Text></Space>}
+                title={<Space><ThunderboltOutlined /> 计算类型</Space>}
                 bodyStyle={{ padding: 12, overflow: 'auto' }}
                 style={{ height: '100%' }}
               >
@@ -942,14 +986,39 @@ export default function PostProcessDetail() {
                             </Space>
                           </Col>
                           <Col>
-                            <Tag color={opt.riskLevel === 'high' ? 'red' : opt.riskLevel === 'medium' ? 'orange' : 'green'} style={{ margin: 0 }}>
-                              {opt.riskLevel === 'high' ? '高' : opt.riskLevel === 'medium' ? '中' : '低'}
-                            </Tag>
+                            <Space size={4}>
+                              <Tag color={opt.riskLevel === 'high' ? 'red' : opt.riskLevel === 'medium' ? 'orange' : 'green'} style={{ margin: 0 }}>
+                                {opt.riskLevel === 'high' ? '高' : opt.riskLevel === 'medium' ? '中' : '低'}
+                              </Tag>
+                              <Button
+                                type="link"
+                                size="small"
+                                style={{ padding: 0, height: 'auto', fontSize: 11 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedCalcTypeForDetail(opt.value);
+                                  setCalcTypeDetailVisible(true);
+                                }}
+                              >
+                                详情
+                              </Button>
+                            </Space>
                           </Col>
                         </Row>
-                        <Text type="secondary" style={{ fontSize: 11, marginLeft: 24, display: 'block' }}>
-                          {opt.description}
-                        </Text>
+                        {/* 关键公式 - 使用 CALC_TYPE_INFO 中已有的 formula */}
+                        <div style={{
+                          marginTop: 4,
+                          marginLeft: 24,
+                          padding: '2px 6px',
+                          background: token.colorBgLayout,
+                          borderRadius: 4,
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          color: token.colorTextSecondary,
+                          display: 'inline-block',
+                        }}>
+                          {info.formula}
+                        </div>
                       </div>
                     );
                   })}
@@ -958,7 +1027,7 @@ export default function PostProcessDetail() {
                 {selectedCalcTypes.some(t => ['REDOX', 'REORGANIZATION'].includes(t)) && (
                   <Alert
                     type="warning"
-                    message="高风险计算需要更多 QC 任务"
+                    message="高风险计算，结果不确定性较大"
                     style={{ marginTop: 12 }}
                     showIcon
                   />
@@ -1159,6 +1228,126 @@ export default function PostProcessDetail() {
       </Title>
 
       {isCreateMode ? renderCreateMode() : renderViewMode()}
+
+      {/* 计算类型详情弹窗 */}
+      <Modal
+        title={selectedCalcTypeForDetail && (
+          <Space>
+            {CALC_TYPE_INFO[selectedCalcTypeForDetail]?.icon}
+            {CALC_TYPE_OPTIONS.find(o => o.value === selectedCalcTypeForDetail)?.label}
+            <Tag color={
+              CALC_TYPE_OPTIONS.find(o => o.value === selectedCalcTypeForDetail)?.riskLevel === 'high' ? 'red' :
+              CALC_TYPE_OPTIONS.find(o => o.value === selectedCalcTypeForDetail)?.riskLevel === 'medium' ? 'orange' : 'green'
+            }>
+              {CALC_TYPE_OPTIONS.find(o => o.value === selectedCalcTypeForDetail)?.riskLevel === 'high' ? '高风险' :
+               CALC_TYPE_OPTIONS.find(o => o.value === selectedCalcTypeForDetail)?.riskLevel === 'medium' ? '中风险' : '低风险'}
+            </Tag>
+          </Space>
+        )}
+        open={calcTypeDetailVisible}
+        onCancel={() => setCalcTypeDetailVisible(false)}
+        footer={null}
+        width={600}
+      >
+        {selectedCalcTypeForDetail && (() => {
+          const info = CALC_TYPE_INFO[selectedCalcTypeForDetail];
+          const extra = CALC_TYPE_EXTRA[selectedCalcTypeForDetail];
+          return (
+          <div>
+            {/* 核心公式 */}
+            <div style={{
+              background: token.colorPrimaryBg,
+              padding: 16,
+              borderRadius: 8,
+              marginBottom: 16,
+              textAlign: 'center',
+            }}>
+              <Text style={{ fontFamily: 'monospace', fontSize: 16 }}>
+                {info.formula}
+              </Text>
+            </div>
+
+            {/* 物理意义 */}
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>📖 物理意义</Text>
+              <Paragraph style={{ marginTop: 8, marginBottom: 0 }}>
+                {extra?.meaning || info.description}
+              </Paragraph>
+            </div>
+
+            {/* 复用逻辑 */}
+            <div style={{ marginBottom: 16 }}>
+              <Text strong>🔗 复用逻辑</Text>
+              <Paragraph style={{ marginTop: 8, marginBottom: 0 }}>
+                {extra?.reuse || '按唯一组成复用计算结果'}
+              </Paragraph>
+            </div>
+
+            {/* 路径示意图（仅逐级脱溶剂化） */}
+            {extra?.diagram && (
+              <div style={{ marginBottom: 16 }}>
+                <Text strong>🌳 脱溶剂化路径示意</Text>
+                <pre style={{
+                  marginTop: 8,
+                  padding: 12,
+                  background: token.colorBgLayout,
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  whiteSpace: 'pre',
+                  overflow: 'auto',
+                }}>
+                  {extra.diagram}
+                </pre>
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  中间态数 = (n₁+1) × (n₂+1) × ... - 1，例如 Li·EC₂·DMC₂ = (2+1)×(2+1)-1 = 8 种
+                </Text>
+              </div>
+            )}
+
+            {/* QC 任务估算说明 */}
+            <div style={{
+              background: token.colorInfoBg,
+              padding: 12,
+              borderRadius: 6,
+              border: `1px solid ${token.colorInfoBorder}`,
+            }}>
+              <Text strong style={{ display: 'block', marginBottom: 8 }}>💡 QC 任务估算</Text>
+              {selectedCalcTypeForDetail === 'BINDING_TOTAL' && (
+                <Text style={{ fontSize: 12 }}>
+                  任务数 = 唯一组成数 + 共享分子能量（离子 + 配体种类）<br/>
+                  例：2种组成 + Li⁺ + EC + DMC = 2 + 3 = 5 个任务
+                </Text>
+              )}
+              {selectedCalcTypeForDetail === 'BINDING_PAIRWISE' && (
+                <Text style={{ fontSize: 12 }}>
+                  任务数 = 离子-配体对数 + 共享分子能量<br/>
+                  例：Li-EC + Li-DMC + Li⁺ + EC + DMC = 2 + 3 = 5 个任务
+                </Text>
+              )}
+              {selectedCalcTypeForDetail === 'DESOLVATION_STEPWISE' && (
+                <Text style={{ fontSize: 12 }}>
+                  任务数 = Σ(每个组成的中间态数) + 共享分子能量<br/>
+                  例：Li·EC₂·DMC₂(8) + Li·EC₁·DMC₃(7) + 3 = 18 个任务
+                </Text>
+              )}
+              {selectedCalcTypeForDetail === 'REDOX' && (
+                <Text style={{ fontSize: 12 }}>
+                  任务数 = 唯一组成数 × 4（氧化态优化 + 还原态优化 + 2×溶剂化）<br/>
+                  例：2种组成 × 4 = 8 个任务
+                </Text>
+              )}
+              {selectedCalcTypeForDetail === 'REORGANIZATION' && (
+                <Text style={{ fontSize: 12 }}>
+                  任务数 = 唯一组成数 × 4（2个几何优化 + 2个交叉单点）<br/>
+                  例：2种组成 × 4 = 8 个任务
+                </Text>
+              )}
+            </div>
+          </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 }
