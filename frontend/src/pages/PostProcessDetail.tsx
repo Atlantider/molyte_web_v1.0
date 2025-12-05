@@ -310,28 +310,27 @@ export default function PostProcessDetail() {
       return { total: 0, details: {} as Record<string, number>, breakdown: '', baseMonomerCount: 0 };
     }
 
-    // 1. 统计唯一组成（簇）
-    const uniqueCompositions = new Set<string>();
+    // 1. 统计唯一组成（簇）及其配体组成
+    const uniqueCompositions = new Map<string, Record<string, number>>(); // key -> composition
     // 2. 统计唯一分子类型（所有结构共享）
     const uniqueMolecules = new Set<string>();
     // 3. 统计唯一中心离子
     const uniqueCenterIons = new Set<string>();
     // 4. 统计唯一离子-配体对（用于 pairwise）
     const uniquePairs = new Set<string>();
-    // 5. 统计平均配位数（用于 stepwise 估算）
-    let totalLigandCount = 0;
 
     selectedStructureIds.forEach(id => {
       const structure = structures.find(s => s.id === id);
       if (structure) {
         const compositionKey = generateClusterName(structure.center_ion, structure.composition);
-        uniqueCompositions.add(compositionKey);
+        if (!uniqueCompositions.has(compositionKey)) {
+          uniqueCompositions.set(compositionKey, structure.composition);
+        }
         uniqueCenterIons.add(structure.center_ion);
         Object.entries(structure.composition).forEach(([mol, count]) => {
           if (count > 0) {
             uniqueMolecules.add(mol);
             uniquePairs.add(`${structure.center_ion}-${mol}`);
-            totalLigandCount += count;
           }
         });
       }
@@ -341,7 +340,25 @@ export default function PostProcessDetail() {
     const numMolecules = uniqueMolecules.size;
     const numCenterIons = uniqueCenterIons.size;
     const numPairs = uniquePairs.size;
-    const avgLigands = numClusters > 0 ? Math.ceil(totalLigandCount / selectedStructureIds.length) : 4;
+
+    /**
+     * 计算所有中间态数量（方案1：计算所有可能的中间态组成）
+     *
+     * 对于组成 Li + n₁×A + n₂×B + n₃×C：
+     * 唯一中间态数 = (n₁+1) × (n₂+1) × (n₃+1) × ... - 1
+     *
+     * 例如 Li·EC₂·DMC₂：
+     * = (2+1) × (2+1) - 1 = 8 种中间态（包括完整簇，不含裸离子）
+     */
+    let totalIntermediates = 0;
+    uniqueCompositions.forEach((composition) => {
+      const counts = Object.values(composition).filter(c => c > 0);
+      if (counts.length > 0) {
+        // 中间态数 = ∏(n_i + 1) - 1（排除裸离子）
+        const intermediateCount = counts.reduce((acc, n) => acc * (n + 1), 1) - 1;
+        totalIntermediates += intermediateCount;
+      }
+    });
 
     /**
      * 跨类型复用策略：
@@ -351,11 +368,11 @@ export default function PostProcessDetail() {
      *   - 配体能量: numMolecules（如 EC, DMC, PF6）
      *
      * 各类型独有计算:
-     *   - BINDING_TOTAL: 簇能量 (numClusters)
-     *   - BINDING_PAIRWISE: 二聚体能量 (numPairs，如 Li-EC, Li-DMC)
-     *   - DESOLVATION_STEPWISE: 簇能量 + 中间态 (numClusters * avgLigands)
-     *   - REDOX: 2态优化 + 2溶剂化 (numClusters * 4)
-     *   - REORGANIZATION: 2优化 + 2单点 (numClusters * 4)
+     *   - BINDING_TOTAL: 完整簇能量 (numClusters)
+     *   - BINDING_PAIRWISE: 二聚体能量 (numPairs)
+     *   - DESOLVATION_STEPWISE: 所有中间态能量 (totalIntermediates)
+     *   - REDOX: 每簇 4 个计算
+     *   - REORGANIZATION: 每簇 4 个计算
      */
 
     // 判断哪些类型需要基础分子能量
@@ -374,24 +391,23 @@ export default function PostProcessDetail() {
       let count = 0;
       switch (calcType) {
         case 'BINDING_TOTAL':
-          // 只需要簇能量，分子能量共享
+          // 只需要完整簇能量
           count = numClusters;
           break;
         case 'BINDING_PAIRWISE':
-          // 只需要二聚体能量，分子能量共享
+          // 只需要二聚体能量
           count = numPairs;
           break;
         case 'DESOLVATION_STEPWISE':
-          // 簇 + 所有中间态（每去掉一个配体一个中间态）
-          // 对于 CN=4 的簇，需要: 完整簇 + 去1个 + 去2个 + 去3个 ≈ avgLigands 个
-          count = numClusters * avgLigands;
+          // 所有中间态能量（包括完整簇，不含裸离子）
+          count = totalIntermediates;
           break;
         case 'REDOX':
-          // 每个簇: 还原态优化 + 氧化态优化 + 还原态溶剂化 + 氧化态溶剂化
+          // 每个簇: 还原态优化 + 氧化态优化 + 溶剂化校正
           count = numClusters * 4;
           break;
         case 'REORGANIZATION':
-          // Marcus 4点: R_q优化 + R_{q+1}优化 + 2个交叉单点
+          // Marcus 4点方案
           count = numClusters * 4;
           break;
       }
@@ -402,13 +418,7 @@ export default function PostProcessDetail() {
     // 总任务 = 基础分子能量(共享) + 各类型独有任务
     const total = baseMonomerCount + typeSpecificTotal;
 
-    // 生成明细说明
-    const breakdownParts: string[] = [];
-    if (baseMonomerCount > 0) {
-      breakdownParts.push(`共享分子: ${numCenterIons}离子 + ${numMolecules}配体`);
-    }
-
-    return { total, details, breakdown: breakdownParts.join(', '), baseMonomerCount };
+    return { total, details, breakdown: '', baseMonomerCount };
   }, [selectedStructureIds, selectedCalcTypes, structures]);
 
   // 加载已完成的 MD Jobs
