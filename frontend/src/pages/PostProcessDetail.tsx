@@ -622,7 +622,7 @@ export default function PostProcessDetail() {
         calc_types: selectedCalcTypes,
       });
       setPlanResult(result);
-      setCurrentStep(3);
+      setCurrentStep(2);  // Step 2: 确认提交页面
     } catch (err) {
       console.error('Failed to plan:', err);
       message.error('生成规划失败');
