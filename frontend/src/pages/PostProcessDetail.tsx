@@ -944,29 +944,57 @@ export default function PostProcessDetail() {
             if (taskType?.startsWith('intermediate_')) {
               return <Tag color="orange">中间态</Tag>;
             }
-            if (taskType?.startsWith('redox_')) {
-              const parts = taskType.split('_');
-              const mol = parts[1];
-              const state = parts.slice(2).join('_');
+            if (taskType?.startsWith('redox_mol_')) {
+              // redox_mol_{mol}_{state}
+              const parts = taskType.replace('redox_mol_', '').split('_');
+              const mol = parts[0];
+              const state = parts.slice(1).join('_');
               const stateLabel: Record<string, string> = {
                 'neutral_gas': '中性/气相',
                 'charged_gas': '氧化/气相',
                 'neutral_sol': '中性/溶液',
                 'charged_sol': '氧化/溶液',
               };
-              return <Tag color="magenta">{mol} {stateLabel[state] || state}</Tag>;
+              return <Tag color="magenta">[分子] {mol} {stateLabel[state] || state}</Tag>;
             }
-            if (taskType?.startsWith('reorg_')) {
-              const parts = taskType.split('_');
-              const mol = parts[1];
-              const mode = parts.slice(2).join('_');
+            if (taskType?.startsWith('redox_dimer_')) {
+              // redox_dimer_{mol}_{state}
+              const parts = taskType.replace('redox_dimer_', '').split('_');
+              const mol = parts[0];
+              const state = parts.slice(1).join('_');
+              const stateLabel: Record<string, string> = {
+                'neutral_gas': '中性/气相',
+                'charged_gas': '氧化/气相',
+                'neutral_sol': '中性/溶液',
+                'charged_sol': '氧化/溶液',
+              };
+              return <Tag color="geekblue">[Dimer] Li-{mol} {stateLabel[state] || state}</Tag>;
+            }
+            if (taskType?.startsWith('reorg_mol_')) {
+              // reorg_mol_{mol}_{mode}
+              const parts = taskType.replace('reorg_mol_', '').split('_');
+              const mol = parts[0];
+              const mode = parts.slice(1).join('_');
               const modeLabel: Record<string, string> = {
                 'opt_neutral': '中性优化',
                 'opt_charged': '氧化优化',
                 'sp_charged_at_neutral': 'SP@中性',
                 'sp_neutral_at_charged': 'SP@氧化',
               };
-              return <Tag color="volcano">{mol} {modeLabel[mode] || mode}</Tag>;
+              return <Tag color="volcano">[分子] {mol} {modeLabel[mode] || mode}</Tag>;
+            }
+            if (taskType?.startsWith('reorg_cluster_')) {
+              // reorg_cluster_{id}_{mode}
+              const parts = taskType.replace('reorg_cluster_', '').split('_');
+              const id = parts[0];
+              const mode = parts.slice(1).join('_');
+              const modeLabel: Record<string, string> = {
+                'opt_neutral': '中性优化',
+                'opt_charged': '氧化优化',
+                'sp_charged_at_neutral': 'SP@中性',
+                'sp_neutral_at_charged': 'SP@氧化',
+              };
+              return <Tag color="purple">[Cluster#{id}] {modeLabel[mode] || mode}</Tag>;
             }
             return <Tag>{taskType}</Tag>;
           },
