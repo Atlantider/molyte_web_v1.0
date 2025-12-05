@@ -304,40 +304,50 @@ export default function PostProcessDetail() {
     return selectedCount > 0 && selectedCount < groupStructures.length;
   }, [groupedStructures, selectedStructureIds]);
 
-  // 计算预估 QC 任务数
+  // 计算预估 QC 任务数（按唯一组成计算，相同组成复用）
   const estimatedQCTasks = useMemo(() => {
-    const numStructures = selectedStructureIds.length;
-    if (numStructures === 0 || selectedCalcTypes.length === 0) {
+    if (selectedStructureIds.length === 0 || selectedCalcTypes.length === 0) {
       return { total: 0, details: {} as Record<string, number> };
     }
+
+    // 计算选中结构覆盖的唯一组成数量
+    const selectedCompositions = new Set<string>();
+    selectedStructureIds.forEach(id => {
+      const structure = structures.find(s => s.id === id);
+      if (structure) {
+        // 用 generateClusterName 生成组成的唯一 key
+        const compositionKey = generateClusterName(structure.center_ion, structure.composition);
+        selectedCompositions.add(compositionKey);
+      }
+    });
+    const numUniqueCompositions = selectedCompositions.size;
 
     const details: Record<string, number> = {};
     let total = 0;
 
-    // 估算每种计算类型需要的 QC 任务数
+    // 估算每种计算类型需要的 QC 任务数（按唯一组成）
     selectedCalcTypes.forEach(calcType => {
       let count = 0;
       switch (calcType) {
         case 'BINDING_TOTAL':
-        case 'DESOLVATION_FULL':
-          // cluster + ion + 每种配体 ≈ 2-5 个任务/结构
-          count = numStructures * 3;
+          // cluster + ion + 每种配体 ≈ 3 个任务/组成
+          count = numUniqueCompositions * 3;
           break;
         case 'BINDING_PAIRWISE':
-          // 每个配体一个 dimer + ligand ≈ 2*配体数/结构
-          count = numStructures * 6;
+          // 每个配体一个 dimer + ligand ≈ 6/组成
+          count = numUniqueCompositions * 6;
           break;
         case 'DESOLVATION_STEPWISE':
-          // cluster + 每个配体的 (cluster-i + ligand) ≈ 配位数*2+1
-          count = numStructures * 12;
+          // cluster + 每个配体的 (cluster-i + ligand) ≈ 12/组成
+          count = numUniqueCompositions * 12;
           break;
         case 'REDOX':
-          // gas优化 + freq + solvent = 3 * 2状态 = 6/结构
-          count = numStructures * 6;
+          // gas优化 + freq + solvent = 6/组成
+          count = numUniqueCompositions * 6;
           break;
         case 'REORGANIZATION':
-          // 2个几何 * 4个能量 = 8/结构
-          count = numStructures * 8;
+          // 2个几何 * 4个能量 = 8/组成
+          count = numUniqueCompositions * 8;
           break;
       }
       details[calcType] = count;
@@ -345,7 +355,7 @@ export default function PostProcessDetail() {
     });
 
     return { total, details };
-  }, [selectedStructureIds, selectedCalcTypes]);
+  }, [selectedStructureIds, selectedCalcTypes, structures]);
 
   // 加载已完成的 MD Jobs
   const loadMdJobs = useCallback(async () => {
@@ -837,18 +847,17 @@ export default function PostProcessDetail() {
                 bodyStyle={{ padding: 12, overflow: 'auto' }}
                 style={{ height: '100%' }}
               >
-                <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                <Space direction="vertical" style={{ width: '100%' }} size={4}>
                   {CALC_TYPE_OPTIONS.map(opt => {
                     const isSelected = selectedCalcTypes.includes(opt.value);
                     const info = CALC_TYPE_INFO[opt.value];
-                    const details = CALC_TYPE_DETAILS[opt.value];
                     return (
                       <div
                         key={opt.value}
                         style={{
-                          padding: '10px 14px',
-                          borderRadius: 8,
-                          border: `2px solid ${isSelected ? token.colorPrimary : token.colorBorder}`,
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          border: `1px solid ${isSelected ? token.colorPrimary : token.colorBorder}`,
                           background: isSelected ? token.colorPrimaryBg : 'transparent',
                           cursor: 'pointer',
                           transition: 'all 0.2s',
@@ -865,7 +874,7 @@ export default function PostProcessDetail() {
                           <Col>
                             <Space>
                               <Checkbox checked={isSelected} />
-                              <Text strong>{info.icon} {opt.label}</Text>
+                              <Text strong style={{ fontSize: 13 }}>{info.icon} {opt.label}</Text>
                             </Space>
                           </Col>
                           <Col>
@@ -874,22 +883,8 @@ export default function PostProcessDetail() {
                             </Tag>
                           </Col>
                         </Row>
-                        {/* 示意图 */}
-                        <div style={{
-                          marginTop: 6,
-                          marginLeft: 24,
-                          padding: '4px 8px',
-                          background: token.colorBgLayout,
-                          borderRadius: 4,
-                          fontFamily: 'monospace',
-                          fontSize: 11,
-                          color: token.colorTextSecondary,
-                        }}>
-                          {details.diagram}
-                        </div>
-                        {/* 解释 */}
-                        <Text type="secondary" style={{ fontSize: 11, marginLeft: 24, display: 'block', marginTop: 4 }}>
-                          {details.explanation}
+                        <Text type="secondary" style={{ fontSize: 11, marginLeft: 24, display: 'block' }}>
+                          {opt.description}
                         </Text>
                       </div>
                     );
@@ -912,57 +907,39 @@ export default function PostProcessDetail() {
               <Card
                 size="small"
                 title={<Space><CalculatorOutlined /> 分析预览</Space>}
-                bodyStyle={{ padding: 16 }}
+                bodyStyle={{ padding: 12 }}
                 style={{ height: '100%' }}
               >
-                {/* 选择统计 */}
-                <div style={{
-                  background: token.colorPrimaryBg,
-                  borderRadius: 8,
-                  padding: 16,
-                  marginBottom: 16,
-                  textAlign: 'center',
-                }}>
-                  <Statistic
-                    title="已选结构"
-                    value={selectedStructureIds.length}
-                    suffix={<Text type="secondary">/ {structures.length}</Text>}
-                  />
-                  <Progress
-                    percent={structures.length > 0 ? Math.round((selectedStructureIds.length / structures.length) * 100) : 0}
-                    size="small"
-                    style={{ marginTop: 8 }}
-                  />
-                </div>
+                {/* 选择统计 - 更紧凑 */}
+                <Row gutter={8} style={{ marginBottom: 12 }}>
+                  <Col span={12}>
+                    <div style={{ background: token.colorPrimaryBg, borderRadius: 6, padding: '8px 12px', textAlign: 'center' }}>
+                      <Text type="secondary" style={{ fontSize: 11 }}>已选结构</Text>
+                      <div><Text strong style={{ fontSize: 18 }}>{selectedStructureIds.length}</Text><Text type="secondary"> / {structures.length}</Text></div>
+                    </div>
+                  </Col>
+                  <Col span={12}>
+                    <div style={{ background: token.colorBgLayout, borderRadius: 6, padding: '8px 12px', textAlign: 'center' }}>
+                      <Text type="secondary" style={{ fontSize: 11 }}>覆盖组成</Text>
+                      <div><Text strong style={{ fontSize: 18 }}>{coveredCompositions}</Text><Text type="secondary"> / {sortedGroupKeys.length}</Text></div>
+                    </div>
+                  </Col>
+                </Row>
 
-                <div style={{
-                  background: token.colorBgLayout,
-                  borderRadius: 8,
-                  padding: 16,
-                  marginBottom: 16,
-                  textAlign: 'center',
-                }}>
-                  <Statistic
-                    title="覆盖组成"
-                    value={coveredCompositions}
-                    suffix={<Text type="secondary">/ {sortedGroupKeys.length} 种</Text>}
-                  />
-                </div>
-
-                <Divider style={{ margin: '12px 0' }}>预估 QC 任务</Divider>
+                <Divider style={{ margin: '8px 0' }}>预估 QC 任务</Divider>
 
                 {selectedCalcTypes.length > 0 && selectedStructureIds.length > 0 ? (
                   <>
                     {Object.entries(estimatedQCTasks.details).map(([calcType, count]) => (
-                      <Row key={calcType} justify="space-between" style={{ marginBottom: 8 }}>
-                        <Col><Text>{CALC_TYPE_INFO[calcType as ClusterCalcType]?.icon} {CALC_TYPE_INFO[calcType as ClusterCalcType]?.label}</Text></Col>
+                      <Row key={calcType} justify="space-between" style={{ marginBottom: 4 }}>
+                        <Col><Text style={{ fontSize: 12 }}>{CALC_TYPE_INFO[calcType as ClusterCalcType]?.icon} {CALC_TYPE_INFO[calcType as ClusterCalcType]?.label}</Text></Col>
                         <Col><Text strong>~{count}</Text></Col>
                       </Row>
                     ))}
-                    <Divider style={{ margin: '8px 0' }} />
+                    <Divider style={{ margin: '6px 0' }} />
                     <Row justify="space-between">
                       <Col><Text strong>总计</Text></Col>
-                      <Col><Text strong style={{ color: token.colorPrimary, fontSize: 18 }}>~{estimatedQCTasks.total}</Text></Col>
+                      <Col><Text strong style={{ color: token.colorPrimary, fontSize: 16 }}>~{estimatedQCTasks.total}</Text></Col>
                     </Row>
                   </>
                 ) : (
