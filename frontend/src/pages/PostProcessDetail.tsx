@@ -77,14 +77,13 @@ const STATUS_CONFIG: Record<string, { color: string; icon: React.ReactNode; text
   CANCELLED: { color: 'default', icon: <CloseCircleOutlined />, text: '已取消' },
 };
 
-// 计算类型选项
+// 计算类型选项（合并 BINDING_TOTAL 和 DESOLVATION_FULL，它们本质相同）
 const CALC_TYPE_OPTIONS: { value: ClusterCalcType; label: string; description: string; riskLevel: string }[] = [
-  { value: 'BINDING_TOTAL', label: '总 Binding Energy', description: '整个溶剂化簇的脱溶剂化能', riskLevel: 'low' },
-  { value: 'BINDING_PAIRWISE', label: '分子-Li Binding', description: '单分子与 Li+ 的结合能', riskLevel: 'low' },
-  { value: 'DESOLVATION_STEPWISE', label: '逐级去溶剂化', description: '逐个移除配体的能量变化', riskLevel: 'medium' },
-  { value: 'DESOLVATION_FULL', label: '完全去溶剂化', description: '完整簇到裸离子的总能量', riskLevel: 'low' },
-  { value: 'REDOX', label: '氧化还原电位', description: '热力学循环法计算', riskLevel: 'high' },
-  { value: 'REORGANIZATION', label: 'Marcus 重组能', description: 'Marcus 理论 4 点方案', riskLevel: 'high' },
+  { value: 'BINDING_TOTAL', label: '溶剂化能', description: '整个溶剂化簇的形成/脱溶剂化能', riskLevel: 'low' },
+  { value: 'BINDING_PAIRWISE', label: '分子配位能', description: '单分子与离子的结合能对比', riskLevel: 'low' },
+  { value: 'DESOLVATION_STEPWISE', label: '逐级脱溶剂化', description: '逐个移除配体的能量路径', riskLevel: 'medium' },
+  { value: 'REDOX', label: '氧化还原电位', description: '热力学循环法计算电化学稳定性', riskLevel: 'high' },
+  { value: 'REORGANIZATION', label: 'Marcus 重组能', description: 'Marcus 理论计算电子转移', riskLevel: 'high' },
 ];
 
 export default function PostProcessDetail() {
@@ -559,134 +558,170 @@ export default function PostProcessDetail() {
   // 计算类型的详细说明和示意图
   const CALC_TYPE_DETAILS: Record<ClusterCalcType, { diagram: string; explanation: string }> = {
     BINDING_TOTAL: {
-      diagram: 'Li⁺ + 溶剂₁ + 溶剂₂ + ... → [Li·溶剂化簇]',
-      explanation: '计算整个溶剂化簇的形成能，反映离子与所有配体的总结合强度',
+      diagram: 'Li⁺ + A + B + C → [Li·ABC]  (ΔE = 溶剂化能)',
+      explanation: '计算离子与所有配体结合释放的能量，等于完全脱溶剂化能的负值',
     },
     BINDING_PAIRWISE: {
-      diagram: 'Li⁺ + 单个分子 → [Li-分子]',
-      explanation: '分别计算每个配体与离子的结合能，比较不同分子的配位能力',
+      diagram: 'Li⁺ + A → [Li-A]，Li⁺ + B → [Li-B] ...',
+      explanation: '分别计算每个配体的结合能，对比不同分子（阴离子 vs 溶剂）的配位能力',
     },
     DESOLVATION_STEPWISE: {
-      diagram: '[Li·ABCD] → [Li·ABC] + D → [Li·AB] + C → ...',
-      explanation: '逐步移除配体，计算每一步的能量变化，分析脱溶剂化路径',
+      diagram: '[Li·ABC] → [Li·AB] + C → [Li·A] + B → Li⁺ + A',
+      explanation: '模拟逐步脱溶剂化过程，找出能量最优的脱离顺序',
     },
     DESOLVATION_FULL: {
-      diagram: '[Li·溶剂化簇] → Li⁺(裸离子) + 所有配体',
-      explanation: '计算完全脱去溶剂化壳层需要的总能量',
+      diagram: '[Li·ABC] → Li⁺ + A + B + C',
+      explanation: '与溶剂化能相同（符号相反）',
     },
     REDOX: {
-      diagram: 'Li⁺/Li⁰ 或 分子⁺/分子⁰ 氧化还原电位',
-      explanation: '使用热力学循环计算电化学窗口和稳定性',
+      diagram: 'M → M⁺ + e⁻  (氧化电位)  |  M + e⁻ → M⁻  (还原电位)',
+      explanation: '预测电解液的电化学稳定窗口',
     },
     REORGANIZATION: {
-      diagram: 'λ = E(R₁,Q₂) + E(R₂,Q₁) - E(R₁,Q₁) - E(R₂,Q₂)',
-      explanation: 'Marcus理论4点法计算电子转移重组能',
+      diagram: 'λ = [E(R₁,G₂) - E(R₁,G₁)] + [E(R₂,G₁) - E(R₂,G₂)]',
+      explanation: 'Marcus 4点法计算电子转移活化能',
     },
   };
 
-  // 渲染创建模式
+  // 渲染创建模式 - 单页布局，无 Step 0
   const renderCreateMode = () => {
-    // Step 0: 选择数据源 - 简化版
-    if (currentStep === 0) {
+    const coveredCompositions = Object.keys(groupedStructures).filter(k =>
+      groupedStructures[k].structures.some(s => selectedStructureIds.includes(s.id))
+    ).length;
+
+    // Step 2: 确认提交
+    if (currentStep === 2) {
       return (
-        <Card title="选择数据来源" style={{ marginBottom: 24 }}>
-          <Row gutter={16} align="middle">
-            <Col flex="auto">
-              <Select
-                style={{ width: '100%', maxWidth: 500 }}
-                placeholder="请选择一个已完成的 MD 模拟任务"
-                value={selectedMdJobId}
-                onChange={(v) => {
-                  setSelectedMdJobId(v);
-                  setSelectedStructureIds([]);
-                  setSelectedCalcTypes([]);
-                  setPlanResult(null);
-                }}
-                options={mdJobs.map(j => ({
-                  value: j.id,
-                  label: `#${j.id} - ${j.config?.job_name || 'MD Job'} (${dayjs(j.created_at).format('YYYY-MM-DD')})`,
-                }))}
-                showSearch
-                filterOption={(input, option) =>
-                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                }
-              />
-            </Col>
-            <Col>
-              <Button
-                type="primary"
-                disabled={!selectedMdJobId}
-                onClick={() => setCurrentStep(1)}
-              >
-                下一步 →
-              </Button>
-            </Col>
-          </Row>
-          {mdJobs.length === 0 && (
-            <Alert
-              type="info"
-              message="暂无已完成的 MD 任务，请先完成 MD 模拟"
-              style={{ marginTop: 16 }}
-              action={
-                <Button size="small" onClick={() => navigate('/workspace/liquid-electrolyte/md')}>
-                  前往 MD 模拟
-                </Button>
-              }
-            />
-          )}
-        </Card>
+        <div style={{ padding: '24px 48px' }}>
+          {/* 返回按钮 */}
+          <Button type="link" onClick={() => setCurrentStep(1)} style={{ marginBottom: 16, padding: 0 }}>
+            ← 返回修改配置
+          </Button>
+
+          <Card title="确认提交分析任务">
+            {planResult ? (
+              <>
+                <Row gutter={24} style={{ marginBottom: 24 }}>
+                  <Col span={6}>
+                    <Statistic title="选中结构" value={planResult.selected_structures_count} suffix="个" />
+                  </Col>
+                  <Col span={6}>
+                    <Statistic title="新建 QC 任务" value={planResult.total_new_qc_tasks} valueStyle={{ color: token.colorWarning }} />
+                  </Col>
+                  <Col span={6}>
+                    <Statistic title="复用 QC 任务" value={planResult.total_reused_qc_tasks} valueStyle={{ color: token.colorSuccess }} />
+                  </Col>
+                  <Col span={6}>
+                    <Statistic title="预估计算时间" value={planResult.estimated_compute_hours.toFixed(1)} suffix="核时" />
+                  </Col>
+                </Row>
+
+                <Divider>计算类型详情</Divider>
+
+                <Row gutter={[16, 16]}>
+                  {planResult.calc_requirements.map(req => (
+                    <Col key={req.calc_type} span={8}>
+                      <Card size="small" style={{ textAlign: 'center' }}>
+                        <Text strong>
+                          {CALC_TYPE_INFO[req.calc_type as ClusterCalcType]?.icon}
+                          {' '}{CALC_TYPE_INFO[req.calc_type as ClusterCalcType]?.label}
+                        </Text>
+                        <div style={{ marginTop: 8 }}>
+                          <Tag color="blue">新建 {req.new_tasks_count}</Tag>
+                          <Tag color="green">复用 {req.reused_tasks_count}</Tag>
+                        </div>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+
+                {planResult.warnings.length > 0 && (
+                  <Alert
+                    type="warning"
+                    message="注意事项"
+                    description={
+                      <ul style={{ margin: 0, paddingLeft: 20 }}>
+                        {planResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                      </ul>
+                    }
+                    style={{ marginTop: 24 }}
+                  />
+                )}
+
+                <div style={{ marginTop: 32, textAlign: 'center' }}>
+                  <Button
+                    type="primary"
+                    size="large"
+                    icon={<SendOutlined />}
+                    loading={submitLoading}
+                    onClick={handleSubmit}
+                    style={{ paddingLeft: 48, paddingRight: 48, height: 48 }}
+                  >
+                    提交分析任务
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 48 }}>
+                <Spin size="large" />
+                <div style={{ marginTop: 16 }}><Text type="secondary">正在生成规划...</Text></div>
+              </div>
+            )}
+          </Card>
+        </div>
       );
     }
 
-    // Step 1: 配置分析（结构 + 计算类型 + 预览，三栏布局）
-    if (currentStep === 1) {
-      const coveredCompositions = Object.keys(groupedStructures).filter(k =>
-        groupedStructures[k].structures.some(s => selectedStructureIds.includes(s.id))
-      ).length;
-
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 180px)' }}>
-          {/* 顶部进度条 */}
-          <div style={{
-            background: token.colorBgContainer,
-            borderRadius: 12,
-            padding: '16px 24px',
-            marginBottom: 16,
-            boxShadow: `0 2px 8px ${token.colorBgSpotlight}`,
-          }}>
-            <Row align="middle" justify="space-between">
-              <Col>
-                <Space size="large">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{
-                      width: 32, height: 32, borderRadius: '50%',
-                      background: token.colorPrimary, color: '#fff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 'bold',
-                    }}>1</div>
-                    <Text strong>配置分析</Text>
-                  </div>
-                  <div style={{ width: 60, height: 2, background: selectedStructureIds.length > 0 && selectedCalcTypes.length > 0 ? token.colorPrimary : token.colorBorder }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{
-                      width: 32, height: 32, borderRadius: '50%',
-                      background: canProceedToStep2 ? token.colorPrimary : token.colorBorder,
-                      color: canProceedToStep2 ? '#fff' : token.colorTextDisabled,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 'bold',
-                    }}>2</div>
-                    <Text type={canProceedToStep2 ? undefined : 'secondary'}>确认提交</Text>
-                  </div>
-                </Space>
-              </Col>
-              <Col>
-                <Space>
-                  <Tag color="blue">{selectedMdJob?.config?.job_name || `MD #${selectedMdJobId}`}</Tag>
-                  <Button size="small" onClick={() => setCurrentStep(0)}>更换数据源</Button>
-                </Space>
-              </Col>
-            </Row>
-          </div>
+    // Step 1: 配置分析（三栏布局）
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)' }}>
+        {/* 顶部工具栏：数据源选择 + 进度 */}
+        <div style={{
+          background: token.colorBgContainer,
+          borderRadius: 8,
+          padding: '12px 16px',
+          marginBottom: 12,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}>
+          <Space>
+            <Text strong>数据源:</Text>
+            <Select
+              style={{ width: 350 }}
+              placeholder="选择 MD 模拟任务"
+              value={selectedMdJobId}
+              onChange={(v) => {
+                setSelectedMdJobId(v);
+                setSelectedStructureIds([]);
+                setSelectedCalcTypes([]);
+                setPlanResult(null);
+              }}
+              options={mdJobs.map(j => ({
+                value: j.id,
+                label: `${j.config?.job_name || 'MD Job'} (#${j.id})`,
+              }))}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            />
+            {selectedMdJobId && (
+              <Tag color="green">{structures.length} 个溶剂化结构</Tag>
+            )}
+          </Space>
+          <Space>
+            <Text type="secondary">已选 {selectedStructureIds.length} 结构 · {selectedCalcTypes.length} 种计算</Text>
+            <Button
+              type="primary"
+              disabled={!canProceedToStep2}
+              loading={planLoading}
+              onClick={handlePlan}
+            >
+              生成规划 →
+            </Button>
+          </Space>
+        </div>
 
           {/* 主内容区 - 三栏布局 */}
           <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
@@ -937,171 +972,8 @@ export default function PostProcessDetail() {
             </Col>
           </Row>
 
-          {/* 底部固定操作栏 */}
-          <div style={{
-            background: token.colorBgContainer,
-            borderRadius: 12,
-            padding: '16px 24px',
-            marginTop: 16,
-            boxShadow: `0 -2px 8px ${token.colorBgSpotlight}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}>
-            <Space>
-              <Text type="secondary">
-                {selectedStructureIds.length > 0 ? `已选 ${selectedStructureIds.length} 个结构` : '请选择结构'}
-                {selectedCalcTypes.length > 0 ? ` · ${selectedCalcTypes.length} 种计算` : ''}
-              </Text>
-            </Space>
-            <Space>
-              <Button onClick={() => setCurrentStep(0)}>← 返回</Button>
-              <Button
-                type="primary"
-                size="large"
-                disabled={!canProceedToStep2}
-                loading={planLoading}
-                onClick={handlePlan}
-              >
-                生成规划 · 下一步 →
-              </Button>
-            </Space>
-          </div>
         </div>
       );
-    }
-
-    // Step 2: 确认提交
-    if (currentStep === 2 || currentStep === 3) {
-      return (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          padding: 24,
-        }}>
-          {/* 进度条 */}
-          <div style={{
-            background: token.colorBgContainer,
-            borderRadius: 12,
-            padding: '16px 24px',
-            marginBottom: 24,
-            width: '100%',
-            maxWidth: 800,
-            boxShadow: `0 2px 8px ${token.colorBgSpotlight}`,
-          }}>
-            <Row align="middle" justify="center">
-              <Space size="large">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: '50%',
-                    background: token.colorSuccess, color: '#fff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}><CheckCircleOutlined /></div>
-                  <Text type="secondary">配置分析</Text>
-                </div>
-                <div style={{ width: 60, height: 2, background: token.colorPrimary }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: '50%',
-                    background: token.colorPrimary, color: '#fff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 'bold',
-                  }}>2</div>
-                  <Text strong>确认提交</Text>
-                </div>
-              </Space>
-            </Row>
-          </div>
-
-          {/* 规划结果卡片 */}
-          <Card
-            style={{
-              width: '100%',
-              maxWidth: 800,
-              borderRadius: 16,
-              boxShadow: `0 8px 32px ${token.colorBgSpotlight}`,
-            }}
-          >
-            {planResult ? (
-              <>
-                <Row gutter={24} style={{ marginBottom: 24 }}>
-                  <Col span={6}>
-                    <Statistic title="选中结构" value={planResult.selected_structures_count} suffix="个" />
-                  </Col>
-                  <Col span={6}>
-                    <Statistic title="新建 QC 任务" value={planResult.total_new_qc_tasks} valueStyle={{ color: token.colorWarning }} />
-                  </Col>
-                  <Col span={6}>
-                    <Statistic title="复用 QC 任务" value={planResult.total_reused_qc_tasks} valueStyle={{ color: token.colorSuccess }} />
-                  </Col>
-                  <Col span={6}>
-                    <Statistic title="预估计算时间" value={planResult.estimated_compute_hours.toFixed(1)} suffix="核时" />
-                  </Col>
-                </Row>
-
-                <Divider>计算类型详情</Divider>
-
-                <Row gutter={[16, 16]}>
-                  {planResult.calc_requirements.map(req => (
-                    <Col key={req.calc_type} span={8}>
-                      <Card size="small" style={{ textAlign: 'center' }}>
-                        <Text strong style={{ fontSize: 16 }}>
-                          {CALC_TYPE_INFO[req.calc_type as ClusterCalcType]?.icon}
-                          {' '}{CALC_TYPE_INFO[req.calc_type as ClusterCalcType]?.label}
-                        </Text>
-                        <div style={{ marginTop: 8 }}>
-                          <Tag color="blue">新建 {req.new_tasks_count}</Tag>
-                          <Tag color="green">复用 {req.reused_tasks_count}</Tag>
-                        </div>
-                      </Card>
-                    </Col>
-                  ))}
-                </Row>
-
-                {planResult.warnings.length > 0 && (
-                  <Alert
-                    type="warning"
-                    message="注意事项"
-                    description={
-                      <ul style={{ margin: 0, paddingLeft: 20 }}>
-                        {planResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
-                      </ul>
-                    }
-                    style={{ marginTop: 24 }}
-                  />
-                )}
-
-                <div style={{ marginTop: 32, textAlign: 'center' }}>
-                  <Space size="large">
-                    <Button size="large" onClick={() => setCurrentStep(1)}>← 返回修改</Button>
-                    <Button
-                      type="primary"
-                      size="large"
-                      icon={<SendOutlined />}
-                      loading={submitLoading}
-                      onClick={handleSubmit}
-                      style={{ paddingLeft: 32, paddingRight: 32, height: 48 }}
-                    >
-                      提交分析任务
-                    </Button>
-                  </Space>
-                </div>
-              </>
-            ) : (
-              <div style={{ textAlign: 'center', padding: 48 }}>
-                <Spin size="large" />
-                <div style={{ marginTop: 16 }}>
-                  <Text type="secondary">正在生成规划预览...</Text>
-                </div>
-              </div>
-            )}
-          </Card>
-        </div>
-      );
-    }
-
-    return null;
   };
 
   // 渲染查看模式
