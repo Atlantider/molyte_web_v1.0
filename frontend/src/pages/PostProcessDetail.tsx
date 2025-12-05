@@ -925,12 +925,60 @@ export default function PostProcessDetail() {
       // QC 任务表格列定义
       const taskColumns: ColumnsType<PlannedQCTask> = [
         {
+          title: '任务名称',
+          dataIndex: 'task_type',
+          key: 'task_type',
+          width: 140,
+          render: (taskType: string) => {
+            // 从 task_type 提取更友好的名称
+            if (taskType === 'cluster') return <Tag color="purple">Cluster</Tag>;
+            if (taskType === 'ion') return <Tag color="gold">Li⁺ 离子</Tag>;
+            if (taskType?.startsWith('ligand_')) {
+              const name = taskType.replace('ligand_', '');
+              return <Tag color="blue">配体 {name}</Tag>;
+            }
+            if (taskType?.startsWith('dimer_')) {
+              const name = taskType.replace('dimer_', '');
+              return <Tag color="green">Li-{name} Dimer</Tag>;
+            }
+            if (taskType?.startsWith('intermediate_')) {
+              return <Tag color="orange">中间态</Tag>;
+            }
+            if (taskType?.startsWith('redox_')) {
+              const parts = taskType.split('_');
+              const mol = parts[1];
+              const state = parts.slice(2).join('_');
+              const stateLabel: Record<string, string> = {
+                'neutral_gas': '中性/气相',
+                'charged_gas': '氧化/气相',
+                'neutral_sol': '中性/溶液',
+                'charged_sol': '氧化/溶液',
+              };
+              return <Tag color="magenta">{mol} {stateLabel[state] || state}</Tag>;
+            }
+            if (taskType?.startsWith('reorg_')) {
+              const parts = taskType.split('_');
+              const mol = parts[1];
+              const mode = parts.slice(2).join('_');
+              const modeLabel: Record<string, string> = {
+                'opt_neutral': '中性优化',
+                'opt_charged': '氧化优化',
+                'sp_charged_at_neutral': 'SP@中性',
+                'sp_neutral_at_charged': 'SP@氧化',
+              };
+              return <Tag color="volcano">{mol} {modeLabel[mode] || mode}</Tag>;
+            }
+            return <Tag>{taskType}</Tag>;
+          },
+        },
+        {
           title: '描述',
           dataIndex: 'description',
           key: 'description',
+          ellipsis: true,
           render: (desc: string) => (
             <Tooltip title={desc}>
-              <span style={{ fontSize: 13 }}>{desc}</span>
+              <span style={{ fontSize: 12 }}>{desc}</span>
             </Tooltip>
           ),
         },
@@ -938,10 +986,10 @@ export default function PostProcessDetail() {
           title: 'SMILES',
           dataIndex: 'smiles',
           key: 'smiles',
-          width: 160,
+          width: 140,
           render: (smiles: string) => smiles ? (
             <Tooltip title={smiles}>
-              <Text code style={{ fontSize: 11 }}>{smiles.length > 20 ? smiles.slice(0, 20) + '...' : smiles}</Text>
+              <Text code style={{ fontSize: 10 }}>{smiles.length > 18 ? smiles.slice(0, 18) + '...' : smiles}</Text>
             </Tooltip>
           ) : '-',
         },
@@ -957,7 +1005,7 @@ export default function PostProcessDetail() {
           title: '多重度',
           dataIndex: 'multiplicity',
           key: 'multiplicity',
-          width: 60,
+          width: 55,
           align: 'center',
         },
         {
