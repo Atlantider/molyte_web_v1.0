@@ -1,35 +1,36 @@
 /**
  * Cluster 高级计算结果展示面板
+ *
+ * 使用 Ant Design 组件库，与项目其他组件保持一致
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Box,
   Card,
-  CardContent,
-  Typography,
   Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Chip,
-  LinearProgress,
+  Tag,
+  Progress,
   Alert,
   Button,
   Collapse,
-  IconButton,
   Tooltip,
-  Grid,
-  Paper,
-} from '@mui/material';
+  Row,
+  Col,
+  Statistic,
+  Space,
+  Spin,
+  Typography,
+  theme,
+} from 'antd';
 import {
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Refresh as RefreshIcon,
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  HourglassEmpty as PendingIcon,
-} from '@mui/icons-material';
+  ReloadOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  ClockCircleOutlined,
+  SyncOutlined,
+  ArrowLeftOutlined,
+  ExperimentOutlined,
+} from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
 import {
   getClusterAnalysisJob,
   getClusterAnalysisResults,
@@ -41,31 +42,23 @@ import {
   ClusterCalcType,
 } from '../api/clusterAnalysis';
 
+const { Text, Title } = Typography;
+const { Panel } = Collapse;
+
 interface Props {
   jobId: number;
   onBack?: () => void;
 }
 
-const STATUS_COLORS: Record<string, 'default' | 'primary' | 'success' | 'error' | 'warning'> = {
-  CREATED: 'default',
-  SUBMITTED: 'primary',
-  RUNNING: 'primary',
-  WAITING_QC: 'warning',
-  CALCULATING: 'primary',
-  COMPLETED: 'success',
-  FAILED: 'error',
-  CANCELLED: 'default',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  CREATED: '已创建',
-  SUBMITTED: '已提交',
-  RUNNING: '运行中',
-  WAITING_QC: '等待 QC',
-  CALCULATING: '计算中',
-  COMPLETED: '已完成',
-  FAILED: '失败',
-  CANCELLED: '已取消',
+const STATUS_CONFIG: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
+  CREATED: { color: 'default', icon: <ClockCircleOutlined />, text: '已创建' },
+  SUBMITTED: { color: 'blue', icon: <ClockCircleOutlined />, text: '已提交' },
+  RUNNING: { color: 'processing', icon: <SyncOutlined spin />, text: '运行中' },
+  WAITING_QC: { color: 'orange', icon: <ClockCircleOutlined />, text: '等待 QC' },
+  CALCULATING: { color: 'processing', icon: <SyncOutlined spin />, text: '计算中' },
+  COMPLETED: { color: 'success', icon: <CheckCircleOutlined />, text: '已完成' },
+  FAILED: { color: 'error', icon: <CloseCircleOutlined />, text: '失败' },
+  CANCELLED: { color: 'default', icon: <CloseCircleOutlined />, text: '已取消' },
 };
 
 export default function ClusterAnalysisResultsPanel({ jobId, onBack }: Props) {
@@ -110,156 +103,174 @@ export default function ClusterAnalysisResultsPanel({ jobId, onBack }: Props) {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
+  const { token } = theme.useToken();
+
   if (loading && !job) {
     return (
-      <Box sx={{ p: 3 }}>
-        <LinearProgress />
-        <Typography sx={{ mt: 2 }}>加载中...</Typography>
-      </Box>
+      <div style={{ padding: 24, textAlign: 'center' }}>
+        <Spin size="large" />
+        <div style={{ marginTop: 16 }}>
+          <Text type="secondary">加载中...</Text>
+        </div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Alert severity="error" sx={{ m: 2 }}>
-        {error}
-        <Button onClick={fetchData} sx={{ ml: 2 }}>重试</Button>
-      </Alert>
+      <Alert
+        type="error"
+        message="加载失败"
+        description={error}
+        action={<Button onClick={fetchData}>重试</Button>}
+        style={{ margin: 16 }}
+      />
     );
   }
 
   if (!job) return null;
 
-  return (
-    <Box sx={{ p: 2 }}>
-      {/* 顶部信息 */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Box>
-          <Typography variant="h5" gutterBottom>
-            Cluster 高级计算结果 #{jobId}
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-            <Chip
-              label={STATUS_LABELS[job.status] || job.status}
-              color={STATUS_COLORS[job.status] || 'default'}
-              size="small"
-            />
-            <Typography variant="body2" color="text.secondary">
-              进度: {job.progress.toFixed(0)}%
-            </Typography>
-          </Box>
-        </Box>
-        <Box>
-          <Tooltip title="刷新">
-            <IconButton onClick={fetchData} disabled={loading}>
-              <RefreshIcon />
-            </IconButton>
-          </Tooltip>
-          {onBack && <Button onClick={onBack} sx={{ ml: 1 }}>返回</Button>}
-        </Box>
-      </Box>
+  const statusConfig = STATUS_CONFIG[job.status] || STATUS_CONFIG.CREATED;
 
-      {/* 进度条 */}
-      {job.status !== 'COMPLETED' && job.status !== 'FAILED' && (
-        <LinearProgress variant="determinate" value={job.progress} sx={{ mb: 2, height: 8, borderRadius: 4 }} />
-      )}
+  return (
+    <div style={{ padding: 16 }}>
+      {/* 顶部信息 */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <Space align="center" style={{ marginBottom: 8 }}>
+              <ExperimentOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
+              <Title level={4} style={{ margin: 0 }}>
+                Cluster 高级计算结果 #{jobId}
+              </Title>
+            </Space>
+            <Space>
+              <Tag color={statusConfig.color} icon={statusConfig.icon}>
+                {statusConfig.text}
+              </Tag>
+              <Text type="secondary">进度: {job.progress.toFixed(0)}%</Text>
+            </Space>
+          </div>
+          <Space>
+            <Tooltip title="刷新">
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={fetchData}
+                loading={loading}
+              />
+            </Tooltip>
+            {onBack && (
+              <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
+                返回
+              </Button>
+            )}
+          </Space>
+        </div>
+
+        {/* 进度条 */}
+        {job.status !== 'COMPLETED' && job.status !== 'FAILED' && (
+          <Progress
+            percent={job.progress}
+            status={job.status === 'RUNNING' || job.status === 'CALCULATING' ? 'active' : 'normal'}
+            style={{ marginTop: 16 }}
+          />
+        )}
+      </Card>
 
       {/* QC 任务状态 */}
       {qcStatus && qcStatus.total_qc_jobs > 0 && (
-        <Card sx={{ mb: 2 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>QC 任务状态</Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={3}>
-                <Paper sx={{ p: 1, textAlign: 'center', bgcolor: 'success.light' }}>
-                  <Typography variant="h4">{qcStatus.completed}</Typography>
-                  <Typography variant="body2">已完成</Typography>
-                </Paper>
-              </Grid>
-              <Grid item xs={3}>
-                <Paper sx={{ p: 1, textAlign: 'center', bgcolor: 'primary.light' }}>
-                  <Typography variant="h4">{qcStatus.running}</Typography>
-                  <Typography variant="body2">运行中</Typography>
-                </Paper>
-              </Grid>
-              <Grid item xs={3}>
-                <Paper sx={{ p: 1, textAlign: 'center', bgcolor: 'warning.light' }}>
-                  <Typography variant="h4">{qcStatus.pending}</Typography>
-                  <Typography variant="body2">等待中</Typography>
-                </Paper>
-              </Grid>
-              <Grid item xs={3}>
-                <Paper sx={{ p: 1, textAlign: 'center', bgcolor: qcStatus.failed > 0 ? 'error.light' : 'grey.200' }}>
-                  <Typography variant="h4">{qcStatus.failed}</Typography>
-                  <Typography variant="body2">失败</Typography>
-                </Paper>
-              </Grid>
-            </Grid>
-          </CardContent>
+        <Card title="QC 任务状态" style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col span={6}>
+              <Statistic
+                title="已完成"
+                value={qcStatus.completed}
+                valueStyle={{ color: token.colorSuccess }}
+                prefix={<CheckCircleOutlined />}
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic
+                title="运行中"
+                value={qcStatus.running}
+                valueStyle={{ color: token.colorPrimary }}
+                prefix={<SyncOutlined spin={qcStatus.running > 0} />}
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic
+                title="等待中"
+                value={qcStatus.pending}
+                valueStyle={{ color: token.colorWarning }}
+                prefix={<ClockCircleOutlined />}
+              />
+            </Col>
+            <Col span={6}>
+              <Statistic
+                title="失败"
+                value={qcStatus.failed}
+                valueStyle={{ color: qcStatus.failed > 0 ? token.colorError : undefined }}
+                prefix={<CloseCircleOutlined />}
+              />
+            </Col>
+          </Row>
         </Card>
       )}
 
       {/* 计算类型和结果 */}
-      {job.calc_types.map((calcType) => {
-        const info = CALC_TYPE_INFO[calcType as ClusterCalcType];
-        const calcResult = results?.results?.[calcType] as Record<string, unknown>;
-        const isExpanded = expandedSections[calcType] ?? true;
+      <Collapse
+        defaultActiveKey={job.calc_types}
+        style={{ marginBottom: 16 }}
+      >
+        {job.calc_types.map((calcType) => {
+          const info = CALC_TYPE_INFO[calcType as ClusterCalcType];
+          const calcResult = results?.results?.[calcType] as Record<string, unknown>;
 
-        return (
-          <Card key={calcType} sx={{ mb: 2 }}>
-            <CardContent>
-              <Box
-                sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-                onClick={() => toggleSection(calcType)}
-              >
-                <Typography variant="h6" sx={{ flexGrow: 1 }}>
-                  {info?.icon} {info?.label || calcType}
-                </Typography>
-                {calcResult?.error ? (
-                  <Chip label="失败" color="error" size="small" icon={<ErrorIcon />} />
-                ) : calcResult && Object.keys(calcResult).length > 0 ? (
-                  <Chip label="完成" color="success" size="small" icon={<CheckCircleIcon />} />
-                ) : (
-                  <Chip label="等待" color="default" size="small" icon={<PendingIcon />} />
-                )}
-                <IconButton size="small">
-                  {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                </IconButton>
-              </Box>
+          const getResultStatus = () => {
+            if (calcResult?.error) {
+              return <Tag color="error" icon={<CloseCircleOutlined />}>失败</Tag>;
+            }
+            if (calcResult && Object.keys(calcResult).length > 0) {
+              return <Tag color="success" icon={<CheckCircleOutlined />}>完成</Tag>;
+            }
+            return <Tag icon={<ClockCircleOutlined />}>等待</Tag>;
+          };
 
-              <Collapse in={isExpanded}>
-                <Typography variant="body2" color="text.secondary" sx={{ my: 1 }}>
-                  {info?.description}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                  {info?.formula}
-                </Typography>
+          return (
+            <Panel
+              key={calcType}
+              header={
+                <Space>
+                  <span>{info?.icon} {info?.label || calcType}</span>
+                  {getResultStatus()}
+                </Space>
+              }
+            >
+              <div style={{ marginBottom: 8 }}>
+                <Text type="secondary">{info?.description}</Text>
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <Text code style={{ fontSize: 12 }}>{info?.formula}</Text>
+              </div>
 
-                {/* 结果展示 */}
-                {calcResult && !calcResult.error && (
-                  <Box sx={{ mt: 2 }}>
-                    {renderCalcTypeResult(calcType as ClusterCalcType, calcResult)}
-                  </Box>
-                )}
+              {/* 结果展示 */}
+              {calcResult && !calcResult.error && (
+                <div>{renderCalcTypeResult(calcType as ClusterCalcType, calcResult)}</div>
+              )}
 
-                {calcResult?.error && (
-                  <Alert severity="error" sx={{ mt: 2 }}>
-                    {calcResult.error as string}
-                  </Alert>
-                )}
-              </Collapse>
-            </CardContent>
-          </Card>
-        );
-      })}
+              {calcResult?.error && (
+                <Alert type="error" message={calcResult.error as string} />
+              )}
+            </Panel>
+          );
+        })}
+      </Collapse>
 
       {/* 错误信息 */}
       {job.error_message && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {job.error_message}
-        </Alert>
+        <Alert type="error" message="任务错误" description={job.error_message} />
       )}
-    </Box>
+    </div>
   );
 }
 
@@ -281,145 +292,199 @@ function renderCalcTypeResult(calcType: ClusterCalcType, result: Record<string, 
     case 'REORGANIZATION':
       return renderReorganizationResult(result);
     default:
-      return <pre>{JSON.stringify(result, null, 2)}</pre>;
+      return <pre style={{ background: '#f5f5f5', padding: 8, borderRadius: 4 }}>{JSON.stringify(result, null, 2)}</pre>;
   }
 }
 
 function renderBindingTotalResult(result: Record<string, unknown>) {
   return (
-    <Box>
-      <Grid container spacing={2}>
-        <Grid item xs={4}>
-          <Paper sx={{ p: 2, textAlign: 'center' }}>
-            <Typography variant="h5" color="primary">
-              {((result.e_bind_kcal_mol as number) || 0).toFixed(2)}
-            </Typography>
-            <Typography variant="body2">kcal/mol</Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={4}>
-          <Paper sx={{ p: 2, textAlign: 'center' }}>
-            <Typography variant="h5" color="secondary">
-              {((result.e_bind_ev as number) || 0).toFixed(4)}
-            </Typography>
-            <Typography variant="body2">eV</Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={4}>
-          <Paper sx={{ p: 2, textAlign: 'center' }}>
-            <Typography variant="h5">
-              {((result.e_bind_au as number) || 0).toFixed(6)}
-            </Typography>
-            <Typography variant="body2">Hartree</Typography>
-          </Paper>
-        </Grid>
-      </Grid>
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-        E(cluster) = {((result.e_cluster_au as number) || 0).toFixed(6)} a.u.,
-        E(ion) = {((result.e_ion_au as number) || 0).toFixed(6)} a.u.
-      </Typography>
-    </Box>
+    <div>
+      <Row gutter={16}>
+        <Col span={8}>
+          <Card size="small" style={{ textAlign: 'center' }}>
+            <Statistic
+              title="kcal/mol"
+              value={((result.e_bind_kcal_mol as number) || 0).toFixed(2)}
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small" style={{ textAlign: 'center' }}>
+            <Statistic
+              title="eV"
+              value={((result.e_bind_ev as number) || 0).toFixed(4)}
+              valueStyle={{ color: '#722ed1' }}
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small" style={{ textAlign: 'center' }}>
+            <Statistic
+              title="Hartree"
+              value={((result.e_bind_au as number) || 0).toFixed(6)}
+            />
+          </Card>
+        </Col>
+      </Row>
+      <div style={{ marginTop: 8 }}>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          E(cluster) = {((result.e_cluster_au as number) || 0).toFixed(6)} a.u.,
+          E(ion) = {((result.e_ion_au as number) || 0).toFixed(6)} a.u.
+        </Text>
+      </div>
+    </div>
   );
 }
 
 function renderBindingPairwiseResult(result: Record<string, unknown>) {
   const bindings = (result.pairwise_bindings as Array<Record<string, unknown>>) || [];
+
+  const columns: ColumnsType<Record<string, unknown>> = [
+    { title: '配体', dataIndex: 'ligand', key: 'ligand' },
+    {
+      title: 'E(dimer) / a.u.',
+      dataIndex: 'e_dimer_au',
+      key: 'e_dimer_au',
+      align: 'right',
+      render: (v: number) => (v || 0).toFixed(6),
+    },
+    {
+      title: 'E(ligand) / a.u.',
+      dataIndex: 'e_ligand_au',
+      key: 'e_ligand_au',
+      align: 'right',
+      render: (v: number) => (v || 0).toFixed(6),
+    },
+    {
+      title: 'E_bind / kcal·mol⁻¹',
+      dataIndex: 'e_bind_kcal_mol',
+      key: 'e_bind_kcal_mol',
+      align: 'right',
+      render: (v: number) => <Text strong>{(v || 0).toFixed(2)}</Text>,
+    },
+    {
+      title: 'E_bind / eV',
+      dataIndex: 'e_bind_ev',
+      key: 'e_bind_ev',
+      align: 'right',
+      render: (v: number) => (v || 0).toFixed(4),
+    },
+  ];
+
   return (
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell>配体</TableCell>
-          <TableCell align="right">E(dimer) / a.u.</TableCell>
-          <TableCell align="right">E(ligand) / a.u.</TableCell>
-          <TableCell align="right">E_bind / kcal·mol⁻¹</TableCell>
-          <TableCell align="right">E_bind / eV</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {bindings.map((b, i) => (
-          <TableRow key={i}>
-            <TableCell>{b.ligand as string}</TableCell>
-            <TableCell align="right">{((b.e_dimer_au as number) || 0).toFixed(6)}</TableCell>
-            <TableCell align="right">{((b.e_ligand_au as number) || 0).toFixed(6)}</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-              {((b.e_bind_kcal_mol as number) || 0).toFixed(2)}
-            </TableCell>
-            <TableCell align="right">{((b.e_bind_ev as number) || 0).toFixed(4)}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <Table
+      size="small"
+      dataSource={bindings.map((b, i) => ({ ...b, key: i }))}
+      columns={columns}
+      pagination={false}
+    />
   );
 }
 
 function renderDesolvationStepwiseResult(result: Record<string, unknown>) {
   const steps = (result.stepwise_desolvation as Array<Record<string, unknown>>) || [];
+
+  const columns: ColumnsType<Record<string, unknown>> = [
+    { title: '移除配体', dataIndex: 'ligand', key: 'ligand' },
+    {
+      title: 'E(cluster) / a.u.',
+      dataIndex: 'e_cluster_au',
+      key: 'e_cluster_au',
+      align: 'right',
+      render: (v: number) => (v || 0).toFixed(6),
+    },
+    {
+      title: 'E(minus) / a.u.',
+      dataIndex: 'e_minus_au',
+      key: 'e_minus_au',
+      align: 'right',
+      render: (v: number) => (v || 0).toFixed(6),
+    },
+    {
+      title: 'ΔE / kcal·mol⁻¹',
+      dataIndex: 'delta_e_kcal_mol',
+      key: 'delta_e_kcal_mol',
+      align: 'right',
+      render: (v: number) => (
+        <Text strong style={{ color: v > 0 ? '#ff4d4f' : '#52c41a' }}>
+          {(v || 0).toFixed(2)}
+        </Text>
+      ),
+    },
+    {
+      title: 'ΔE / eV',
+      dataIndex: 'delta_e_ev',
+      key: 'delta_e_ev',
+      align: 'right',
+      render: (v: number) => (v || 0).toFixed(4),
+    },
+  ];
+
   return (
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell>移除配体</TableCell>
-          <TableCell align="right">E(cluster) / a.u.</TableCell>
-          <TableCell align="right">E(minus) / a.u.</TableCell>
-          <TableCell align="right">ΔE / kcal·mol⁻¹</TableCell>
-          <TableCell align="right">ΔE / eV</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {steps.map((s, i) => (
-          <TableRow key={i}>
-            <TableCell>{s.ligand as string}</TableCell>
-            <TableCell align="right">{((s.e_cluster_au as number) || 0).toFixed(6)}</TableCell>
-            <TableCell align="right">{((s.e_minus_au as number) || 0).toFixed(6)}</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 'bold', color: (s.delta_e_kcal_mol as number) > 0 ? 'error.main' : 'success.main' }}>
-              {((s.delta_e_kcal_mol as number) || 0).toFixed(2)}
-            </TableCell>
-            <TableCell align="right">{((s.delta_e_ev as number) || 0).toFixed(4)}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <Table
+      size="small"
+      dataSource={steps.map((s, i) => ({ ...s, key: i }))}
+      columns={columns}
+      pagination={false}
+    />
   );
 }
 
 function renderRedoxResult(result: Record<string, unknown>) {
   const potentials = (result.redox_potentials as Array<Record<string, unknown>>) || [];
+
+  const columns: ColumnsType<Record<string, unknown>> = [
+    {
+      title: '物种',
+      dataIndex: 'smiles',
+      key: 'smiles',
+      render: (v: string) => <Text code>{v}</Text>,
+    },
+    {
+      title: 'E(neutral,gas) / a.u.',
+      dataIndex: 'e_neutral_gas_au',
+      key: 'e_neutral_gas_au',
+      align: 'right',
+      render: (v: number) => (v || 0).toFixed(6),
+    },
+    {
+      title: 'E(charged,sol) / a.u.',
+      dataIndex: 'e_charged_sol_au',
+      key: 'e_charged_sol_au',
+      align: 'right',
+      render: (v: number) => (v || 0).toFixed(6),
+    },
+    {
+      title: 'ΔG(sol) / eV',
+      dataIndex: 'delta_g_sol_ev',
+      key: 'delta_g_sol_ev',
+      align: 'right',
+      render: (v: number) => (v || 0).toFixed(4),
+    },
+    {
+      title: 'E° (vs SHE) / V',
+      dataIndex: 'oxidation_potential_v',
+      key: 'oxidation_potential_v',
+      align: 'right',
+      render: (v: number) => <Text strong style={{ color: '#1890ff' }}>{(v || 0).toFixed(3)}</Text>,
+    },
+  ];
+
   return (
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell>物种</TableCell>
-          <TableCell align="right">E(neutral,gas) / a.u.</TableCell>
-          <TableCell align="right">E(charged,sol) / a.u.</TableCell>
-          <TableCell align="right">ΔG(sol) / eV</TableCell>
-          <TableCell align="right">E° (vs SHE) / V</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {potentials.map((p, i) => (
-          <TableRow key={i}>
-            <TableCell sx={{ fontFamily: 'monospace' }}>{p.smiles as string}</TableCell>
-            <TableCell align="right">{((p.e_neutral_gas_au as number) || 0).toFixed(6)}</TableCell>
-            <TableCell align="right">{((p.e_charged_sol_au as number) || 0).toFixed(6)}</TableCell>
-            <TableCell align="right">{((p.delta_g_sol_ev as number) || 0).toFixed(4)}</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-              {((p.oxidation_potential_v as number) || 0).toFixed(3)}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <Table
+      size="small"
+      dataSource={potentials.map((p, i) => ({ ...p, key: i }))}
+      columns={columns}
+      pagination={false}
+    />
   );
 }
 
 function renderReorganizationResult(result: Record<string, unknown>) {
   if (result.status === 'not_implemented') {
-    return (
-      <Alert severity="info">
-        {result.message as string}
-      </Alert>
-    );
+    return <Alert type="info" message={result.message as string} />;
   }
-  return <pre>{JSON.stringify(result, null, 2)}</pre>;
+  return <pre style={{ background: '#f5f5f5', padding: 8, borderRadius: 4 }}>{JSON.stringify(result, null, 2)}</pre>;
 }
 

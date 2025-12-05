@@ -238,38 +238,82 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
     },
   ];
 
-  // 渲染计算类型复选框
+  // 渲染计算类型复选框 - 优化布局和用户体验
   const renderCalcTypeCheckboxes = () => (
-    <div style={{ marginBottom: 16 }}>
-      <Text strong>选择计算类型：</Text>
-      <Row gutter={[16, 8]} style={{ marginTop: 8 }}>
-        {CALC_TYPE_OPTIONS.map(opt => (
-          <Col key={opt.value} span={8}>
-            <Checkbox
-              checked={selectedCalcTypes.includes(opt.value)}
-              onChange={e => {
-                if (e.target.checked) {
-                  setSelectedCalcTypes([...selectedCalcTypes, opt.value]);
-                } else {
-                  setSelectedCalcTypes(selectedCalcTypes.filter(t => t !== opt.value));
-                }
-                setPlanResult(null); // 清除之前的规划结果
-              }}
-            >
-              <Space>
-                {opt.label}
-                {opt.risk === 'high' && (
-                  <Tag color="red" style={{ marginLeft: 4 }}>⚠️ 高风险</Tag>
-                )}
-                {opt.risk === 'medium' && (
-                  <Tag color="orange" style={{ marginLeft: 4 }}>中等</Tag>
-                )}
-              </Space>
-            </Checkbox>
-          </Col>
-        ))}
+    <Card
+      size="small"
+      title={
+        <Space>
+          <ExperimentOutlined style={{ color: '#722ed1' }} />
+          <Text strong>选择计算类型</Text>
+          {selectedCalcTypes.length > 0 && (
+            <Tag color="blue">{selectedCalcTypes.length} 项已选</Tag>
+          )}
+        </Space>
+      }
+      style={{ marginBottom: 16 }}
+    >
+      <Row gutter={[16, 12]}>
+        {CALC_TYPE_OPTIONS.map(opt => {
+          const isSelected = selectedCalcTypes.includes(opt.value);
+          const riskColor = opt.risk === 'high' ? '#ff4d4f' : opt.risk === 'medium' ? '#faad14' : '#52c41a';
+          const riskBg = opt.risk === 'high' ? '#fff2f0' : opt.risk === 'medium' ? '#fffbe6' : '#f6ffed';
+
+          return (
+            <Col key={opt.value} xs={24} sm={12} md={8}>
+              <div
+                style={{
+                  padding: '12px 16px',
+                  border: `1px solid ${isSelected ? '#1890ff' : '#d9d9d9'}`,
+                  borderRadius: 8,
+                  background: isSelected ? '#e6f7ff' : '#fff',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s',
+                }}
+                onClick={() => {
+                  if (isSelected) {
+                    setSelectedCalcTypes(selectedCalcTypes.filter(t => t !== opt.value));
+                  } else {
+                    setSelectedCalcTypes([...selectedCalcTypes, opt.value]);
+                  }
+                  setPlanResult(null);
+                }}
+              >
+                <Checkbox
+                  checked={isSelected}
+                  style={{ marginRight: 8 }}
+                  onChange={() => {}} // 由外层 div 处理
+                />
+                <span style={{ fontWeight: 500 }}>{opt.label}</span>
+                <div style={{ marginTop: 4, marginLeft: 24 }}>
+                  <Tag
+                    color={riskColor}
+                    style={{
+                      background: riskBg,
+                      borderColor: riskColor,
+                      fontSize: 11,
+                    }}
+                  >
+                    {opt.risk === 'high' ? '⚠️ 高风险' : opt.risk === 'medium' ? '⚡ 中等' : '✓ 低风险'}
+                  </Tag>
+                </div>
+              </div>
+            </Col>
+          );
+        })}
       </Row>
-    </div>
+
+      {/* 风险提示 */}
+      {selectedCalcTypes.some(t => CALC_TYPE_OPTIONS.find(o => o.value === t)?.risk === 'high') && (
+        <Alert
+          type="warning"
+          message="高风险计算提示"
+          description="您选择了高风险计算类型（Redox/Reorganization），这些计算对方法、基组和构型高度敏感，可能不收敛或产生较大误差。建议仅用于研究参考。"
+          style={{ marginTop: 12 }}
+          showIcon
+        />
+      )}
+    </Card>
   );
 
   // 渲染规划结果

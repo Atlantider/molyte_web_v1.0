@@ -1626,13 +1626,44 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
       {overview && overview.total_jobs > 0 && (
         <div style={{ marginTop: 16 }}>
           <Tabs
-            defaultActiveKey="tasks"
+            defaultActiveKey="cluster-planner"
+            type="card"
             items={[
+              // ========== 推荐功能 ==========
+              {
+                key: 'cluster-planner',
+                label: (
+                  <Space>
+                    <span style={{
+                      background: 'linear-gradient(135deg, #1890ff 0%, #722ed1 100%)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      fontWeight: 'bold',
+                    }}>
+                      🚀 统一规划
+                    </span>
+                    <Tag color="blue" style={{ marginLeft: 4 }}>推荐</Tag>
+                  </Space>
+                ),
+                children: (
+                  <div>
+                    <Alert
+                      type="info"
+                      message="统一规划功能"
+                      description="一站式规划多种 Cluster 计算（Binding/Desolvation/Redox/Reorg），智能复用 QC 任务，减少重复计算。"
+                      style={{ marginBottom: 16 }}
+                      showIcon
+                    />
+                    <ClusterAnalysisPlannerPanel mdJobId={jobId} />
+                  </div>
+                ),
+              },
+              // ========== 去溶剂化相关 ==========
               {
                 key: 'tasks',
                 label: (
                   <Space>
-                    任务列表
+                    📋 任务列表
                     <Tag color="blue">{overview.total_jobs}</Tag>
                     {overview.status_summary['COMPLETED'] > 0 && (
                       <Tag color="success">{overview.status_summary['COMPLETED']}</Tag>
@@ -1671,9 +1702,9 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                 key: 'summary',
                 label: (
                   <Space>
-                    汇总统计
+                    📊 汇总统计
                     {overview.status_summary['COMPLETED'] > 0 && (
-                      <Tag color="green">{overview.status_summary['COMPLETED']} 已完成</Tag>
+                      <Tag color="green">{overview.status_summary['COMPLETED']} 完成</Tag>
                     )}
                   </Space>
                 ),
@@ -1687,14 +1718,15 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
               },
               {
                 key: 'comparison',
-                label: '结果对比',
+                label: '📈 结果对比',
                 children: <DesolvationComparisonView jobs={overview.jobs} />,
               },
+              // ========== Binding 相关 ==========
               {
                 key: 'binding',
                 label: (
                   <Space>
-                    Li-配体 Binding
+                    🔗 Li-配体 Binding
                     <Tooltip title="从去溶剂化结果派生的 Li-配体结合能分析">
                       <BulbOutlined />
                     </Tooltip>
@@ -1703,22 +1735,10 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                 children: <BindingEnergyView mdJobId={jobId} />,
               },
               {
-                key: 'cluster-stats',
-                label: (
-                  <Space>
-                    Cluster 统计
-                    <Tooltip title="HOMO/LUMO/Gap 分布和简化的电化学窗口估计">
-                      <ThunderboltOutlined />
-                    </Tooltip>
-                  </Space>
-                ),
-                children: <ClusterStatisticsPanel mdJobId={jobId} />,
-              },
-              {
                 key: 'binding-analysis',
                 label: (
                   <Space>
-                    Binding 分析
+                    ⚛️ Binding 分析
                     <Tooltip title="独立的 Li-配体 Binding Energy 计算任务">
                       <ExperimentOutlined />
                     </Tooltip>
@@ -1726,41 +1746,43 @@ export default function DesolvationBatchPanel({ jobId, onStructureSelect }: Deso
                 ),
                 children: <BindingAnalysisPanel mdJobId={jobId} />,
               },
+              // ========== 统计分析 ==========
+              {
+                key: 'cluster-stats',
+                label: (
+                  <Space>
+                    📉 Cluster 统计
+                    <Tooltip title="HOMO/LUMO/Gap 分布和简化的电化学窗口估计">
+                      <ThunderboltOutlined />
+                    </Tooltip>
+                  </Space>
+                ),
+                children: <ClusterStatisticsPanel mdJobId={jobId} />,
+              },
+              // ========== 高风险功能 ==========
               {
                 key: 'redox',
                 label: (
-                  <Space>
-                    <span style={{ color: '#ff4d4f' }}>热力学循环</span>
-                    <Tooltip title="⚠️ 高风险功能：计算氧化还原电位，结果对方法/基组高度敏感">
-                      <ThunderboltOutlined style={{ color: '#ff4d4f' }} />
-                    </Tooltip>
-                  </Space>
+                  <Tooltip title="⚠️ 高风险功能：计算氧化还原电位，结果对方法/基组高度敏感">
+                    <Space>
+                      <span style={{ color: '#ff4d4f' }}>⚡ 热力学循环</span>
+                      <Tag color="red" style={{ fontSize: 10 }}>高风险</Tag>
+                    </Space>
+                  </Tooltip>
                 ),
                 children: <RedoxPotentialPanel mdJobId={jobId} />,
               },
               {
                 key: 'reorg',
                 label: (
-                  <Space>
-                    <span style={{ color: '#ff4d4f' }}>重组能</span>
-                    <Tooltip title="⚠️⚠️ 极高风险：Marcus理论重组能计算，极其耗时且容易失败">
-                      <ThunderboltOutlined style={{ color: '#ff4d4f' }} />
-                    </Tooltip>
-                  </Space>
+                  <Tooltip title="⚠️⚠️ 极高风险：Marcus理论重组能计算，极其耗时且容易失败">
+                    <Space>
+                      <span style={{ color: '#ff4d4f' }}>🔄 重组能</span>
+                      <Tag color="red" style={{ fontSize: 10 }}>极高风险</Tag>
+                    </Space>
+                  </Tooltip>
                 ),
                 children: <ReorganizationEnergyPanel mdJobId={jobId} />,
-              },
-              {
-                key: 'cluster-planner',
-                label: (
-                  <Space>
-                    <span style={{ color: '#1890ff', fontWeight: 'bold' }}>🚀 统一规划</span>
-                    <Tooltip title="统一规划多种 Cluster 计算（Binding/Desolvation/Redox/Reorg），智能复用 QC 任务">
-                      <ExperimentOutlined style={{ color: '#1890ff' }} />
-                    </Tooltip>
-                  </Space>
-                ),
-                children: <ClusterAnalysisPlannerPanel mdJobId={jobId} />,
               },
             ]}
           />
