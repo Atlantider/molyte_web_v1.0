@@ -304,50 +304,99 @@ export default function PostProcessDetail() {
     return selectedCount > 0 && selectedCount < groupStructures.length;
   }, [groupedStructures, selectedStructureIds]);
 
-  // 计算预估 QC 任务数（按唯一组成计算，相同组成复用）
+  // 计算预估 QC 任务数（分子能量复用，只需算一次）
   const estimatedQCTasks = useMemo(() => {
     if (selectedStructureIds.length === 0 || selectedCalcTypes.length === 0) {
       return { total: 0, details: {} as Record<string, number> };
     }
 
-    // 计算选中结构覆盖的唯一组成数量
-    const selectedCompositions = new Set<string>();
+    // 1. 统计唯一组成（簇）
+    const uniqueCompositions = new Set<string>();
+    // 2. 统计唯一分子类型（所有结构共享）
+    const uniqueMolecules = new Set<string>();
+    // 3. 统计唯一中心离子
+    const uniqueCenterIons = new Set<string>();
+    // 4. 统计唯一离子-配体对（用于 pairwise）
+    const uniquePairs = new Set<string>();
+    // 5. 统计平均配位数（用于 stepwise 估算）
+    let totalLigandCount = 0;
+
     selectedStructureIds.forEach(id => {
       const structure = structures.find(s => s.id === id);
       if (structure) {
-        // 用 generateClusterName 生成组成的唯一 key
+        // 唯一组成
         const compositionKey = generateClusterName(structure.center_ion, structure.composition);
-        selectedCompositions.add(compositionKey);
+        uniqueCompositions.add(compositionKey);
+        // 中心离子
+        uniqueCenterIons.add(structure.center_ion);
+        // 配体分子
+        Object.entries(structure.composition).forEach(([mol, count]) => {
+          if (count > 0) {
+            uniqueMolecules.add(mol);
+            uniquePairs.add(`${structure.center_ion}-${mol}`);
+            totalLigandCount += count;
+          }
+        });
       }
     });
-    const numUniqueCompositions = selectedCompositions.size;
+
+    const numClusters = uniqueCompositions.size;
+    const numMolecules = uniqueMolecules.size;
+    const numCenterIons = uniqueCenterIons.size;
+    const numPairs = uniquePairs.size;
+    const avgLigands = numClusters > 0 ? Math.ceil(totalLigandCount / selectedStructureIds.length) : 4;
 
     const details: Record<string, number> = {};
     let total = 0;
 
-    // 估算每种计算类型需要的 QC 任务数（按唯一组成）
+    /**
+     * 预估逻辑说明：
+     *
+     * BINDING_TOTAL (溶剂化能):
+     *   ΔE = E(cluster) - E(ion) - Σ E(ligand)
+     *   需要: 每个唯一簇 + 中心离子(共享) + 每种配体分子(共享)
+     *   = numClusters + numCenterIons + numMolecules
+     *
+     * BINDING_PAIRWISE (分子配位能):
+     *   计算 Li-EC, Li-DMC 等每种离子-配体对的结合能
+     *   需要: 每种离子-配体二聚体 + 离子 + 配体
+     *   = numPairs(二聚体) + numCenterIons + numMolecules
+     *
+     * DESOLVATION_STEPWISE (逐级脱溶剂化):
+     *   [Li·ABCD] → [Li·ABC] + D → [Li·AB] + C → ...
+     *   每个簇需要计算所有中间态
+     *   = numClusters × avgLigands(中间态) + numCenterIons + numMolecules
+     *
+     * REDOX (氧化还原电位):
+     *   需要中性态和离子态的几何优化 + 溶剂化能
+     *   = numClusters × 4 (2态 × 2计算)
+     *
+     * REORGANIZATION (Marcus重组能):
+     *   λ = E(R1,Q2) + E(R2,Q1) - E(R1,Q1) - E(R2,Q2)
+     *   = numClusters × 4
+     */
     selectedCalcTypes.forEach(calcType => {
       let count = 0;
       switch (calcType) {
         case 'BINDING_TOTAL':
-          // cluster + ion + 每种配体 ≈ 3 个任务/组成
-          count = numUniqueCompositions * 3;
+          // 簇能量(每个唯一组成) + 离子能量(共享) + 配体能量(共享)
+          count = numClusters + numCenterIons + numMolecules;
           break;
         case 'BINDING_PAIRWISE':
-          // 每个配体一个 dimer + ligand ≈ 6/组成
-          count = numUniqueCompositions * 6;
+          // 离子-配体二聚体(每种对) + 离子(共享) + 配体(共享)
+          count = numPairs + numCenterIons + numMolecules;
           break;
         case 'DESOLVATION_STEPWISE':
-          // cluster + 每个配体的 (cluster-i + ligand) ≈ 12/组成
-          count = numUniqueCompositions * 12;
+          // 每个簇的所有中间态 + 离子 + 配体
+          count = numClusters * avgLigands + numCenterIons + numMolecules;
           break;
         case 'REDOX':
-          // gas优化 + freq + solvent = 6/组成
-          count = numUniqueCompositions * 6;
+          // 每个簇: 氧化态优化 + 还原态优化 + 溶剂化校正
+          count = numClusters * 4;
           break;
         case 'REORGANIZATION':
-          // 2个几何 * 4个能量 = 8/组成
-          count = numUniqueCompositions * 8;
+          // Marcus: 4个单点能计算/簇
+          count = numClusters * 4;
           break;
       }
       details[calcType] = count;
