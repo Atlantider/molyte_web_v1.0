@@ -742,7 +742,7 @@ def find_existing_molecule_qc_job(
     查找已完成的相同分子 QC 任务（用于跨任务复用）
 
     所有计算参数必须完全匹配才能复用：
-    - molecule_name: 分子名称
+    - molecule_name: 分子基础名称（忽略 #数字 后缀，如 EC#1 和 EC#2 视为相同）
     - charge: 电荷
     - spin_multiplicity: 自旋多重度
     - basis_set: 基组
@@ -752,7 +752,7 @@ def find_existing_molecule_qc_job(
 
     Args:
         db: 数据库会话
-        molecule_name: 分子名称（如 EC, DMC, FSI）
+        molecule_name: 分子名称（如 EC, DMC, FSI, EC#1）
         charge: 电荷
         spin_multiplicity: 自旋多重度
         basis_set: 基组
@@ -763,9 +763,18 @@ def find_existing_molecule_qc_job(
     Returns:
         已完成的 QCJob 对象，如果不存在则返回 None
     """
-    # 构建查询条件
+    import re
+
+    # 提取基础分子名称（去掉 #数字 后缀）
+    # 例如：EC#1 -> EC, Li-EC#5 -> Li-EC
+    base_name = re.sub(r'#\d+$', '', molecule_name) if molecule_name else molecule_name
+
+    # 构建查询条件 - 使用正则匹配基础名称
+    # PostgreSQL 正则：匹配 base_name 或 base_name#数字
+    name_pattern = f"^{re.escape(base_name)}(#[0-9]+)?$"
+
     query = db.query(QCJob).filter(
-        QCJob.molecule_name == molecule_name,
+        QCJob.molecule_name.op('~')(name_pattern),
         QCJob.charge == charge,
         QCJob.spin_multiplicity == spin_multiplicity,
         QCJob.basis_set == basis_set,
@@ -794,7 +803,8 @@ def find_existing_molecule_qc_job(
         ).first()
 
         if result:
-            logger.info(f"Found existing completed QC job {existing_job.id} for {molecule_name} (charge={charge})")
+            logger.info(f"Found existing completed QC job {existing_job.id} for {molecule_name} "
+                       f"(base_name={base_name}, charge={charge}, solvent={solvent_model}/{solvent_name})")
             return existing_job
 
     return None

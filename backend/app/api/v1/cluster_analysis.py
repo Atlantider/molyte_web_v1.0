@@ -89,13 +89,14 @@ def _find_existing_qc_job(
     basis_set: str,
     solvent_model: str = "gas",
     solvent_name: str = None,
-    molecule_type: str = None
+    molecule_type: str = None,
+    molecule_name: str = None
 ) -> Optional[QCJob]:
     """
     查找已有的、相同配置的 QC 任务（全平台复用）
 
     复用条件：
-    - 相同 SMILES（分子结构）
+    - 相同 SMILES（分子结构）或相同基础 molecule_name（忽略 #数字 后缀）
     - 相同电荷和自旋多重度
     - 相同计算参数（泛函、基组）
     - 相同溶剂模型配置
@@ -103,10 +104,12 @@ def _find_existing_qc_job(
 
     注意：不限制用户，实现全平台复用
     """
+    import re
     from sqlalchemy.orm import joinedload
 
+    # 策略 1：先尝试 SMILES 精确匹配
     query = db.query(QCJob).options(
-        joinedload(QCJob.results)  # 预加载 results 关系
+        joinedload(QCJob.results)
     ).filter(
         QCJob.smiles == smiles,
         QCJob.charge == charge,
@@ -118,15 +121,41 @@ def _find_existing_qc_job(
         QCJob.is_deleted == False
     )
 
-    # 如果指定了溶剂名称，也需要匹配
     if solvent_model != "gas" and solvent_name:
         query = query.filter(QCJob.solvent_name == solvent_name)
 
     if molecule_type:
         query = query.filter(QCJob.molecule_type == molecule_type)
 
-    # 获取最近完成的
     job = query.order_by(desc(QCJob.finished_at)).first()
+
+    # 策略 2：如果 SMILES 匹配不到，尝试用基础 molecule_name 匹配
+    # 这对于 EC#1, EC#2 等同类型分子很有用
+    if not job and molecule_name:
+        base_name = re.sub(r'#\d+$', '', molecule_name)
+        name_pattern = f"^{re.escape(base_name)}(#[0-9]+)?$"
+
+        name_query = db.query(QCJob).options(
+            joinedload(QCJob.results)
+        ).filter(
+            QCJob.molecule_name.op('~')(name_pattern),
+            QCJob.charge == charge,
+            QCJob.spin_multiplicity == multiplicity,
+            QCJob.functional == functional,
+            QCJob.basis_set == basis_set,
+            QCJob.solvent_model == solvent_model,
+            QCJob.status == QCJobStatus.COMPLETED,
+            QCJob.is_deleted == False
+        )
+
+        if solvent_model != "gas" and solvent_name:
+            name_query = name_query.filter(QCJob.solvent_name == solvent_name)
+
+        job = name_query.order_by(desc(QCJob.finished_at)).first()
+
+        if job:
+            logger.debug(f"[全局复用-名称匹配] 找到已有 QC 任务 {job.id}: "
+                        f"'{molecule_name}' matches '{job.molecule_name}'")
 
     if job:
         logger.debug(f"[全局复用] 找到已有 QC 任务 {job.id}: {smiles}, charge={charge}, "

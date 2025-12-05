@@ -201,8 +201,41 @@ def create_qc_job(
         solvent_model = job_data.solvent_config.model or 'gas'
         solvent_name = job_data.solvent_config.solvent_name
 
+    # 辅助函数：提取基础分子名称（去掉 #数字 后缀）
+    # 例如：EC#1 -> EC, Li-EC#5 -> Li-EC, FSI -> FSI
+    import re
+    def get_base_molecule_name(name: str) -> str:
+        if not name:
+            return name
+        # 匹配 #数字 结尾的模式
+        return re.sub(r'#\d+$', '', name)
+
+    # 辅助函数：构建溶剂匹配条件
+    def add_solvent_filter(query):
+        if solvent_model == 'gas':
+            return query.filter(
+                or_(
+                    QCJob.solvent_model == 'gas',
+                    QCJob.solvent_model.is_(None)
+                )
+            )
+        elif solvent_model == 'custom':
+            query = query.filter(QCJob.solvent_model == 'custom')
+            if job_data.solvent_config:
+                eps_val = job_data.solvent_config.eps
+                if eps_val is not None:
+                    query = query.filter(
+                        QCJob.config['solvent_config']['eps'].astext == str(eps_val)
+                    )
+            return query
+        else:
+            query = query.filter(QCJob.solvent_model == solvent_model)
+            if solvent_name:
+                query = query.filter(QCJob.solvent_name == solvent_name)
+            return query
+
     # 检查是否已存在完全相同参数的任务（查重）
-    # 检查所有未删除的任务，不仅仅是已完成的
+    # 策略 1：先尝试 SMILES 精确匹配
     duplicate_query = db.query(QCJob).filter(
         QCJob.smiles == job_data.smiles,
         QCJob.functional == job_data.functional,
@@ -211,37 +244,36 @@ def create_qc_job(
         QCJob.spin_multiplicity == job_data.spin_multiplicity,
         QCJob.is_deleted == False
     )
-
-    # 匹配溶剂配置
-    if solvent_model == 'gas':
-        duplicate_query = duplicate_query.filter(
-            or_(
-                QCJob.solvent_model == 'gas',
-                QCJob.solvent_model.is_(None)
-            )
-        )
-    elif solvent_model == 'custom':
-        # 自定义溶剂：需要匹配所有自定义参数
-        duplicate_query = duplicate_query.filter(
-            QCJob.solvent_model == 'custom'
-        )
-        # 匹配自定义溶剂的关键参数（eps 是最重要的）
-        if job_data.solvent_config:
-            eps_val = job_data.solvent_config.eps
-            if eps_val is not None:
-                duplicate_query = duplicate_query.filter(
-                    QCJob.config['solvent_config']['eps'].astext == str(eps_val)
-                )
-    else:
-        duplicate_query = duplicate_query.filter(
-            QCJob.solvent_model == solvent_model
-        )
-        if solvent_name:
-            duplicate_query = duplicate_query.filter(
-                QCJob.solvent_name == solvent_name
-            )
-
+    duplicate_query = add_solvent_filter(duplicate_query)
     existing_job = duplicate_query.order_by(desc(QCJob.created_at)).first()
+
+    # 策略 2：如果 SMILES 匹配不到，尝试用基础 molecule_name 匹配
+    # 这对于 cluster 类型或没有标准 SMILES 的分子很有用
+    # 例如：EC#1 和 EC#2 应该能复用（如果其他参数相同）
+    if not existing_job and job_data.molecule_name:
+        base_name = get_base_molecule_name(job_data.molecule_name)
+        # 查找 molecule_name 匹配基础名称的任务
+        name_query = db.query(QCJob).filter(
+            QCJob.functional == job_data.functional,
+            QCJob.basis_set == job_data.basis_set,
+            QCJob.charge == job_data.charge,
+            QCJob.spin_multiplicity == job_data.spin_multiplicity,
+            QCJob.is_deleted == False,
+            QCJob.status == QCJobStatusModel.COMPLETED  # 只复用已完成的
+        )
+        name_query = add_solvent_filter(name_query)
+
+        # 使用正则匹配基础名称（molecule_name 去掉 #数字 后缀后相同）
+        # PostgreSQL 正则：匹配 base_name 或 base_name#数字
+        name_pattern = f"^{re.escape(base_name)}(#[0-9]+)?$"
+        name_query = name_query.filter(
+            QCJob.molecule_name.op('~')(name_pattern)
+        )
+
+        existing_job = name_query.order_by(desc(QCJob.finished_at)).first()
+        if existing_job:
+            logger.info(f"Found reusable QC job {existing_job.id} by molecule_name pattern: "
+                       f"'{job_data.molecule_name}' matches '{existing_job.molecule_name}'")
 
     # 对于自定义溶剂，额外验证所有参数是否完全匹配
     if existing_job and solvent_model == 'custom' and job_data.solvent_config:
