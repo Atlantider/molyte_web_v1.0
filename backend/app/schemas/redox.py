@@ -104,6 +104,12 @@ class RedoxJobConfig(BaseModel):
     scf_max_cycles: int = Field(200, description="SCF 最大迭代次数")
     opt_max_cycles: int = Field(100, description="优化最大迭代次数")
 
+    # QC 复用选项
+    reuse_existing_qc: bool = Field(
+        True,
+        description="是否复用已有 QC 结果（全局复用，节省计算资源）"
+    )
+
     # Li+/Li 参考电位（可自定义）
     li_reference_potential: float = Field(
         PhysicalConstants.LI_ABSOLUTE_POTENTIAL_VS_SHE,
@@ -271,6 +277,12 @@ class ReorgEnergyJobConfig(BaseModel):
     use_dispersion: bool = Field(True, description="是否使用色散校正")
     scf_max_cycles: int = Field(200, description="SCF 最大迭代次数")
     opt_max_cycles: int = Field(150, description="优化最大迭代次数")
+
+    # QC 复用选项
+    reuse_existing_qc: bool = Field(
+        True,
+        description="是否复用已有 QC 结果（全局复用，节省计算资源）"
+    )
 
 
 class ReorgEnergyJobCreate(BaseModel):

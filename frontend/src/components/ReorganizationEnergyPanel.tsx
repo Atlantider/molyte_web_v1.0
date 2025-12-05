@@ -29,6 +29,7 @@ import {
   Col,
   Statistic,
   Progress,
+  Checkbox,
 } from 'antd';
 import {
   PlusOutlined,
@@ -139,6 +140,7 @@ const ReorganizationEnergyPanel: React.FC<ReorganizationEnergyPanelProps> = ({ m
           functional: values.functional,
           basis_set: values.basis_set,
           use_dispersion: values.use_dispersion,
+          reuse_existing_qc: values.reuse_existing_qc ?? true,
         },
       });
 
@@ -458,6 +460,7 @@ const ReorganizationEnergyPanel: React.FC<ReorganizationEnergyPanelProps> = ({ m
             functional: 'B3LYP',
             basis_set: '6-31G*',
             use_dispersion: true,
+            reuse_existing_qc: true,
           }}
         >
           {/* Cluster 选择 */}
@@ -528,6 +531,12 @@ const ReorganizationEnergyPanel: React.FC<ReorganizationEnergyPanelProps> = ({ m
               </Form.Item>
             </Col>
           </Row>
+
+          <Form.Item name="reuse_existing_qc" valuePropName="checked">
+            <Checkbox>
+              复用已有 QC 结果（推荐，节省计算资源）
+            </Checkbox>
+          </Form.Item>
 
           <Form.Item>
             <Space>

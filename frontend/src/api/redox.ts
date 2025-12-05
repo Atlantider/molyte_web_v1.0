@@ -94,6 +94,7 @@ export interface RedoxJobConfig {
   scf_max_cycles: number;
   opt_max_cycles: number;
   li_reference_potential: number;
+  reuse_existing_qc: boolean;  // 是否复用已有 QC 结果
 }
 
 export interface SpeciesRedoxResult {
@@ -167,6 +168,7 @@ export interface ReorgEnergyJobConfig {
   use_dispersion: boolean;
   scf_max_cycles: number;
   opt_max_cycles: number;
+  reuse_existing_qc: boolean;  // 是否复用已有 QC 结果
 }
 
 export interface SpeciesReorgResult {
@@ -228,6 +230,7 @@ export async function createRedoxJob(data: {
     scf_max_cycles: data.config.scf_max_cycles || 200,
     opt_max_cycles: data.config.opt_max_cycles || 100,
     li_reference_potential: data.config.li_reference_potential || PhysicalConstants.LI_ABSOLUTE_POTENTIAL_VS_SHE,
+    reuse_existing_qc: data.config.reuse_existing_qc ?? true,
   };
 
   const response = await apiClient.post('/redox/jobs', {
@@ -305,6 +308,7 @@ export async function createReorgEnergyJob(data: {
     use_dispersion: data.config.use_dispersion ?? true,
     scf_max_cycles: data.config.scf_max_cycles || 200,
     opt_max_cycles: data.config.opt_max_cycles || 150,
+    reuse_existing_qc: data.config.reuse_existing_qc ?? true,
   };
 
   const response = await apiClient.post('/redox/reorganization-energy/jobs', {
