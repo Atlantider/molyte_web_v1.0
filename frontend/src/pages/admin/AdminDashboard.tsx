@@ -283,7 +283,7 @@ const AdminDashboard: React.FC = () => {
                 label={{
                   type: 'inner',
                   offset: '-30%',
-                  content: '{value}',
+                  content: (data: any) => data?.value ?? '',
                   style: {
                     fontSize: 14,
                     textAlign: 'center',

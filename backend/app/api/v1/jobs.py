@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Dict, Any, Tuple
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 import subprocess
 from app.database import get_db
@@ -394,12 +394,19 @@ def create_md_job(
         logger.info(f"Job saved as draft, waiting for manual submission")
 
     # Create MD job
+    # 获取用户的最大延期年数
+    from app.models.user import USER_TYPE_QUOTAS
+    max_delay_years = USER_TYPE_QUOTAS.get(current_user.user_type, {}).get("max_delay_years", 1)
+    default_delay_until = datetime.utcnow() + timedelta(days=365 * max_delay_years)
+
     db_job = MDJob(
         system_id=job_data.system_id,
         user_id=current_user.id,
         status=initial_status,
         progress=0.0,
-        config=config
+        config=config,
+        visibility=DataVisibility.DELAYED,
+        visibility_delay_until=default_delay_until
     )
 
     db.add(db_job)
