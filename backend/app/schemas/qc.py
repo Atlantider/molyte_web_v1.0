@@ -161,7 +161,7 @@ class QCJobBase(BaseModel):
         description="分子名称（仅支持英文、数字和符号）",
         pattern=r'^[A-Za-z0-9+\-_\s,()]+$'
     )
-    smiles: str = Field(..., min_length=1, description="SMILES表达式")
+    smiles: Optional[str] = Field(default=None, min_length=1, description="SMILES表达式（对于 cluster 类型任务可选）")
     molecule_type: MoleculeType = Field(default=MoleculeType.CUSTOM, description="分子类型")
     basis_set: str = Field(default="6-31G(d)", description="基组")
     functional: str = Field(default="B3LYP", description="泛函")

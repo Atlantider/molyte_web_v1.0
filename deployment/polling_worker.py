@@ -5039,7 +5039,7 @@ echo "QC calculation completed"
                                             task: Dict, qc_config: Dict) -> Optional[int]:
         """为 Cluster 高级计算创建 QC 任务"""
         task_type = task.get('task_type', '')
-        smiles = task.get('smiles', '')
+        smiles = task.get('smiles') or None  # 空字符串转为 None，让后端使用 XYZ 结构
         structure_id = task.get('structure_id')
         charge = task.get('charge', 0)
         multiplicity = task.get('multiplicity', 1)
@@ -5093,7 +5093,6 @@ echo "QC calculation completed"
         # 构建 QC 任务配置
         qc_job_config = {
             'molecule_name': molecule_name,
-            'smiles': smiles,
             'charge': charge,
             'spin_multiplicity': multiplicity,
             'functional': qc_config.get('functional', 'B3LYP'),
@@ -5105,6 +5104,10 @@ echo "QC calculation completed"
             'task_type': task_type,
             'solvation_structure_id': structure_id,
         }
+
+        # 只有当 smiles 有值时才添加（cluster 类型任务没有 SMILES，使用 XYZ 结构）
+        if smiles:
+            qc_job_config['smiles'] = smiles
 
         # 调用 API 创建 QC 任务
         try:

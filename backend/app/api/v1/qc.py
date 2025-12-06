@@ -191,47 +191,61 @@ def create_qc_job(
     )
 
     # 验证SMILES是否有效
-    try:
-        from rdkit import Chem
-        from rdkit.Chem import AllChem
-        mol = Chem.MolFromSmiles(job_data.smiles)
-        if mol is None:
-            if skip_smiles_validation:
-                # 有其他坐标来源，跳过 SMILES 验证
-                logger.warning(
-                    f"SMILES 无效 ({job_data.smiles})，但有其他坐标来源 "
-                    f"(xyz={has_xyz}, pdb={has_pdb}, structure_id={has_structure_id}, "
-                    f"is_cluster_task={is_cluster_task}, is_ion={is_ion_type})，继续创建任务"
-                )
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"无效的SMILES: {job_data.smiles}。请检查分子结构是否正确。"
-                )
-        else:
-            # 尝试生成3D坐标以验证分子可以被处理
-            mol = Chem.AddHs(mol)
-            result = AllChem.EmbedMolecule(mol, randomSeed=42)
-            if result == -1:
-                # 尝试使用随机坐标方法
-                result = AllChem.EmbedMolecule(mol, useRandomCoords=True, maxAttempts=100, randomSeed=42)
-            if result == -1:
-                # 某些特殊分子（如PF6-）的UFF力场不支持，需要手动处理
-                # 这里只发出警告，不阻止创建任务
-                # 实际的3D坐标会在任务执行时通过其他方法生成
-                logger.warning(f"无法使用RDKit自动生成3D坐标: {job_data.smiles}，将在任务执行时尝试其他方法")
-    except ImportError:
-        logger.warning("RDKit not available, skipping SMILES validation")
-    except HTTPException:
-        raise
-    except Exception as e:
+    # 如果没有 SMILES，检查是否有其他坐标来源
+    if not job_data.smiles:
         if skip_smiles_validation:
-            logger.warning(f"SMILES 验证异常 ({job_data.smiles}): {e}，有其他坐标来源，继续创建任务")
+            logger.info(
+                f"无 SMILES，使用其他坐标来源创建任务 "
+                f"(xyz={has_xyz}, pdb={has_pdb}, structure_id={has_structure_id}, "
+                f"is_cluster_task={is_cluster_task})"
+            )
         else:
             raise HTTPException(
                 status_code=400,
-                detail=f"SMILES验证失败: {str(e)}"
+                detail="SMILES 为空，且没有其他坐标来源（XYZ/PDB/solvation_structure_id）"
             )
+    else:
+        try:
+            from rdkit import Chem
+            from rdkit.Chem import AllChem
+            mol = Chem.MolFromSmiles(job_data.smiles)
+            if mol is None:
+                if skip_smiles_validation:
+                    # 有其他坐标来源，跳过 SMILES 验证
+                    logger.warning(
+                        f"SMILES 无效 ({job_data.smiles})，但有其他坐标来源 "
+                        f"(xyz={has_xyz}, pdb={has_pdb}, structure_id={has_structure_id}, "
+                        f"is_cluster_task={is_cluster_task}, is_ion={is_ion_type})，继续创建任务"
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"无效的SMILES: {job_data.smiles}。请检查分子结构是否正确。"
+                    )
+            else:
+                # 尝试生成3D坐标以验证分子可以被处理
+                mol = Chem.AddHs(mol)
+                result = AllChem.EmbedMolecule(mol, randomSeed=42)
+                if result == -1:
+                    # 尝试使用随机坐标方法
+                    result = AllChem.EmbedMolecule(mol, useRandomCoords=True, maxAttempts=100, randomSeed=42)
+                if result == -1:
+                    # 某些特殊分子（如PF6-）的UFF力场不支持，需要手动处理
+                    # 这里只发出警告，不阻止创建任务
+                    # 实际的3D坐标会在任务执行时通过其他方法生成
+                    logger.warning(f"无法使用RDKit自动生成3D坐标: {job_data.smiles}，将在任务执行时尝试其他方法")
+        except ImportError:
+            logger.warning("RDKit not available, skipping SMILES validation")
+        except HTTPException:
+            raise
+        except Exception as e:
+            if skip_smiles_validation:
+                logger.warning(f"SMILES 验证异常 ({job_data.smiles}): {e}，有其他坐标来源，继续创建任务")
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"SMILES验证失败: {str(e)}"
+                )
 
     # 提取溶剂模型和溶剂名称
     solvent_model = 'gas'
@@ -274,17 +288,38 @@ def create_qc_job(
             return query
 
     # 检查是否已存在完全相同参数的任务（查重）
-    # 策略 1：先尝试 SMILES 精确匹配
-    duplicate_query = db.query(QCJob).filter(
-        QCJob.smiles == job_data.smiles,
-        QCJob.functional == job_data.functional,
-        QCJob.basis_set == job_data.basis_set,
-        QCJob.charge == job_data.charge,
-        QCJob.spin_multiplicity == job_data.spin_multiplicity,
-        QCJob.is_deleted == False
-    )
-    duplicate_query = add_solvent_filter(duplicate_query)
-    existing_job = duplicate_query.order_by(desc(QCJob.created_at)).first()
+    existing_job = None
+
+    # 策略 0：对于 Cluster Analysis 任务，使用 solvation_structure_id + task_type 查重
+    # 这些任务没有 SMILES，依赖结构 ID 和任务类型来唯一标识
+    if job_data.solvation_structure_id and job_data.task_type:
+        cluster_query = db.query(QCJob).filter(
+            QCJob.solvation_structure_id == job_data.solvation_structure_id,
+            QCJob.task_type == job_data.task_type,
+            QCJob.functional == job_data.functional,
+            QCJob.basis_set == job_data.basis_set,
+            QCJob.charge == job_data.charge,
+            QCJob.spin_multiplicity == job_data.spin_multiplicity,
+            QCJob.is_deleted == False
+        )
+        cluster_query = add_solvent_filter(cluster_query)
+        existing_job = cluster_query.order_by(desc(QCJob.created_at)).first()
+        if existing_job:
+            logger.info(f"Found existing QC job {existing_job.id} by structure_id={job_data.solvation_structure_id}, "
+                       f"task_type={job_data.task_type}")
+
+    # 策略 1：先尝试 SMILES 精确匹配（仅当有 SMILES 时）
+    if not existing_job and job_data.smiles:
+        duplicate_query = db.query(QCJob).filter(
+            QCJob.smiles == job_data.smiles,
+            QCJob.functional == job_data.functional,
+            QCJob.basis_set == job_data.basis_set,
+            QCJob.charge == job_data.charge,
+            QCJob.spin_multiplicity == job_data.spin_multiplicity,
+            QCJob.is_deleted == False
+        )
+        duplicate_query = add_solvent_filter(duplicate_query)
+        existing_job = duplicate_query.order_by(desc(QCJob.created_at)).first()
 
     # 策略 2：如果 SMILES 匹配不到，尝试用基础 molecule_name 匹配
     # 这对于 cluster 类型或没有标准 SMILES 的分子很有用

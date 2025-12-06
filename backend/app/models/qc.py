@@ -66,7 +66,7 @@ class QCJob(Base):
 
     # 分子信息
     molecule_name = Column(String(255), nullable=False)
-    smiles = Column(Text, nullable=False, index=True)
+    smiles = Column(Text, nullable=True, index=True)  # 对于 cluster 类型任务可为空，使用 XYZ 结构
     molecule_type = Column(String(20), default="custom")
     
     # 计算参数
