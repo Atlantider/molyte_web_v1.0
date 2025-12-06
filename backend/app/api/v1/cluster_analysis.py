@@ -440,22 +440,33 @@ def _generate_task_reuse_key(task, qc_config: Dict[str, Any]) -> tuple:
     task_type = task.task_type or ""
     solvent = _get_solvent_from_task_type(task_type, qc_config)
 
-    # 1. Cluster 类型任务：根据计算模式区分
-    #    - 单点(sp)任务：每个都是独立的，用完整 task_type 区分
-    #    - 优化(opt)任务：同一 structure_id、相同电荷/多重度/溶剂的可以复用
-    #    包括: cluster, cluster_minus_*, intermediate_*, reorg_cluster_*, redox_cluster_*
-    if (task_type.startswith("cluster") or
-        task_type.startswith("intermediate") or
-        task_type.startswith("reorg_cluster") or
-        task_type.startswith("redox_cluster")):
-        # 检查是否是单点任务
+    # 1. Cluster 类型任务：根据任务类型和计算模式区分
+    #
+    # 复用规则：
+    # - cluster_minus_* 和 intermediate_*：每个都有不同的几何结构，必须独立计算
+    # - cluster：原始 cluster，可以跨类型复用
+    # - reorg_cluster_*：根据 opt/sp 区分
+    # - redox_cluster_*：根据 gas/sol 和 neutral/charged 区分
+
+    # A. cluster_minus_* 和 intermediate_*：不同几何，必须用完整 task_type 区分
+    if task_type.startswith("cluster_minus_") or task_type.startswith("intermediate_"):
+        # 这些是逐步去溶剂化的中间态，每个几何不同，不能互相复用
+        return ("struct_unique", task_type, task.structure_id, task.charge, task.multiplicity, solvent)
+
+    # B. 原始 cluster 任务
+    if task_type == "cluster":
+        # 原始 cluster 可以跨计算类型复用（BINDING_TOTAL ↔ DESOLVATION_STEPWISE）
+        return ("cluster", task.structure_id, task.charge, task.multiplicity, solvent)
+
+    # C. reorg_cluster_* 和 redox_cluster_*：根据计算模式区分
+    if task_type.startswith("reorg_cluster") or task_type.startswith("redox_cluster"):
         if "_sp_" in task_type:
             # 单点任务：需要特定几何，不能复用，用完整 task_type
             return ("struct_sp", task_type, task.structure_id, task.charge, task.multiplicity, solvent)
         else:
-            # 优化任务（包括 redox 的 neutral/charged 和 reorg 的 opt_neutral/opt_charged）
-            # 可以跨类型复用：redox_cluster_X_neutral_sol ↔ reorg_cluster_X_opt_neutral
-            # 使用 structure_id + charge + mult + solvent 作为 key
+            # 优化任务：可以跨类型复用
+            # redox_cluster_X_neutral_sol (opt, charge=+1) ↔ reorg_cluster_X_opt_neutral (opt, charge=+1)
+            # redox_cluster_X_charged_sol (opt, charge=+2) ↔ reorg_cluster_X_opt_charged (opt, charge=+2)
             return ("struct_opt", task.structure_id, task.charge, task.multiplicity, solvent)
 
     # 2. Reorg 分子任务：区分 opt 和 sp
@@ -1253,7 +1264,10 @@ def plan_cluster_analysis(
             # 5. redox 的氧化态：独立计算，不复用
 
             task_key = _generate_task_reuse_key(task, qc_config)
-            logger.debug(f"[复用检测] task={task.task_type}, key={task_key}, 已存在={task_key in planned_in_request}")
+            is_in_planned = task_key in planned_in_request
+            first_task_type = planned_in_request[task_key].task_type if is_in_planned else None
+            logger.info(f"[复用检测] task={task.task_type}, status={task.status}, key={task_key}, "
+                        f"已存在={is_in_planned}, 复用自={first_task_type}")
 
             if task.status == "reused":
                 # 已经在数据库中找到复用（全局复用）
