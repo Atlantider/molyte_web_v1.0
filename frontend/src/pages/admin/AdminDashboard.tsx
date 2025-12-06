@@ -42,10 +42,11 @@ const AdminDashboard: React.FC = () => {
   const [cpuRanking, setCpuRanking] = useState<UserRanking[]>([]);
   const [jobRanking, setJobRanking] = useState<UserRanking[]>([]);
 
-  // 每次导航到此页面时刷新数据
+  // 每次导航到此页面时刷新数据（使用 key 强制刷新）
   useEffect(() => {
     loadData();
-  }, [location.pathname]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key, location.pathname]);
 
   const loadData = async () => {
     setLoading(true);
