@@ -52,6 +52,7 @@ import {
   EyeOutlined,
   StopOutlined,
   ReloadOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -61,6 +62,7 @@ import {
   submitClusterAnalysis,
   getClusterAnalysisResults,
   cancelClusterAnalysisJob,
+  resubmitClusterAnalysisJob,
   getClusterAnalysisQCStatus,
   CALC_TYPE_INFO,
   type AdvancedClusterJob,
@@ -256,6 +258,7 @@ export default function PostProcessDetail() {
   const [planLoading, setPlanLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [resubmitLoading, setResubmitLoading] = useState(false);
 
   // REDOX 和 REORGANIZATION 子选项
   const [redoxOptions, setRedoxOptions] = useState({ include_molecule: true, include_dimer: true, include_cluster: false });
@@ -1003,6 +1006,22 @@ export default function PostProcessDetail() {
       message.error(err.response?.data?.detail || '取消任务失败');
     } finally {
       setCancelLoading(false);
+    }
+  };
+
+  // 重新提交任务
+  const handleResubmit = async () => {
+    if (!job) return;
+    setResubmitLoading(true);
+    try {
+      await resubmitClusterAnalysisJob(job.id);
+      message.success('任务已重新提交，Worker 将自动处理');
+      loadJob(); // 重新加载任务状态
+    } catch (err: any) {
+      console.error('Failed to resubmit:', err);
+      message.error(err.response?.data?.detail || '重新提交失败');
+    } finally {
+      setResubmitLoading(false);
     }
   };
 
@@ -2251,6 +2270,23 @@ export default function PostProcessDetail() {
                         loading={cancelLoading}
                       >
                         取消任务
+                      </Button>
+                    </Popconfirm>
+                  )}
+                  {['FAILED', 'CANCELLED'].includes(job.status) && (
+                    <Popconfirm
+                      title="确定要重新提交此任务吗？"
+                      description="将重置任务状态并重新提交，已完成的 QC 任务会被复用，失败的任务会重新计算"
+                      onConfirm={handleResubmit}
+                      okText="确定重新提交"
+                      cancelText="取消"
+                    >
+                      <Button
+                        type="primary"
+                        icon={<SendOutlined />}
+                        loading={resubmitLoading}
+                      >
+                        重新提交
                       </Button>
                     </Popconfirm>
                   )}

@@ -1578,6 +1578,73 @@ def cancel_cluster_analysis_job(
     }
 
 
+@router.post("/jobs/{job_id}/resubmit", response_model=AdvancedClusterJobResponse)
+def resubmit_cluster_analysis_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    重新提交 Cluster 高级计算任务
+
+    - 只能重新提交 FAILED、CANCELLED 状态的任务
+    - 会重置任务状态为 SUBMITTED，保留原有配置
+    - 已完成的 QC 任务会被复用，失败的 QC 任务会被重新创建
+    """
+    job = db.query(AdvancedClusterJobModel).filter(AdvancedClusterJobModel.id == job_id).first()
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"任务 {job_id} 不存在")
+
+    if job.user_id != current_user.id and current_user.role.value != 'admin':
+        raise HTTPException(status_code=403, detail="无权操作此任务")
+
+    # 检查状态
+    resubmittable_statuses = ['FAILED', 'CANCELLED']
+    if job.status not in resubmittable_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"任务状态为 {job.status}，只能重新提交 FAILED 或 CANCELLED 状态的任务"
+        )
+
+    # 重置任务状态
+    job.status = AdvancedClusterJobStatusModel.SUBMITTED
+    job.error_message = None
+    job.progress = 0.0
+
+    # 记录重新提交信息
+    if not job.qc_task_plan:
+        job.qc_task_plan = {}
+    job.qc_task_plan['resubmitted_at'] = datetime.now().isoformat()
+    job.qc_task_plan['resubmitted_by'] = current_user.username
+
+    # 重置失败的 QC 任务状态（已完成的保持不变，会被复用）
+    from app.models.qc import QCJob as QCJobModel, QCJobStatus
+    failed_qc_jobs = db.query(QCJobModel).filter(
+        QCJobModel.cluster_analysis_job_id == job_id,
+        QCJobModel.status.in_([
+            QCJobStatus.FAILED,
+            QCJobStatus.CANCELLED
+        ])
+    ).all()
+
+    reset_qc_count = 0
+    for qc_job in failed_qc_jobs:
+        qc_job.status = QCJobStatus.CREATED
+        qc_job.error_message = None
+        qc_job.slurm_job_id = None
+        qc_job.started_at = None
+        qc_job.finished_at = None
+        reset_qc_count += 1
+
+    db.commit()
+    db.refresh(job)
+
+    logger.info(f"User {current_user.id} resubmitted cluster analysis job {job_id}, reset {reset_qc_count} failed QC jobs")
+
+    return job
+
+
 @router.post("/jobs/{job_id}/add-calc-types")
 def add_calc_types_to_job(
     job_id: int,
