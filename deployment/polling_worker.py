@@ -464,9 +464,8 @@ class PollingWorker:
             # 检查等待 QC 任务完成的 Cluster 高级计算任务
             self._check_waiting_cluster_analysis_jobs()
 
-            # 检查等待 QC 任务完成的去溶剂化任务
-            # 注意：在 API 架构下，这个功能由后端处理，worker 不需要直接访问数据库
-            # self._check_waiting_desolvation_jobs()
+            # 检查等待 QC 任务完成的去溶剂化任务（通过 API 调用后端处理）
+            self._check_waiting_desolvation_jobs_via_api()
 
         except Exception as e:
             self.logger.error(f"获取新任务失败: {e}", exc_info=True)
@@ -4924,6 +4923,63 @@ echo "QC calculation completed"
         except Exception as e:
             self.logger.error(f"检查 WAITING_QC 任务失败: {e}", exc_info=True)
 
+    def _check_waiting_desolvation_jobs_via_api(self):
+        """
+        通过 API 检查等待 QC 任务完成的去溶剂化任务
+
+        对于处于 POSTPROCESSING 状态（Phase 2 等待中）的任务，
+        检查其 QC 任务是否已完成，如果完成则继续计算去溶剂化能。
+        """
+        try:
+            # 1. 获取等待中的去溶剂化任务
+            endpoint = f"{self.api_base_url}/workers/jobs/waiting_desolvation"
+            response = requests.get(
+                endpoint,
+                headers=self.api_headers,
+                timeout=self.config['api']['timeout']
+            )
+
+            if response.status_code != 200:
+                self.logger.warning(f"获取等待中的去溶剂化任务失败: {response.status_code}")
+                return
+
+            result = response.json()
+            waiting_jobs = result.get('jobs', [])
+
+            if not waiting_jobs:
+                return
+
+            self.logger.info(f"发现 {len(waiting_jobs)} 个等待中的去溶剂化任务")
+
+            # 2. 对每个任务调用检查接口
+            for job in waiting_jobs:
+                job_id = job['id']
+                try:
+                    check_endpoint = f"{self.api_base_url}/workers/jobs/{job_id}/check_waiting_desolvation"
+                    check_response = requests.post(
+                        check_endpoint,
+                        headers=self.api_headers,
+                        timeout=120  # 计算可能需要较长时间
+                    )
+
+                    if check_response.status_code == 200:
+                        check_result = check_response.json()
+                        status = check_result.get('status')
+                        if status == 'completed':
+                            self.logger.info(f"去溶剂化任务 {job_id}: 计算完成")
+                        elif status == 'waiting':
+                            self.logger.debug(f"去溶剂化任务 {job_id}: 仍在等待 QC 完成")
+                        else:
+                            self.logger.info(f"去溶剂化任务 {job_id}: 状态 {status}")
+                    else:
+                        self.logger.warning(f"检查去溶剂化任务 {job_id} 失败: {check_response.status_code} - {check_response.text[:200]}")
+
+                except Exception as e:
+                    self.logger.error(f"检查去溶剂化任务 {job_id} 异常: {e}")
+
+        except Exception as e:
+            self.logger.error(f"检查等待中的去溶剂化任务失败: {e}", exc_info=True)
+
     def _check_cluster_analysis_qc_status(self, job_id: int) -> Dict:
         """检查 Cluster 高级计算的 QC 任务状态"""
         try:
@@ -5064,6 +5120,12 @@ echo "QC calculation completed"
                 result = response.json()
                 qc_job_id = result.get('id')
                 self.logger.info(f"创建 QC 任务成功: {qc_job_id} (type={task_type})")
+
+                # 创建成功后立即提交任务，将状态从 CREATED 改为 SUBMITTED
+                submit_success = self._submit_qc_job(qc_job_id)
+                if not submit_success:
+                    self.logger.warning(f"QC 任务 {qc_job_id} 创建成功但提交失败，需要手动提交")
+
                 return qc_job_id
             else:
                 self.logger.error(f"创建 QC 任务失败: {response.status_code} - {response.text}")
@@ -5072,6 +5134,35 @@ echo "QC calculation completed"
         except Exception as e:
             self.logger.error(f"创建 QC 任务异常: {e}")
             return None
+
+    def _submit_qc_job(self, qc_job_id: int) -> bool:
+        """
+        提交 QC 任务，将状态从 CREATED 改为 SUBMITTED
+
+        Args:
+            qc_job_id: QC 任务 ID
+
+        Returns:
+            bool: 提交是否成功
+        """
+        try:
+            endpoint = f"{self.api_base_url}/qc/jobs/{qc_job_id}/submit"
+            response = requests.post(
+                endpoint,
+                headers=self.api_headers,
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                self.logger.info(f"QC 任务 {qc_job_id} 提交成功，状态已改为 SUBMITTED")
+                return True
+            else:
+                self.logger.error(f"QC 任务 {qc_job_id} 提交失败: {response.status_code} - {response.text}")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"QC 任务 {qc_job_id} 提交异常: {e}")
+            return False
 
 
 def main():
