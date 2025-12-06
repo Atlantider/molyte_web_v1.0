@@ -29,6 +29,8 @@ import {
   Divider,
   Collapse,
   theme,
+  Switch,
+  InputNumber,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -257,7 +259,13 @@ export default function PostProcessDetail() {
     charge_ion: 1,
     solvent_model: 'gas',       // 默认气相，与已有任务匹配
     solvent: 'Water',
+    custom_eps: 78.4,           // 自定义介电常数
+    custom_eps_inf: 1.78,       // 自定义光学介电常数
   });
+
+  // 智能推荐状态
+  const [useSmartRecommend, setUseSmartRecommend] = useState(true);
+  const [recommendReason, setRecommendReason] = useState('');
 
   // 筛选状态
   const [filterCoordNums, setFilterCoordNums] = useState<number[]>([]);
@@ -1592,9 +1600,57 @@ export default function PostProcessDetail() {
               {/* 计算参数配置 */}
               <Card
                 size="small"
-                title={<Space><SettingOutlined /> 计算参数</Space>}
+                title={
+                  <Row justify="space-between" align="middle" style={{ width: '100%' }}>
+                    <Space><SettingOutlined /> 计算参数</Space>
+                    <Tooltip title="根据计算类型自动推荐最佳参数">
+                      <Switch
+                        size="small"
+                        checked={useSmartRecommend}
+                        onChange={(checked) => {
+                          setUseSmartRecommend(checked);
+                          if (checked) {
+                            // 应用智能推荐
+                            const hasRedox = selectedCalcTypes.includes('REDOX');
+                            const hasReorg = selectedCalcTypes.includes('REORGANIZATION');
+                            if (hasRedox || hasReorg) {
+                              setQcConfig(prev => ({
+                                ...prev,
+                                functional: 'B3LYP',
+                                basis_set: '6-31G*',
+                                use_dispersion: true,
+                                solvent_model: 'gas',
+                              }));
+                              setRecommendReason('Redox/重组能计算推荐使用 B3LYP/6-31G* + 气相');
+                            } else {
+                              setQcConfig(prev => ({
+                                ...prev,
+                                functional: 'B3LYP',
+                                basis_set: '6-31G*',
+                                use_dispersion: true,
+                              }));
+                              setRecommendReason('Binding 计算推荐使用 B3LYP-D3BJ/6-31G*');
+                            }
+                          } else {
+                            setRecommendReason('');
+                          }
+                        }}
+                        checkedChildren="智能"
+                        unCheckedChildren="手动"
+                      />
+                    </Tooltip>
+                  </Row>
+                }
                 bodyStyle={{ padding: 12 }}
               >
+                {recommendReason && (
+                  <Alert
+                    type="info"
+                    message={recommendReason}
+                    style={{ marginBottom: 8, padding: '4px 8px', fontSize: 11 }}
+                    showIcon
+                  />
+                )}
                 <Row gutter={[8, 6]}>
                   <Col span={12}>
                     <Text type="secondary" style={{ fontSize: 11 }}>泛函</Text>
@@ -1603,11 +1659,23 @@ export default function PostProcessDetail() {
                       style={{ width: '100%' }}
                       value={qcConfig.functional}
                       onChange={(v) => setQcConfig(prev => ({ ...prev, functional: v }))}
+                      showSearch
                     >
-                      <Select.Option value="B3LYP">B3LYP</Select.Option>
-                      <Select.Option value="PBE0">PBE0</Select.Option>
-                      <Select.Option value="M06-2X">M06-2X</Select.Option>
-                      <Select.Option value="wB97X-D">ωB97X-D</Select.Option>
+                      <Select.OptGroup label="常用">
+                        <Select.Option value="B3LYP">B3LYP (推荐)</Select.Option>
+                        <Select.Option value="PBE0">PBE0</Select.Option>
+                        <Select.Option value="M06-2X">M06-2X (非共价)</Select.Option>
+                      </Select.OptGroup>
+                      <Select.OptGroup label="长程校正">
+                        <Select.Option value="wB97X-D">ωB97X-D</Select.Option>
+                        <Select.Option value="CAM-B3LYP">CAM-B3LYP</Select.Option>
+                        <Select.Option value="LC-wPBE">LC-ωPBE</Select.Option>
+                      </Select.OptGroup>
+                      <Select.OptGroup label="Meta-GGA">
+                        <Select.Option value="M06">M06</Select.Option>
+                        <Select.Option value="M06-L">M06-L</Select.Option>
+                        <Select.Option value="TPSS">TPSS</Select.Option>
+                      </Select.OptGroup>
                     </Select>
                   </Col>
                   <Col span={12}>
@@ -1617,12 +1685,23 @@ export default function PostProcessDetail() {
                       style={{ width: '100%' }}
                       value={qcConfig.basis_set}
                       onChange={(v) => setQcConfig(prev => ({ ...prev, basis_set: v }))}
+                      showSearch
                     >
-                      <Select.Option value="6-31G*">6-31G*</Select.Option>
-                      <Select.Option value="6-31+G(d,p)">6-31+G(d,p)</Select.Option>
-                      <Select.Option value="6-311++G(d,p)">6-311++G(d,p)</Select.Option>
-                      <Select.Option value="def2-SVP">def2-SVP</Select.Option>
-                      <Select.Option value="def2-TZVP">def2-TZVP</Select.Option>
+                      <Select.OptGroup label="Pople (推荐)">
+                        <Select.Option value="6-31G*">6-31G* (标准)</Select.Option>
+                        <Select.Option value="6-31+G(d,p)">6-31+G(d,p) (阴离子)</Select.Option>
+                        <Select.Option value="6-311++G(d,p)">6-311++G(d,p) (高精度)</Select.Option>
+                      </Select.OptGroup>
+                      <Select.OptGroup label="Karlsruhe">
+                        <Select.Option value="def2-SVP">def2-SVP (快速)</Select.Option>
+                        <Select.Option value="def2-TZVP">def2-TZVP (精确)</Select.Option>
+                        <Select.Option value="def2-QZVP">def2-QZVP (极高精度)</Select.Option>
+                      </Select.OptGroup>
+                      <Select.OptGroup label="Dunning">
+                        <Select.Option value="cc-pVDZ">cc-pVDZ</Select.Option>
+                        <Select.Option value="cc-pVTZ">cc-pVTZ</Select.Option>
+                        <Select.Option value="aug-cc-pVDZ">aug-cc-pVDZ</Select.Option>
+                      </Select.OptGroup>
                     </Select>
                   </Col>
                   <Col span={12}>
@@ -1633,9 +1712,9 @@ export default function PostProcessDetail() {
                       value={qcConfig.solvent_model}
                       onChange={(v) => setQcConfig(prev => ({ ...prev, solvent_model: v }))}
                     >
-                      <Select.Option value="gas">气相</Select.Option>
+                      <Select.Option value="gas">气相 (推荐)</Select.Option>
                       <Select.Option value="pcm">PCM</Select.Option>
-                      <Select.Option value="smd">SMD</Select.Option>
+                      <Select.Option value="smd">SMD (精确)</Select.Option>
                     </Select>
                   </Col>
                   <Col span={12}>
@@ -1646,19 +1725,74 @@ export default function PostProcessDetail() {
                       value={qcConfig.solvent}
                       onChange={(v) => setQcConfig(prev => ({ ...prev, solvent: v }))}
                       disabled={qcConfig.solvent_model === 'gas'}
+                      showSearch
+                      optionFilterProp="children"
                     >
-                      <Select.Option value="Water">Water</Select.Option>
-                      <Select.Option value="Acetonitrile">Acetonitrile</Select.Option>
-                      <Select.Option value="DiMethylSulfoxide">DMSO</Select.Option>
-                      <Select.Option value="TetraHydroFuran">THF</Select.Option>
+                      <Select.OptGroup label="📌 水系电解液 (ε>50)">
+                        <Select.Option value="Water">水 Water ε=78.4</Select.Option>
+                      </Select.OptGroup>
+                      <Select.OptGroup label="📌 高介电 (ε=40-90)">
+                        <Select.Option value="DiMethylSulfoxide">DMSO ε=46.8</Select.Option>
+                        <Select.Option value="1,2-EthaneDiol">乙二醇 ε=40.2</Select.Option>
+                      </Select.OptGroup>
+                      <Select.OptGroup label="📌 中介电 (ε=15-40)">
+                        <Select.Option value="Acetonitrile">乙腈 ACN ε=35.7</Select.Option>
+                        <Select.Option value="Methanol">甲醇 ε=32.6</Select.Option>
+                        <Select.Option value="Ethanol">乙醇 ε=24.9</Select.Option>
+                        <Select.Option value="Acetone">丙酮 ε=20.5</Select.Option>
+                        <Select.Option value="1-Propanol">正丙醇 ε=20.5</Select.Option>
+                      </Select.OptGroup>
+                      <Select.OptGroup label="📌 低介电 (ε<15) - 碳酸酯">
+                        <Select.Option value="DiChloroEthane">二氯乙烷 ε=10.1</Select.Option>
+                        <Select.Option value="Dichloromethane">二氯甲烷 ε=8.9</Select.Option>
+                        <Select.Option value="TetraHydroFuran">THF ε=7.4</Select.Option>
+                        <Select.Option value="Chloroform">氯仿 ε=4.7 (DMC参考)</Select.Option>
+                        <Select.Option value="DiethylEther">乙醚 ε=4.2</Select.Option>
+                        <Select.Option value="Toluene">甲苯 ε=2.4</Select.Option>
+                        <Select.Option value="Benzene">苯 ε=2.3</Select.Option>
+                      </Select.OptGroup>
+                      <Select.OptGroup label="🔧 自定义">
+                        <Select.Option value="custom">自定义溶剂参数...</Select.Option>
+                      </Select.OptGroup>
                     </Select>
                   </Col>
+                  {/* 自定义溶剂参数 */}
+                  {qcConfig.solvent_model !== 'gas' && qcConfig.solvent === 'custom' && (
+                    <>
+                      <Col span={12}>
+                        <Text type="secondary" style={{ fontSize: 11 }}>介电常数 ε</Text>
+                        <InputNumber
+                          size="small"
+                          style={{ width: '100%' }}
+                          value={qcConfig.custom_eps}
+                          onChange={(v) => setQcConfig(prev => ({ ...prev, custom_eps: v || 78.4 }))}
+                          min={1}
+                          max={200}
+                          step={0.1}
+                          placeholder="如 78.4"
+                        />
+                      </Col>
+                      <Col span={12}>
+                        <Text type="secondary" style={{ fontSize: 11 }}>光学介电 ε∞</Text>
+                        <InputNumber
+                          size="small"
+                          style={{ width: '100%' }}
+                          value={qcConfig.custom_eps_inf}
+                          onChange={(v) => setQcConfig(prev => ({ ...prev, custom_eps_inf: v || 1.78 }))}
+                          min={1}
+                          max={10}
+                          step={0.01}
+                          placeholder="如 1.78"
+                        />
+                      </Col>
+                    </>
+                  )}
                   <Col span={24}>
                     <Checkbox
                       checked={qcConfig.use_dispersion}
                       onChange={(e) => setQcConfig(prev => ({ ...prev, use_dispersion: e.target.checked }))}
                     >
-                      <Text style={{ fontSize: 12 }}>色散校正 (D3BJ)</Text>
+                      <Text style={{ fontSize: 12 }}>色散校正 D3BJ (推荐)</Text>
                     </Checkbox>
                   </Col>
                 </Row>
