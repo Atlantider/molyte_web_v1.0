@@ -5216,9 +5216,16 @@ echo "QC calculation completed"
                 self.logger.info(f"创建 QC 任务成功: {qc_job_id} (type={task_type})")
 
                 # 创建成功后立即提交任务，将状态从 CREATED 改为 SUBMITTED
-                submit_success = self._submit_qc_job(qc_job_id)
-                if not submit_success:
-                    self.logger.warning(f"QC 任务 {qc_job_id} 创建成功但提交失败，需要手动提交")
+                # 使用 try-except 包裹，避免因为竞态条件导致整个流程失败
+                try:
+                    submit_success = self._submit_qc_job(qc_job_id)
+                    if not submit_success:
+                        # 提交失败可能是因为任务已经被 Polling Worker 获取并处理
+                        # 这种情况下任务仍然会被处理，只是警告一下
+                        self.logger.warning(f"QC 任务 {qc_job_id} 创建成功但提交失败（可能已被 Worker 获取），任务仍会被处理")
+                except Exception as e:
+                    # 捕获所有异常，避免影响主流程
+                    self.logger.warning(f"QC 任务 {qc_job_id} 提交时出现异常: {e}，任务仍会被 Worker 处理")
 
                 return qc_job_id
             else:
@@ -5250,6 +5257,16 @@ echo "QC calculation completed"
             if response.status_code == 200:
                 self.logger.info(f"QC 任务 {qc_job_id} 提交成功，状态已改为 SUBMITTED")
                 return True
+            elif response.status_code == 400:
+                # 400 错误可能是因为任务已经被 Polling Worker 获取并处理（状态不是 CREATED）
+                # 这种情况下任务仍然会被处理，不算失败
+                error_detail = response.json().get('detail', '')
+                if 'cannot be submitted' in error_detail.lower():
+                    self.logger.info(f"QC 任务 {qc_job_id} 已被 Worker 获取处理，无需重复提交")
+                    return True  # 返回 True，因为任务会被处理
+                else:
+                    self.logger.error(f"QC 任务 {qc_job_id} 提交失败: {response.status_code} - {response.text}")
+                    return False
             else:
                 self.logger.error(f"QC 任务 {qc_job_id} 提交失败: {response.status_code} - {response.text}")
                 return False
