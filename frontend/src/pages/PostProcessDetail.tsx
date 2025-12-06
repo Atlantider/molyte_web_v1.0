@@ -276,8 +276,10 @@ export default function PostProcessDetail() {
   const [viewMode, setViewMode] = useState<'list' | 'grouped'>('list');
   // 智能选择加载状态
   const [autoSelectLoading, setAutoSelectLoading] = useState(false);
-  // 展开的分组
+  // 展开的分组（结构列表）
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  // Step 2 Collapse 展开状态
+  const [planCollapseKeys, setPlanCollapseKeys] = useState<string[]>([]);
   // 计算类型详情弹窗
   const [calcTypeDetailVisible, setCalcTypeDetailVisible] = useState(false);
   const [selectedCalcTypeForDetail, setSelectedCalcTypeForDetail] = useState<ClusterCalcType | null>(null);
@@ -832,6 +834,8 @@ export default function PostProcessDetail() {
         qc_config: qcConfig,
       });
       setPlanResult(result);
+      // 初始化 Collapse 展开状态：默认全部展开
+      setPlanCollapseKeys(result.calc_requirements.map(r => r.calc_type));
       setCurrentStep(2);  // Step 2: 确认提交页面
     } catch (err) {
       console.error('Failed to plan:', err);
@@ -1127,12 +1131,13 @@ export default function PostProcessDetail() {
         return null;
       };
 
-      // 过滤任务：根据子选项筛选 REDOX 和 REORGANIZATION 的任务
+      // 过滤任务：根据子选项筛选 REDOX 和 REORGANIZATION 的任务（仅影响显示，不影响实际提交）
       const filterTasks = (tasks: PlannedQCTask[], calcType: string): PlannedQCTask[] => {
         if (calcType === 'REDOX') {
           return tasks.filter(t => {
             if (t.task_type?.startsWith('redox_mol_')) return redoxOptions.include_molecule;
             if (t.task_type?.startsWith('redox_dimer_')) return redoxOptions.include_dimer;
+            if (t.task_type?.startsWith('redox_cluster_')) return redoxOptions.include_cluster;
             return true;
           });
         }
@@ -1171,67 +1176,50 @@ export default function PostProcessDetail() {
                 <Text type="secondary" style={{ fontSize: 12 }}>{req.description}</Text>
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                {/* REDOX 子选项 - 修改后需要重新规划 */}
+                {/* REDOX 子选项 - 仅用于前端过滤显示 */}
                 {req.calc_type === 'REDOX' && (
                   <>
-                    <Tooltip title="修改后需点击'返回修改配置'重新规划">
-                      <Checkbox
-                        checked={redoxOptions.include_molecule}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          setRedoxOptions({ ...redoxOptions, include_molecule: e.target.checked });
-                          message.info('请点击"返回修改配置"按钮重新生成规划');
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Text style={{ fontSize: 11 }}>Molecule</Text>
-                      </Checkbox>
-                    </Tooltip>
-                    <Tooltip title="修改后需点击'返回修改配置'重新规划">
-                      <Checkbox
-                        checked={redoxOptions.include_dimer}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          setRedoxOptions({ ...redoxOptions, include_dimer: e.target.checked });
-                          message.info('请点击"返回修改配置"按钮重新生成规划');
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Text style={{ fontSize: 11 }}>Li-Dimer</Text>
-                      </Checkbox>
-                    </Tooltip>
+                    <Checkbox
+                      checked={redoxOptions.include_molecule}
+                      onChange={(e) => { e.stopPropagation(); setRedoxOptions({ ...redoxOptions, include_molecule: e.target.checked }); }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Text style={{ fontSize: 11 }}>Molecule</Text>
+                    </Checkbox>
+                    <Checkbox
+                      checked={redoxOptions.include_dimer}
+                      onChange={(e) => { e.stopPropagation(); setRedoxOptions({ ...redoxOptions, include_dimer: e.target.checked }); }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Text style={{ fontSize: 11 }}>Li-Dimer</Text>
+                    </Checkbox>
+                    <Checkbox
+                      checked={redoxOptions.include_cluster}
+                      onChange={(e) => { e.stopPropagation(); setRedoxOptions({ ...redoxOptions, include_cluster: e.target.checked }); }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Text style={{ fontSize: 11 }}>Cluster</Text>
+                    </Checkbox>
                     <span style={{ width: 1, height: 16, background: token.colorBorder, margin: '0 4px' }} />
                   </>
                 )}
-                {/* REORGANIZATION 子选项 - 修改后需要重新规划 */}
+                {/* REORGANIZATION 子选项 - 仅用于前端过滤显示 */}
                 {req.calc_type === 'REORGANIZATION' && (
                   <>
-                    <Tooltip title="修改后需点击'返回修改配置'重新规划">
-                      <Checkbox
-                        checked={reorganizationOptions.include_molecule}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          setReorganizationOptions({ ...reorganizationOptions, include_molecule: e.target.checked });
-                          message.info('请点击"返回修改配置"按钮重新生成规划');
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Text style={{ fontSize: 11 }}>Molecule</Text>
-                      </Checkbox>
-                    </Tooltip>
-                    <Tooltip title="修改后需点击'返回修改配置'重新规划">
-                      <Checkbox
-                        checked={reorganizationOptions.include_cluster}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          setReorganizationOptions({ ...reorganizationOptions, include_cluster: e.target.checked });
-                          message.info('请点击"返回修改配置"按钮重新生成规划');
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Text style={{ fontSize: 11 }}>Cluster</Text>
-                      </Checkbox>
-                    </Tooltip>
+                    <Checkbox
+                      checked={reorganizationOptions.include_molecule}
+                      onChange={(e) => { e.stopPropagation(); setReorganizationOptions({ ...reorganizationOptions, include_molecule: e.target.checked }); }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Text style={{ fontSize: 11 }}>Molecule</Text>
+                    </Checkbox>
+                    <Checkbox
+                      checked={reorganizationOptions.include_cluster}
+                      onChange={(e) => { e.stopPropagation(); setReorganizationOptions({ ...reorganizationOptions, include_cluster: e.target.checked }); }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Text style={{ fontSize: 11 }}>Cluster</Text>
+                    </Checkbox>
                     <span style={{ width: 1, height: 16, background: token.colorBorder, margin: '0 4px' }} />
                   </>
                 )}
@@ -1357,7 +1345,8 @@ export default function PostProcessDetail() {
               >
                 <Collapse
                   items={collapseItems}
-                  defaultActiveKey={planResult.calc_requirements.map(r => r.calc_type)}
+                  activeKey={planCollapseKeys}
+                  onChange={(keys) => setPlanCollapseKeys(keys as string[])}
                   style={{ background: 'transparent' }}
                 />
               </Card>
