@@ -42,6 +42,10 @@ class QCConfig(BaseModel):
     use_dispersion: bool = Field(True, description="是否使用色散校正 (D3BJ)")
     charge_cluster: int = Field(1, description="Cluster 电荷")
     charge_ion: int = Field(1, description="离子电荷 (Li+ = 1)")
+    # Slurm 资源配置
+    slurm_partition: Optional[str] = Field("cpu", description="Slurm 队列/分区")
+    slurm_cpus: Optional[int] = Field(16, ge=1, le=128, description="CPU 核心数")
+    slurm_time: Optional[int] = Field(7200, ge=10, description="最大运行时间（分钟）")
 
 
 class RedoxOptions(BaseModel):

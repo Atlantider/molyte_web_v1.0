@@ -73,6 +73,7 @@ import {
 } from '../api/clusterAnalysis';
 import { getMDJobs, getMDJob, getSolvationStructures, autoSelectSolvationStructures, type SolvationStructure, type AutoSelectResponse } from '../api/jobs';
 import { previewDesolvationStructures, type DesolvationPreviewResponse } from '../api/desolvation';
+import { getPartitions, type PartitionInfo } from '../api/slurm';
 import type { MDJob } from '../types';
 import { JobStatus } from '../types';
 import ClusterAnalysisResultsPanel from '../components/ClusterAnalysisResultsPanel';
@@ -270,11 +271,19 @@ export default function PostProcessDetail() {
     solvent: 'Water',
     custom_eps: 78.4,           // 自定义介电常数
     custom_eps_inf: 1.78,       // 自定义光学介电常数
+    // Slurm 资源配置
+    slurm_partition: 'cpu',
+    slurm_cpus: 16,
+    slurm_time: 7200,
   });
 
   // 智能推荐状态
   const [useSmartRecommend, setUseSmartRecommend] = useState(true);
   const [recommendReason, setRecommendReason] = useState('');
+
+  // Slurm 分区信息
+  const [partitions, setPartitions] = useState<PartitionInfo[]>([]);
+  const [partitionsLoading, setPartitionsLoading] = useState(false);
 
   // 筛选状态
   const [filterCoordNums, setFilterCoordNums] = useState<number[]>([]);
@@ -687,6 +696,31 @@ export default function PostProcessDetail() {
       loadJob();
     }
   }, [isCreateMode, loadMdJobs, loadJob]);
+
+  // 加载 Slurm 分区信息
+  useEffect(() => {
+    const loadPartitions = async () => {
+      setPartitionsLoading(true);
+      try {
+        const data = await getPartitions();
+        setPartitions(data);
+        // 设置默认分区
+        if (data.length > 0) {
+          const upPartition = data.find(p => p.state === 'up');
+          if (upPartition) {
+            setQcConfig(prev => ({ ...prev, slurm_partition: upPartition.name }));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load partitions:', error);
+      } finally {
+        setPartitionsLoading(false);
+      }
+    };
+    if (isCreateMode) {
+      loadPartitions();
+    }
+  }, [isCreateMode]);
 
   useEffect(() => {
     if (selectedMdJobId && isCreateMode) {
@@ -1446,6 +1480,18 @@ export default function PostProcessDetail() {
                     </Tag>
                   </Descriptions.Item>
                 </Descriptions>
+                <Divider style={{ margin: '12px 0' }} />
+                <Descriptions column={3} size="small" title={<><ThunderboltOutlined /> 集群资源</>}>
+                  <Descriptions.Item label="队列">
+                    <Tag color="purple">{qcConfig.slurm_partition}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="CPU核心数">
+                    <Tag color="cyan">{qcConfig.slurm_cpus}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="时间限制">
+                    <Tag color="geekblue">{qcConfig.slurm_time} 分钟</Tag>
+                  </Descriptions.Item>
+                </Descriptions>
               </Card>
 
               {/* 按计算类型分组的任务详情 */}
@@ -2050,6 +2096,75 @@ export default function PostProcessDetail() {
                     </Checkbox>
                   </Col>
                 </Row>
+              </Card>
+
+              {/* 集群资源配置 */}
+              <Card
+                size="small"
+                title={<Space><ThunderboltOutlined /> 集群资源</Space>}
+                bodyStyle={{ padding: 12 }}
+                style={{ marginBottom: 12 }}
+              >
+                <Row gutter={[8, 8]}>
+                  <Col span={24}>
+                    <Text type="secondary" style={{ fontSize: 11 }}>队列/分区</Text>
+                    <Select
+                      size="small"
+                      style={{ width: '100%' }}
+                      value={qcConfig.slurm_partition}
+                      onChange={(v) => setQcConfig(prev => ({ ...prev, slurm_partition: v }))}
+                      loading={partitionsLoading}
+                      placeholder={partitions.length > 0 ? "选择队列" : "暂无可用队列"}
+                    >
+                      {partitions.length > 0 ? (
+                        partitions.map(p => (
+                          <Select.Option key={p.name} value={p.name} disabled={p.state !== 'up'}>
+                            <span style={{ color: p.state === 'up' ? 'inherit' : '#999' }}>
+                              {p.name} {p.state === 'up'
+                                ? `(${p.available_cpus}/${p.total_cpus} CPUs)`
+                                : '(不可用)'}
+                            </span>
+                          </Select.Option>
+                        ))
+                      ) : (
+                        <>
+                          <Select.Option value="cpu">cpu</Select.Option>
+                          <Select.Option value="gpu">gpu</Select.Option>
+                        </>
+                      )}
+                    </Select>
+                  </Col>
+                  <Col span={12}>
+                    <Text type="secondary" style={{ fontSize: 11 }}>CPU 核心数</Text>
+                    <InputNumber
+                      size="small"
+                      style={{ width: '100%' }}
+                      value={qcConfig.slurm_cpus}
+                      onChange={(v) => setQcConfig(prev => ({ ...prev, slurm_cpus: v || 16 }))}
+                      min={1}
+                      max={128}
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <Text type="secondary" style={{ fontSize: 11 }}>时间限制(分钟)</Text>
+                    <InputNumber
+                      size="small"
+                      style={{ width: '100%' }}
+                      value={qcConfig.slurm_time}
+                      onChange={(v) => setQcConfig(prev => ({ ...prev, slurm_time: v || 7200 }))}
+                      min={10}
+                      max={43200}
+                    />
+                  </Col>
+                </Row>
+                {partitions.length === 0 && !partitionsLoading && (
+                  <Alert
+                    message="暂无可用队列，请联系管理员"
+                    type="warning"
+                    showIcon
+                    style={{ marginTop: 8, fontSize: 11 }}
+                  />
+                )}
               </Card>
 
               {/* 分析预览 */}
