@@ -2166,58 +2166,6 @@ export default function PostProcessDetail() {
                   />
                 )}
               </Card>
-
-              {/* 分析预览 */}
-              <Card
-                size="small"
-                title={<Space><CalculatorOutlined /> 分析预览</Space>}
-                bodyStyle={{ padding: 12 }}
-                style={{ flex: 1 }}
-              >
-                {/* 选择统计 - 更紧凑 */}
-                <Row gutter={8} style={{ marginBottom: 12 }}>
-                  <Col span={12}>
-                    <div style={{ background: token.colorPrimaryBg, borderRadius: 6, padding: '8px 12px', textAlign: 'center' }}>
-                      <Text type="secondary" style={{ fontSize: 11 }}>已选结构</Text>
-                      <div><Text strong style={{ fontSize: 18 }}>{selectedStructureIds.length}</Text><Text type="secondary"> / {structures.length}</Text></div>
-                    </div>
-                  </Col>
-                  <Col span={12}>
-                    <div style={{ background: token.colorBgLayout, borderRadius: 6, padding: '8px 12px', textAlign: 'center' }}>
-                      <Text type="secondary" style={{ fontSize: 11 }}>覆盖组成</Text>
-                      <div><Text strong style={{ fontSize: 18 }}>{coveredCompositions}</Text><Text type="secondary"> / {sortedGroupKeys.length}</Text></div>
-                    </div>
-                  </Col>
-                </Row>
-
-                <Divider style={{ margin: '8px 0' }}>预估 QC 任务</Divider>
-
-                {selectedCalcTypes.length > 0 && selectedStructureIds.length > 0 ? (
-                  <>
-                    {/* 共享的基础分子能量 */}
-                    {estimatedQCTasks.baseMonomerCount > 0 && (
-                      <Row justify="space-between" style={{ marginBottom: 4, background: token.colorSuccessBg, padding: '2px 6px', borderRadius: 4 }}>
-                        <Col><Text style={{ fontSize: 11 }}>🔗 共享分子能量</Text></Col>
-                        <Col><Text style={{ fontSize: 11 }}>{estimatedQCTasks.baseMonomerCount}</Text></Col>
-                      </Row>
-                    )}
-                    {/* 各类型独有任务 */}
-                    {Object.entries(estimatedQCTasks.details).map(([calcType, count]) => (
-                      <Row key={calcType} justify="space-between" style={{ marginBottom: 4 }}>
-                        <Col><Text style={{ fontSize: 12 }}>{CALC_TYPE_INFO[calcType as ClusterCalcType]?.icon} {CALC_TYPE_INFO[calcType as ClusterCalcType]?.label}</Text></Col>
-                        <Col><Text strong>{count}</Text></Col>
-                      </Row>
-                    ))}
-                    <Divider style={{ margin: '6px 0' }} />
-                    <Row justify="space-between">
-                      <Col><Text strong>总计</Text></Col>
-                      <Col><Text strong style={{ color: token.colorPrimary, fontSize: 16 }}>{estimatedQCTasks.total}</Text></Col>
-                    </Row>
-                  </>
-                ) : (
-                  <Empty description="选择结构和计算类型后显示" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                )}
-              </Card>
             </Col>
           </Row>
 

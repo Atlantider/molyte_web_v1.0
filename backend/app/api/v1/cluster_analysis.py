@@ -1549,16 +1549,22 @@ def cancel_cluster_analysis_job(
     job.status = 'CANCELLED'
     job.error_message = f"用户 {current_user.username} 手动取消"
 
-    # 取消关联的 QC 任务（只取消待处理的）
+    # 取消关联的 QC 任务（包括待处理和运行中的）
     from app.models.qc import QCJob as QCJobModel, QCJobStatus
     qc_jobs = db.query(QCJobModel).filter(
         QCJobModel.cluster_analysis_job_id == job_id,
-        QCJobModel.status.in_([QCJobStatus.CREATED, QCJobStatus.QUEUED])
+        QCJobModel.status.in_([
+            QCJobStatus.CREATED,
+            QCJobStatus.SUBMITTED,
+            QCJobStatus.QUEUED,
+            QCJobStatus.RUNNING
+        ])
     ).all()
 
     cancelled_qc_count = 0
     for qc_job in qc_jobs:
         qc_job.status = QCJobStatus.CANCELLED
+        qc_job.error_message = f"父任务被取消"
         cancelled_qc_count += 1
 
     db.commit()
@@ -1566,7 +1572,7 @@ def cancel_cluster_analysis_job(
     logger.info(f"User {current_user.id} cancelled cluster analysis job {job_id}, cancelled {cancelled_qc_count} QC jobs")
 
     return {
-        "message": f"任务已取消，同时取消了 {cancelled_qc_count} 个待处理的 QC 任务",
+        "message": f"任务已取消，同时取消了 {cancelled_qc_count} 个 QC 任务（Worker 将自动执行 scancel）",
         "job_id": job_id,
         "cancelled_qc_count": cancelled_qc_count
     }
