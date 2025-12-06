@@ -420,7 +420,7 @@ export default function PostProcessDetail() {
     return generateClusterName(s.center_ion, s.composition);
   }, []);
 
-  // 智能选择：每种组成选1个
+  // 智能选择：占比前3的组成
   const handleAutoSelect = useCallback(async () => {
     if (!selectedMdJobId) return;
     setAutoSelectLoading(true);
@@ -428,7 +428,12 @@ export default function PostProcessDetail() {
       const result = await autoSelectSolvationStructures(selectedMdJobId);
       const ids = result.selected_structures.map(s => s.id);
       setSelectedStructureIds(ids);
-      message.success(`已智能选择 ${ids.length} 个结构（覆盖 ${result.unique_compositions} 种组成）`);
+      // 构建占比信息
+      const percentages = result.selected_structures.map(
+        (s: { percentage?: number; composition_key?: string }) =>
+          `${s.composition_key?.split('-').slice(1).join('-') || '?'} (${s.percentage || 0}%)`
+      ).join(', ');
+      message.success(`已选择占比前 ${ids.length} 的组成: ${percentages}`);
     } catch (err) {
       console.error('Auto select failed:', err);
       message.error('智能选择失败');
@@ -1503,9 +1508,11 @@ export default function PostProcessDetail() {
                 <Spin spinning={loading} style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   {/* 快速选择 */}
                   <Space wrap style={{ marginBottom: 12 }}>
-                    <Button size="small" icon={<BulbOutlined />} loading={autoSelectLoading} onClick={handleAutoSelect}>
-                      智能选择
-                    </Button>
+                    <Tooltip title="选择出现频率最高的前3种配位组成">
+                      <Button size="small" icon={<BulbOutlined />} loading={autoSelectLoading} onClick={handleAutoSelect}>
+                        占比前3
+                      </Button>
+                    </Tooltip>
                     <Button size="small" onClick={() => selectNPerGroup(3)}>每种3个</Button>
                     <Button size="small" type={filteredStructures.length !== structures.length ? 'primary' : 'default'}
                       onClick={() => setSelectedStructureIds(filteredStructures.map(s => s.id))}>

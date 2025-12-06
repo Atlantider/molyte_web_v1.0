@@ -3187,9 +3187,19 @@ def auto_select_solvation_structures(
         )
         composition_groups[composition_key].append(structure)
 
-    # 每组选择一个代表性结构（选择第一个）
+    # 按出现次数（占比）排序，选择占比最高的前 3 种组成
+    sorted_groups = sorted(
+        composition_groups.items(),
+        key=lambda x: len(x[1]),  # 按组内结构数量排序
+        reverse=True  # 数量多的在前
+    )
+
+    # 选择占比最高的前 3 种组成
+    top_n = 3
+    top_groups = sorted_groups[:top_n]
+
     selected_structures = []
-    for composition_key, group in composition_groups.items():
+    for composition_key, group in top_groups:
         # 选择第一个结构作为代表
         representative = group[0]
         selected_structures.append({
@@ -3199,19 +3209,21 @@ def auto_select_solvation_structures(
             "composition": representative.composition,
             "composition_key": composition_key,
             "group_size": len(group),  # 这种组成有多少个结构
+            "percentage": round(len(group) / len(structures) * 100, 1),  # 占比
             "snapshot_frame": representative.snapshot_frame,
             "structure_type": representative.structure_type,
         })
 
-    # 按配位数排序
+    # 按占比排序（数量多的在前）
     selected_structures.sort(
-        key=lambda s: s["coordination_num"],
-        reverse=False
+        key=lambda s: s["group_size"],
+        reverse=True
     )
 
     return {
         "total_structures": len(structures),
         "unique_compositions": len(composition_groups),
+        "top_n_selected": top_n,
         "selected_structures": selected_structures
     }
 

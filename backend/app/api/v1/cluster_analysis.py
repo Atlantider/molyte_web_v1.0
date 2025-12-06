@@ -1165,7 +1165,9 @@ def plan_cluster_analysis(
     redox_opts = request.redox_options.model_dump() if request.redox_options else None
     reorg_opts = request.reorganization_options.model_dump() if request.reorganization_options else None
 
-    logger.info(f"[规划] redox_opts={redox_opts}, reorg_opts={reorg_opts}")
+    logger.info(f"[规划请求] calc_types={request.calc_types}")
+    logger.info(f"[规划请求] redox_opts={redox_opts}")
+    logger.info(f"[规划请求] reorg_opts={reorg_opts}")
 
     # 为每个计算类型规划 QC 任务
     calc_requirements = []
@@ -1212,6 +1214,7 @@ def plan_cluster_analysis(
             # 5. redox 的氧化态：独立计算，不复用
 
             task_key = _generate_task_reuse_key(task, qc_config)
+            logger.debug(f"[复用检测] task={task.task_type}, key={task_key}, 已存在={task_key in planned_in_request}")
 
             if task.status == "reused":
                 # 已经在数据库中找到复用（全局复用）
