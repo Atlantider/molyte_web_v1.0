@@ -664,6 +664,48 @@ export default function PostProcessDetail() {
     }
   }, []);
 
+  // 智能推荐：当选择的结构或计算类型变化时自动更新推荐参数
+  useEffect(() => {
+    if (!useSmartRecommend || selectedStructureIds.length === 0) return;
+
+    // 检测是否包含阴离子（需要弥散基组）
+    const selectedStructs = structures.filter(s => selectedStructureIds.includes(s.id));
+    const hasAnion = selectedStructs.some(s => {
+      const comp = s.composition || {};
+      // 常见阴离子名称
+      const anionPatterns = ['PF6', 'TFSI', 'FSI', 'BF4', 'ClO4', 'NO3', 'Cl', 'Br', 'I'];
+      return Object.keys(comp).some(mol =>
+        anionPatterns.some(pattern => mol.toUpperCase().includes(pattern))
+      );
+    });
+
+    const hasRedox = selectedCalcTypes.includes('REDOX');
+    const hasReorg = selectedCalcTypes.includes('REORGANIZATION');
+
+    // 根据分子特性选择基组
+    const recommendedBasis = hasAnion ? '6-31+G(d,p)' : '6-31G*';
+    const basisReason = hasAnion ? '(阴离子需弥散函数)' : '';
+
+    if (hasRedox || hasReorg) {
+      setQcConfig(prev => ({
+        ...prev,
+        functional: 'B3LYP',
+        basis_set: recommendedBasis,
+        use_dispersion: true,
+        solvent_model: 'gas',
+      }));
+      setRecommendReason(`Redox/重组能推荐 B3LYP/${recommendedBasis} + 气相 ${basisReason}`);
+    } else if (selectedCalcTypes.length > 0) {
+      setQcConfig(prev => ({
+        ...prev,
+        functional: 'B3LYP',
+        basis_set: recommendedBasis,
+        use_dispersion: true,
+      }));
+      setRecommendReason(`Binding 推荐 B3LYP-D3BJ/${recommendedBasis} ${basisReason}`);
+    }
+  }, [useSmartRecommend, selectedStructureIds, selectedCalcTypes, structures]);
+
   // 打开结构预览
   const handlePreviewStructure = async (structureId: number, calcType: string = '') => {
     setPreviewLoading(true);
@@ -1603,33 +1645,48 @@ export default function PostProcessDetail() {
                 title={
                   <Row justify="space-between" align="middle" style={{ width: '100%' }}>
                     <Space><SettingOutlined /> 计算参数</Space>
-                    <Tooltip title="根据计算类型自动推荐最佳参数">
+                    <Tooltip title="根据计算类型和分子特性自动推荐最佳参数">
                       <Switch
                         size="small"
                         checked={useSmartRecommend}
                         onChange={(checked) => {
                           setUseSmartRecommend(checked);
                           if (checked) {
-                            // 应用智能推荐
+                            // 检测是否包含阴离子（需要弥散基组）
+                            const selectedStructs = structures.filter(s => selectedStructureIds.includes(s.id));
+                            const hasAnion = selectedStructs.some(s => {
+                              const comp = s.composition || {};
+                              // 常见阴离子名称
+                              const anionPatterns = ['PF6', 'TFSI', 'FSI', 'BF4', 'ClO4', 'NO3', 'Cl', 'Br', 'I'];
+                              return Object.keys(comp).some(mol =>
+                                anionPatterns.some(pattern => mol.toUpperCase().includes(pattern))
+                              );
+                            });
+
                             const hasRedox = selectedCalcTypes.includes('REDOX');
                             const hasReorg = selectedCalcTypes.includes('REORGANIZATION');
+
+                            // 根据分子特性选择基组
+                            const recommendedBasis = hasAnion ? '6-31+G(d,p)' : '6-31G*';
+                            const basisReason = hasAnion ? '(阴离子需弥散函数)' : '';
+
                             if (hasRedox || hasReorg) {
                               setQcConfig(prev => ({
                                 ...prev,
                                 functional: 'B3LYP',
-                                basis_set: '6-31G*',
+                                basis_set: recommendedBasis,
                                 use_dispersion: true,
                                 solvent_model: 'gas',
                               }));
-                              setRecommendReason('Redox/重组能计算推荐使用 B3LYP/6-31G* + 气相');
+                              setRecommendReason(`Redox/重组能推荐 B3LYP/${recommendedBasis} + 气相 ${basisReason}`);
                             } else {
                               setQcConfig(prev => ({
                                 ...prev,
                                 functional: 'B3LYP',
-                                basis_set: '6-31G*',
+                                basis_set: recommendedBasis,
                                 use_dispersion: true,
                               }));
-                              setRecommendReason('Binding 计算推荐使用 B3LYP-D3BJ/6-31G*');
+                              setRecommendReason(`Binding 推荐 B3LYP-D3BJ/${recommendedBasis} ${basisReason}`);
                             }
                           } else {
                             setRecommendReason('');

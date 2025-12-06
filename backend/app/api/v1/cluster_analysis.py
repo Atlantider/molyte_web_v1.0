@@ -115,7 +115,8 @@ def _find_existing_qc_job(
     solvent_model: str = "gas",
     solvent_name: str = None,
     molecule_type: str = None,
-    molecule_name: str = None
+    molecule_name: str = None,
+    calc_mode: str = None  # 区分 opt / sp 等计算类型（通过 molecule_name 后缀匹配）
 ) -> Optional[QCJob]:
     """
     查找已有的、相同配置的 QC 任务（全平台复用）
@@ -125,13 +126,15 @@ def _find_existing_qc_job(
     - 相同电荷和自旋多重度
     - 相同计算参数（泛函、基组 - 支持等价基组匹配）
     - 相同溶剂模型配置
+    - 相同计算类型（opt / sp，通过 molecule_name 后缀匹配）
     - 任务已完成且未删除
 
-    注意：不限制用户，实现全平台复用
+    注意：
+    - 不限制用户，实现全平台复用
+    - calc_mode 用于区分 opt 和 sp 计算（重组能需要区分）
     """
     import re
     from sqlalchemy.orm import joinedload
-    from sqlalchemy import or_
 
     # 获取等价基组列表
     equivalent_basis_sets = _normalize_basis_set(basis_set)
@@ -156,28 +159,34 @@ def _find_existing_qc_job(
     if molecule_type:
         query = query.filter(QCJob.molecule_type == molecule_type)
 
+    # 如果指定了 calc_mode，通过 molecule_name 后缀来过滤
+    # 因为很多任务的 task_type 字段是 NULL，我们只能靠 molecule_name 来区分
+    if calc_mode:
+        if calc_mode == "opt":
+            # 优化任务：名称包含 _opt_ 但不包含 _sp_
+            query = query.filter(
+                QCJob.molecule_name.ilike("%_opt_%"),
+                ~QCJob.molecule_name.ilike("%_sp_%")
+            )
+        elif calc_mode == "sp":
+            # 单点任务：名称包含 _sp_
+            query = query.filter(QCJob.molecule_name.ilike("%_sp_%"))
+
     job = query.order_by(desc(QCJob.finished_at)).first()
 
     # 策略 2：如果 SMILES 匹配不到，尝试用基础 molecule_name 匹配
     # 这对于 EC#1, EC#2 等同类型分子很有用
-    # 也支持匹配带前缀的名称，如 cluster_2_reorg_mol_EC_opt_neutral
+    # 注意：不再使用宽泛的 compound_pattern，只匹配简单名称
     if not job and molecule_name:
         base_name = re.sub(r'#\d+$', '', molecule_name)
 
-        # 模式 1：简单名称匹配（如 EC, EC#1）
+        # 只匹配简单名称（如 EC, EC#1, Li-PF6, Li-PF6#1）
         simple_pattern = f"^{re.escape(base_name)}(#[0-9]+)?$"
-
-        # 模式 2：带前缀的复合名称匹配（如 cluster_2_reorg_mol_EC_opt_neutral）
-        # 匹配 *_{base_name}_* 或 *_{base_name}（结尾）
-        compound_pattern = f".*[_-]{re.escape(base_name)}([_-].*)?$"
 
         name_query = db.query(QCJob).options(
             joinedload(QCJob.results)
         ).filter(
-            or_(
-                QCJob.molecule_name.op('~')(simple_pattern),
-                QCJob.molecule_name.op('~')(compound_pattern)
-            ),
+            QCJob.molecule_name.op('~')(simple_pattern),
             QCJob.charge == charge,
             QCJob.spin_multiplicity == multiplicity,
             QCJob.functional == functional,
@@ -189,6 +198,9 @@ def _find_existing_qc_job(
 
         if solvent_model != "gas" and solvent_name:
             name_query = name_query.filter(QCJob.solvent_name == solvent_name)
+
+        # calc_mode 过滤不适用于简单名称匹配（如 EC, Li-PF6）
+        # 这些简单名称的任务通常是 Binding 计算，本身就是优化任务
 
         job = name_query.order_by(desc(QCJob.finished_at)).first()
 
@@ -825,11 +837,13 @@ def _plan_qc_tasks_for_calc_type(
 
                         for task_type, desc, charge, mult, calc_mode in mol_tasks:
                             # 全局复用：不限制 molecule_type，通过 SMILES 或 molecule_name 匹配
+                            # 必须区分 opt 和 sp 计算类型
                             existing = _find_existing_qc_job(
                                 db, lig_smiles, charge, mult, functional, basis_set,
                                 solvent_model, solvent_name,
                                 molecule_type=None,  # 不限制 molecule_type
-                                molecule_name=mol_name  # 传入基础名称用于回退匹配
+                                molecule_name=mol_name,  # 传入基础名称用于回退匹配
+                                calc_mode=calc_mode  # 区分 opt 和 sp
                             )
 
                             if existing:
