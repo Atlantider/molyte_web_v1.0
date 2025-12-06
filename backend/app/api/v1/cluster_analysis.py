@@ -398,7 +398,7 @@ def _get_solvent_from_task_type(task_type: str, qc_config: Dict[str, Any]) -> st
     - *_neutral_gas, *_charged_gas -> gas
     - *_neutral_sol, *_charged_sol -> 用户配置的溶剂模型
 
-    Reorg 任务：通常在气相计算（简化模型）
+    Reorg 任务：使用用户配置的溶剂模型（支持溶液相 Marcus 重组能）
 
     其他任务使用用户配置的溶剂模型
     """
@@ -413,9 +413,8 @@ def _get_solvent_from_task_type(task_type: str, qc_config: Dict[str, Any]) -> st
     elif "_sol" in task_type:
         return user_solvent if user_solvent != "gas" else "pcm"
 
-    # Reorg 任务使用气相
-    if task_type.startswith("reorg_"):
-        return "gas"
+    # Reorg 任务使用用户配置的溶剂模型（可以是 gas 或 pcm）
+    # 这样 Reorg-Mol: EC (Opt-N) 可以复用 Ligand: EC（相同溶剂）
 
     # 其他任务使用用户配置
     return user_solvent
@@ -429,12 +428,12 @@ def _generate_task_reuse_key(task, qc_config: Dict[str, Any]) -> tuple:
     1. 相同分子结构 (smiles)
     2. 相同电荷和自旋多重度
     3. 相同溶剂模型
-    4. 相同计算类型（opt vs sp）
+    4. 优化任务可以互相复用，单点任务独立
 
-    特殊处理：
-    - cluster/cluster_minus/intermediate：每个都是独立任务，用 task_type 唯一标识
-    - reorg 任务：区分 opt 和 sp（优化和单点不能复用）
-    - ligand/dimer 可以复用 redox 的中性态（如果溶剂、电荷匹配）
+    复用规则：
+    - Ligand: EC (opt) ↔ Reorg-Mol: EC (Opt-N) ↔ Redox-Mol: EC (N/Sol)  ✓ 都是优化
+    - Reorg-Mol: EC (SP-Ox@N) 是单点，不能复用优化任务  ✓
+    - Reorg-Mol: EC (Opt-Ox) 是氧化态优化，电荷不同  ✓
     """
     task_type = task.task_type or ""
     solvent = _get_solvent_from_task_type(task_type, qc_config)
@@ -447,14 +446,22 @@ def _generate_task_reuse_key(task, qc_config: Dict[str, Any]) -> tuple:
         # 使用完整的 task_type 作为键，确保每个中间态独立
         return ("struct", task_type, task.structure_id, task.charge, task.multiplicity, solvent)
 
-    # 2. Reorg 分子任务：需要区分 opt 和 sp（它们不能互相复用）
+    # 2. Reorg 分子任务：区分 opt 和 sp
+    #    - opt 任务可以与其他优化任务（ligand/dimer/redox中性态）复用
+    #    - sp 任务需要特定几何，不能复用
     if task_type.startswith("reorg_mol_"):
-        calc_mode = "opt" if "_opt_" in task_type else "sp"
-        return ("reorg", task.smiles, task.charge, task.multiplicity, solvent, calc_mode)
+        if "_sp_" in task_type:
+            # 单点任务：需要特定几何，不能复用
+            # 用完整的 task_type 确保独立
+            return ("sp", task_type, task.smiles, task.charge, task.multiplicity, solvent)
+        else:
+            # 优化任务：可以与其他优化任务复用
+            # 使用与 ligand/dimer/redox 相同的键格式
+            return ("mol", task.smiles, task.charge, task.multiplicity, solvent)
 
     # 3. 普通任务：ligand, dimer, ion, redox_mol, redox_dimer
-    #    这些可以跨类型复用，只要 smiles, charge, multiplicity, solvent 相同
-    #    例如：ligand_EC (gas, 0, 1) 可以复用 redox_mol_EC_neutral_gas (gas, 0, 1)
+    #    这些都是优化任务，可以跨类型复用
+    #    例如：ligand_EC (pcm, 0, 1) ↔ redox_mol_EC_neutral_sol (pcm, 0, 1) ↔ reorg_mol_EC_opt_neutral (pcm, 0, 1)
     return ("mol", task.smiles, task.charge, task.multiplicity, solvent)
 
 
