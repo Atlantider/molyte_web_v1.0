@@ -5117,10 +5117,11 @@ echo "QC calculation completed"
         charge = task.get('charge', 0)
         multiplicity = task.get('multiplicity', 1)
 
-        # 根据 task_type 的后缀决定溶剂配置
-        # - *_gas 或 *_neutral_gas 或 *_charged_gas → 气相（无溶剂）
-        # - *_sol 或 *_neutral_sol 或 *_charged_sol → 使用配置的溶剂模型
-        # - 其他任务（cluster, ligand, dimer, ion, cluster_minus 等）→ 使用默认配置
+        # 根据 task_type 决定溶剂配置
+        # 规则：
+        # 1. *_gas 后缀 → 气相（无溶剂），用于 redox 热力学循环中的气相计算
+        # 2. *_sol 后缀 → 使用配置的溶剂模型，用于 redox 热力学循环中的溶剂相计算
+        # 3. 其他任务（cluster, ligand, dimer, ion, cluster_minus, reorg_* 等）→ 使用默认配置
         if task_type.endswith('_gas'):
             # 气相计算，不使用溶剂
             solvent_model = 'gas'
@@ -5130,7 +5131,7 @@ echo "QC calculation completed"
             solvent_model = qc_config.get('solvent_model') or 'pcm'
             solvent_name = qc_config.get('solvent') or qc_config.get('solvent_name')
         else:
-            # 其他任务使用默认配置（通常是 ligand, dimer, ion, cluster 等 binding 类计算）
+            # 其他任务使用默认配置
             solvent_model = qc_config.get('solvent_model') or 'gas'
             solvent_name = qc_config.get('solvent') or qc_config.get('solvent_name')
 
