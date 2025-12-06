@@ -800,6 +800,7 @@ def _plan_qc_tasks_for_calc_type(
 
         include_molecule = redox_options.get("include_molecule", True) if redox_options else True
         include_dimer = redox_options.get("include_dimer", True) if redox_options else True
+        include_cluster = redox_options.get("include_cluster", False) if redox_options else False  # 默认不包含 Cluster（计算量大）
 
         # 【重要】Redox 计算需要溶液相任务进行热力学循环
         # 如果用户选择了 gas，溶液相任务应该用默认的 pcm
@@ -905,6 +906,36 @@ def _plan_qc_tasks_for_calc_type(
                                 )
                                 new_count += 1
                             planned_tasks.append(task)
+
+        # C. 整个 Cluster 的 Redox（4 个状态，从 MD 提取几何）
+        if include_cluster:
+            for s in structures:
+                cluster_charge = charge_ion  # cluster 电荷（通常是 Li+ 的 +1）
+                cluster_desc = f"Cluster #{s.id} (CN={s.coordination_num})"
+
+                cluster_states = [
+                    ("neutral_gas", f"[Cluster] {cluster_desc} 中性-气相", cluster_charge, "gas", None),
+                    ("charged_gas", f"[Cluster] {cluster_desc} 氧化态-气相", cluster_charge + 1, "gas", None),
+                    ("neutral_sol", f"[Cluster] {cluster_desc} 中性-溶液相", cluster_charge, redox_sol_model, redox_sol_name),
+                    ("charged_sol", f"[Cluster] {cluster_desc} 氧化态-溶液相", cluster_charge + 1, redox_sol_model, redox_sol_name),
+                ]
+
+                for state_suffix, desc, charge, sol_model, sol_name in cluster_states:
+                    cluster_task_type = f"redox_cluster_{s.id}_{state_suffix}"
+                    mult = 1 if charge == cluster_charge else 2
+
+                    # Cluster 任务不复用（每个结构独立）
+                    task = PlannedQCTask(
+                        task_type=cluster_task_type,
+                        description=desc,
+                        smiles=None,  # Cluster 没有 SMILES
+                        structure_id=s.id,
+                        charge=charge,
+                        multiplicity=mult,
+                        status="new"
+                    )
+                    new_count += 1
+                    planned_tasks.append(task)
 
     if calc_type == ClusterCalcType.REORGANIZATION:
         # Marcus 重组能包含两部分（可通过 reorganization_options 控制）：

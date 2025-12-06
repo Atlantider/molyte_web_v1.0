@@ -106,6 +106,19 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
     reason: string;
   } | null>(null);
 
+  // Redox 子选项
+  const [redoxOptions, setRedoxOptions] = useState({
+    include_molecule: true,
+    include_dimer: true,
+    include_cluster: false,  // 默认不包含 Cluster（计算量大）
+  });
+
+  // Reorganization 子选项
+  const [reorganizationOptions, setReorganizationOptions] = useState({
+    include_molecule: true,
+    include_cluster: true,
+  });
+
   // 加载溶剂化结构
   const loadStructures = useCallback(async () => {
     setLoading(true);
@@ -170,6 +183,8 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
         solvation_structure_ids: selectedStructureIds,
         calc_types: selectedCalcTypes,
         qc_config: qcConfig,
+        redox_options: selectedCalcTypes.includes('REDOX') ? redoxOptions : undefined,
+        reorganization_options: selectedCalcTypes.includes('REORGANIZATION') ? reorganizationOptions : undefined,
       });
       setPlanResult(result);
       message.success('规划完成');
@@ -216,6 +231,8 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
             solvation_structure_ids: selectedStructureIds,
             calc_types: selectedCalcTypes,
             qc_config: qcConfig,
+            redox_options: selectedCalcTypes.includes('REDOX') ? redoxOptions : undefined,
+            reorganization_options: selectedCalcTypes.includes('REORGANIZATION') ? reorganizationOptions : undefined,
           });
           message.success('任务已提交');
           setPlanResult(null);
@@ -329,6 +346,54 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
           );
         })}
       </Row>
+
+      {/* Redox 子选项 */}
+      {selectedCalcTypes.includes('REDOX') && (
+        <div style={{ marginTop: 12, padding: 12, background: '#fff7e6', borderRadius: 4 }}>
+          <Text strong style={{ fontSize: 12 }}>⚡ 氧化还原电位 - 计算对象：</Text>
+          <Space style={{ marginLeft: 12 }}>
+            <Checkbox
+              checked={redoxOptions.include_molecule}
+              onChange={(e) => setRedoxOptions(prev => ({ ...prev, include_molecule: e.target.checked }))}
+            >
+              单分子
+            </Checkbox>
+            <Checkbox
+              checked={redoxOptions.include_dimer}
+              onChange={(e) => setRedoxOptions(prev => ({ ...prev, include_dimer: e.target.checked }))}
+            >
+              Li-Dimer
+            </Checkbox>
+            <Checkbox
+              checked={redoxOptions.include_cluster}
+              onChange={(e) => setRedoxOptions(prev => ({ ...prev, include_cluster: e.target.checked }))}
+            >
+              Cluster <Tag color="orange" style={{ fontSize: 10 }}>计算量大</Tag>
+            </Checkbox>
+          </Space>
+        </div>
+      )}
+
+      {/* Reorganization 子选项 */}
+      {selectedCalcTypes.includes('REORGANIZATION') && (
+        <div style={{ marginTop: 12, padding: 12, background: '#f0f5ff', borderRadius: 4 }}>
+          <Text strong style={{ fontSize: 12 }}>🔄 Marcus 重组能 - 计算对象：</Text>
+          <Space style={{ marginLeft: 12 }}>
+            <Checkbox
+              checked={reorganizationOptions.include_molecule}
+              onChange={(e) => setReorganizationOptions(prev => ({ ...prev, include_molecule: e.target.checked }))}
+            >
+              单分子
+            </Checkbox>
+            <Checkbox
+              checked={reorganizationOptions.include_cluster}
+              onChange={(e) => setReorganizationOptions(prev => ({ ...prev, include_cluster: e.target.checked }))}
+            >
+              Cluster <Tag color="orange" style={{ fontSize: 10 }}>计算量大</Tag>
+            </Checkbox>
+          </Space>
+        </div>
+      )}
 
       {/* 风险提示 */}
       {selectedCalcTypes.some(t => CALC_TYPE_OPTIONS.find(o => o.value === t)?.risk === 'high') && (

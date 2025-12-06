@@ -48,6 +48,7 @@ class RedoxOptions(BaseModel):
     """REDOX 子选项"""
     include_molecule: bool = Field(True, description="计算单独配体分子的氧化还原电位")
     include_dimer: bool = Field(True, description="计算 Li-配体 Dimer 的氧化还原电位")
+    include_cluster: bool = Field(False, description="计算整个 Cluster 的氧化还原电位（计算量大）")
 
 
 class ReorganizationOptions(BaseModel):

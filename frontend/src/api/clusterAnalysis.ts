@@ -58,6 +58,7 @@ export interface CalcTypeRequirements {
 export interface RedoxOptions {
   include_molecule: boolean;
   include_dimer: boolean;
+  include_cluster: boolean;
 }
 
 export interface ReorganizationOptions {
