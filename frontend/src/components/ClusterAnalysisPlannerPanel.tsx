@@ -97,6 +97,10 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
     charge_ion: 1,
     solvent_model: 'pcm',  // 默认 PCM 隐式溶剂（电解液计算需要溶液环境）
     solvent: 'Water',      // 默认溶剂
+    // Slurm 资源配置
+    slurm_partition: 'hpc128c',
+    slurm_cpus: 16,
+    slurm_time: 7200,
   });
 
   // 推荐溶剂信息
@@ -749,6 +753,57 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
                     <div style={{ marginTop: 18 }}>
                       <Tag color="blue">{qcConfig.functional}/{qcConfig.basis_set}</Tag>
                       <Tag color="orange">{qcConfig.solvent_model === 'gas' ? '气相' : qcConfig.solvent_model.toUpperCase()}</Tag>
+                    </div>
+                  </Col>
+                </Row>
+
+                {/* Slurm 资源配置 */}
+                <Divider style={{ margin: '12px 0' }} />
+                <Row gutter={[16, 12]} align="middle">
+                  <Col span={6}>
+                    <Text strong style={{ fontSize: 12 }}>Slurm 分区</Text>
+                    <Select
+                      size="small"
+                      style={{ width: '100%', marginTop: 4 }}
+                      value={qcConfig.slurm_partition}
+                      onChange={(value) => setQcConfig(prev => ({ ...prev, slurm_partition: value }))}
+                    >
+                      <Select.Option value="cpu">cpu</Select.Option>
+                      <Select.Option value="hpc128c">hpc128c</Select.Option>
+                      <Select.Option value="gpu">gpu</Select.Option>
+                    </Select>
+                  </Col>
+                  <Col span={6}>
+                    <Text strong style={{ fontSize: 12 }}>CPU 核心数</Text>
+                    <Select
+                      size="small"
+                      style={{ width: '100%', marginTop: 4 }}
+                      value={qcConfig.slurm_cpus}
+                      onChange={(value) => setQcConfig(prev => ({ ...prev, slurm_cpus: value }))}
+                    >
+                      <Select.Option value={8}>8</Select.Option>
+                      <Select.Option value={16}>16</Select.Option>
+                      <Select.Option value={32}>32</Select.Option>
+                      <Select.Option value={64}>64</Select.Option>
+                    </Select>
+                  </Col>
+                  <Col span={6}>
+                    <Text strong style={{ fontSize: 12 }}>最大运行时间（分钟）</Text>
+                    <Select
+                      size="small"
+                      style={{ width: '100%', marginTop: 4 }}
+                      value={qcConfig.slurm_time}
+                      onChange={(value) => setQcConfig(prev => ({ ...prev, slurm_time: value }))}
+                    >
+                      <Select.Option value={3600}>60 小时</Select.Option>
+                      <Select.Option value={7200}>120 小时</Select.Option>
+                      <Select.Option value={10080}>168 小时（7天）</Select.Option>
+                    </Select>
+                  </Col>
+                  <Col span={6}>
+                    <div style={{ marginTop: 18 }}>
+                      <Tag color="purple">{qcConfig.slurm_partition}</Tag>
+                      <Tag color="cyan">{qcConfig.slurm_cpus} CPUs</Tag>
                     </div>
                   </Col>
                 </Row>

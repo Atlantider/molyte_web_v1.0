@@ -33,6 +33,10 @@ export interface QCConfig {
   use_dispersion: boolean;
   charge_cluster: number;
   charge_ion: number;
+  // Slurm 资源配置
+  slurm_partition?: string;
+  slurm_cpus?: number;
+  slurm_time?: number;
 }
 
 export interface PlannedQCTask {
