@@ -1154,7 +1154,6 @@ export default function PostProcessDetail() {
       };
 
       // 过滤任务：根据子选项筛选 REDOX 和 REORGANIZATION 的任务（仅影响显示，不影响实际提交）
-      // 注意：REORG Molecule 依赖 REDOX Molecule，如果 REDOX Molecule 未选择，REORG Molecule 也应该隐藏
       const filterTasks = (tasks: PlannedQCTask[], calcType: string): PlannedQCTask[] => {
         if (calcType === 'REDOX') {
           return tasks.filter(t => {
@@ -1166,10 +1165,7 @@ export default function PostProcessDetail() {
         }
         if (calcType === 'REORGANIZATION') {
           return tasks.filter(t => {
-            // REORG Molecule 需要 REDOX Molecule 选中才能显示（因为依赖其 Opt-Ox 复用）
-            if (t.task_type?.startsWith('reorg_mol_')) {
-              return reorganizationOptions.include_molecule && redoxOptions.include_molecule;
-            }
+            if (t.task_type?.startsWith('reorg_mol_')) return reorganizationOptions.include_molecule;
             if (t.task_type?.startsWith('reorg_cluster_')) return reorganizationOptions.include_cluster;
             return true;
           });
@@ -1232,16 +1228,13 @@ export default function PostProcessDetail() {
                 {/* REORGANIZATION 子选项 - 仅用于前端过滤显示 */}
                 {req.calc_type === 'REORGANIZATION' && (
                   <>
-                    <Tooltip title={!redoxOptions.include_molecule ? '需先勾选 REDOX 的 Molecule' : ''}>
-                      <Checkbox
-                        checked={reorganizationOptions.include_molecule && redoxOptions.include_molecule}
-                        disabled={!redoxOptions.include_molecule}
-                        onChange={(e) => { e.stopPropagation(); setReorganizationOptions({ ...reorganizationOptions, include_molecule: e.target.checked }); }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Text style={{ fontSize: 11, opacity: redoxOptions.include_molecule ? 1 : 0.5 }}>Molecule</Text>
-                      </Checkbox>
-                    </Tooltip>
+                    <Checkbox
+                      checked={reorganizationOptions.include_molecule}
+                      onChange={(e) => { e.stopPropagation(); setReorganizationOptions({ ...reorganizationOptions, include_molecule: e.target.checked }); }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Text style={{ fontSize: 11 }}>Molecule</Text>
+                    </Checkbox>
                     <Checkbox
                       checked={reorganizationOptions.include_cluster}
                       onChange={(e) => { e.stopPropagation(); setReorganizationOptions({ ...reorganizationOptions, include_cluster: e.target.checked }); }}

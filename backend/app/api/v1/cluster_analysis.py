@@ -425,7 +425,7 @@ def _generate_task_reuse_key(task, qc_config: Dict[str, Any]) -> tuple:
     生成任务的复用键
 
     复用原则：
-    1. 相同分子结构 (smiles)
+    1. 相同分子结构 (smiles 或 structure_id)
     2. 相同电荷和自旋多重度
     3. 相同溶剂模型
     4. 优化任务可以互相复用，单点任务独立
@@ -434,17 +434,29 @@ def _generate_task_reuse_key(task, qc_config: Dict[str, Any]) -> tuple:
     - Ligand: EC (opt) ↔ Reorg-Mol: EC (Opt-N) ↔ Redox-Mol: EC (N/Sol)  ✓ 都是优化
     - Reorg-Mol: EC (SP-Ox@N) 是单点，不能复用优化任务  ✓
     - Reorg-Mol: EC (Opt-Ox) 是氧化态优化，电荷不同  ✓
+    - Redox-Cluster (neutral_sol) ↔ Reorg-Cluster (Opt-N)  ✓ 同 structure_id+charge+solvent
+    - Reorg-Cluster (SP-Ox@N) 是单点，不能复用优化任务  ✓
     """
     task_type = task.task_type or ""
     solvent = _get_solvent_from_task_type(task_type, qc_config)
 
-    # 1. Cluster 类型任务：每个都是独立的，用完整 task_type 区分
-    #    包括: cluster, cluster_minus_*, intermediate_*, reorg_cluster_*
+    # 1. Cluster 类型任务：根据计算模式区分
+    #    - 单点(sp)任务：每个都是独立的，用完整 task_type 区分
+    #    - 优化(opt)任务：同一 structure_id、相同电荷/多重度/溶剂的可以复用
+    #    包括: cluster, cluster_minus_*, intermediate_*, reorg_cluster_*, redox_cluster_*
     if (task_type.startswith("cluster") or
         task_type.startswith("intermediate") or
-        task_type.startswith("reorg_cluster")):
-        # 使用完整的 task_type 作为键，确保每个中间态独立
-        return ("struct", task_type, task.structure_id, task.charge, task.multiplicity, solvent)
+        task_type.startswith("reorg_cluster") or
+        task_type.startswith("redox_cluster")):
+        # 检查是否是单点任务
+        if "_sp_" in task_type:
+            # 单点任务：需要特定几何，不能复用，用完整 task_type
+            return ("struct_sp", task_type, task.structure_id, task.charge, task.multiplicity, solvent)
+        else:
+            # 优化任务（包括 redox 的 neutral/charged 和 reorg 的 opt_neutral/opt_charged）
+            # 可以跨类型复用：redox_cluster_X_neutral_sol ↔ reorg_cluster_X_opt_neutral
+            # 使用 structure_id + charge + mult + solvent 作为 key
+            return ("struct_opt", task.structure_id, task.charge, task.multiplicity, solvent)
 
     # 2. Reorg 分子任务：区分 opt 和 sp
     #    - opt 任务可以与其他优化任务（ligand/dimer/redox中性态）复用
