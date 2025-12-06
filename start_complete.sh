@@ -4,7 +4,7 @@
 
 set -e
 
-PROJECT_ROOT="/public/home/xiaoji/molyte_web"
+PROJECT_ROOT="/opt/molyte_web_v1.0"
 CONDA_ENV="molyte"
 
 echo ""
@@ -15,10 +15,26 @@ echo "║                                                                       
 echo "╚════════════════════════════════════════════════════════════════════════════╝"
 echo ""
 
-# 激活 conda 环境
-echo "📦 激活 Conda 环境..."
-source /public/software/anaconda3/bin/activate $CONDA_ENV
-echo "✅ Conda 环境已激活: $CONDA_ENV"
+# 检测环境并激活
+echo "📦 检测 Python 环境..."
+if [ -d "$PROJECT_ROOT/backend/venv" ]; then
+    # 腾讯云环境：使用 venv
+    echo "使用虚拟环境: $PROJECT_ROOT/backend/venv"
+    PYTHON_BIN="$PROJECT_ROOT/backend/venv/bin/python"
+    UVICORN_BIN="$PROJECT_ROOT/backend/venv/bin/uvicorn"
+    CELERY_BIN="$PROJECT_ROOT/backend/venv/bin/celery"
+elif [ -f "/public/software/anaconda3/bin/activate" ]; then
+    # 校园网环境：使用 conda
+    echo "使用 Conda 环境: $CONDA_ENV"
+    source /public/software/anaconda3/bin/activate $CONDA_ENV
+    PYTHON_BIN="python"
+    UVICORN_BIN="uvicorn"
+    CELERY_BIN="celery"
+else
+    echo "❌ 未找到 Python 环境"
+    exit 1
+fi
+echo "✅ Python 环境已准备"
 echo ""
 
 # 1. 启动 Redis

@@ -272,7 +272,7 @@ export default function PostProcessDetail() {
     custom_eps: 78.4,           // 自定义介电常数
     custom_eps_inf: 1.78,       // 自定义光学介电常数
     // Slurm 资源配置
-    slurm_partition: 'cpu',
+    slurm_partition: 'hpc128c',  // 默认使用 hpc128c 队列
     slurm_cpus: 16,
     slurm_time: 7200,
   });

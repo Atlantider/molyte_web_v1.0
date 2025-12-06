@@ -3,15 +3,17 @@
  * 去溶剂化能分析面板组件
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Table, message, Tag, Space, Typography } from 'antd';
+import { Card, Button, Table, message, Tag, Space, Typography, Select, InputNumber, Row, Col } from 'antd';
 import { ThunderboltOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   createDesolvationJob,
   getDesolvationJob,
   listClusterDesolvationJobs
 } from '../api/desolvation';
+import { batchCreateDesolvationJobs } from '../api/desolvation';
 import type { DesolvationJobResponse } from '../types/desolvation';
 import DesolvationResultView from './DesolvationResultView';
+import { getPartitions, type PartitionInfo } from '../api/slurm';
 
 const { Text } = Typography;
 
