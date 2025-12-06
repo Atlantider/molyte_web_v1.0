@@ -738,6 +738,59 @@ export default function PostProcessDetail() {
     }
   }, [useSmartRecommend, selectedStructureIds, selectedCalcTypes, structures]);
 
+  // 当 REDOX/REORGANIZATION 子选项变化时，自动重新规划（仅在 Step 2 时）
+  // 使用 useRef 来记录上一次的选项值，避免初始化时触发
+  const prevRedoxOptionsRef = React.useRef(redoxOptions);
+  const prevReorgOptionsRef = React.useRef(reorganizationOptions);
+
+  useEffect(() => {
+    // 只有在 Step 2 且已有规划结果时才自动重新规划
+    if (currentStep !== 2 || !planResult || !selectedMdJobId) {
+      // 更新引用值但不触发规划
+      prevRedoxOptionsRef.current = redoxOptions;
+      prevReorgOptionsRef.current = reorganizationOptions;
+      return;
+    }
+
+    // 检查选项是否真的发生了变化
+    const redoxChanged = JSON.stringify(prevRedoxOptionsRef.current) !== JSON.stringify(redoxOptions);
+    const reorgChanged = JSON.stringify(prevReorgOptionsRef.current) !== JSON.stringify(reorganizationOptions);
+
+    if (!redoxChanged && !reorgChanged) {
+      return;
+    }
+
+    // 更新引用值
+    prevRedoxOptionsRef.current = redoxOptions;
+    prevReorgOptionsRef.current = reorganizationOptions;
+
+    // 防抖重新规划
+    const timer = setTimeout(async () => {
+      setPlanLoading(true);
+      try {
+        const result = await planClusterAnalysis({
+          md_job_id: selectedMdJobId,
+          solvation_structure_ids: selectedStructureIds,
+          calc_types: selectedCalcTypes,
+          redox_options: selectedCalcTypes.includes('REDOX') ? redoxOptions : undefined,
+          reorganization_options: selectedCalcTypes.includes('REORGANIZATION') ? reorganizationOptions : undefined,
+          qc_config: qcConfig,
+        });
+        setPlanResult(result);
+        // 保持当前展开状态
+        setPlanCollapseKeys(prev => prev.length > 0 ? prev : result.calc_requirements.map(r => r.calc_type));
+        message.info('已根据新选项重新规划');
+      } catch (err) {
+        console.error('Failed to replan:', err);
+        message.error('重新规划失败');
+      } finally {
+        setPlanLoading(false);
+      }
+    }, 300);  // 300ms 防抖
+
+    return () => clearTimeout(timer);
+  }, [redoxOptions, reorganizationOptions, currentStep, planResult, selectedMdJobId, selectedStructureIds, selectedCalcTypes, qcConfig]);
+
   // 打开结构预览
   const handlePreviewStructure = async (structureId: number, calcType: string = '') => {
     setPreviewLoading(true);
