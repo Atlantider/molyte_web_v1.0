@@ -51,6 +51,7 @@ import {
   listClusterAnalysisJobs,
   getClusterAnalysisResults,
   getClusterAnalysisQCStatus,
+  recommendPCMSolvent,
   CALC_TYPE_INFO,
   type ClusterCalcType,
   type ClusterAnalysisPlanResponse,
@@ -94,9 +95,16 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
     basis_set: '6-31G*',   // 使用 6-31G* 格式以匹配已有任务
     use_dispersion: true,
     charge_ion: 1,
-    solvent_model: 'gas',  // 默认气相，与已有任务匹配
-    solvent: 'Water',      // 默认溶剂（当选择溶剂模型时使用）
+    solvent_model: 'pcm',  // 默认 PCM 隐式溶剂（电解液计算需要溶液环境）
+    solvent: 'Water',      // 默认溶剂
   });
+
+  // 推荐溶剂信息
+  const [solventRecommendation, setSolventRecommendation] = useState<{
+    recommended_solvent: string;
+    average_dielectric: number;
+    reason: string;
+  } | null>(null);
 
   // 加载溶剂化结构
   const loadStructures = useCallback(async () => {
@@ -122,10 +130,27 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
     }
   }, [mdJobId]);
 
+  // 加载推荐溶剂
+  const loadRecommendedSolvent = useCallback(async () => {
+    try {
+      const result = await recommendPCMSolvent(mdJobId);
+      setSolventRecommendation(result);
+      // 自动设置推荐溶剂
+      setQcConfig(prev => ({
+        ...prev,
+        solvent: result.recommended_solvent,
+      }));
+      message.success(`根据配方推荐溶剂: ${result.recommended_solvent} (ε≈${result.average_dielectric})`);
+    } catch (error) {
+      console.error('获取推荐溶剂失败:', error);
+    }
+  }, [mdJobId]);
+
   useEffect(() => {
     loadStructures();
     loadExistingJobs();
-  }, [loadStructures, loadExistingJobs]);
+    loadRecommendedSolvent();
+  }, [loadStructures, loadExistingJobs, loadRecommendedSolvent]);
 
   // 规划计算
   const handlePlan = async () => {
@@ -635,10 +660,14 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
                       onChange={(value) => setQcConfig(prev => ({ ...prev, solvent: value }))}
                       disabled={qcConfig.solvent_model === 'gas'}
                     >
-                      <Select.Option value="Water">Water</Select.Option>
-                      <Select.Option value="Acetonitrile">Acetonitrile</Select.Option>
-                      <Select.Option value="DMSO">DMSO</Select.Option>
-                      <Select.Option value="THF">THF</Select.Option>
+                      <Select.Option value="Water">Water (ε=78.4)</Select.Option>
+                      <Select.Option value="Acetonitrile">Acetonitrile (ε=37.5)</Select.Option>
+                      <Select.Option value="DMSO">DMSO (ε=46.7)</Select.Option>
+                      <Select.Option value="Methanol">Methanol (ε=32.7)</Select.Option>
+                      <Select.Option value="Ethanol">Ethanol (ε=24.5)</Select.Option>
+                      <Select.Option value="Acetone">Acetone (ε=20.7)</Select.Option>
+                      <Select.Option value="Dichloromethane">CH₂Cl₂ (ε=8.9)</Select.Option>
+                      <Select.Option value="THF">THF (ε=7.6)</Select.Option>
                     </Select>
                   </Col>
                   <Col span={4}>
@@ -658,6 +687,29 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
                     </div>
                   </Col>
                 </Row>
+
+                {/* 溶剂推荐信息 */}
+                {solventRecommendation && qcConfig.solvent_model !== 'gas' && (
+                  <Alert
+                    style={{ marginTop: 8 }}
+                    type="info"
+                    showIcon
+                    message={
+                      <span>
+                        <strong>智能推荐：</strong> {solventRecommendation.reason}
+                        {qcConfig.solvent !== solventRecommendation.recommended_solvent && (
+                          <Button
+                            type="link"
+                            size="small"
+                            onClick={() => setQcConfig(prev => ({ ...prev, solvent: solventRecommendation.recommended_solvent }))}
+                          >
+                            使用推荐
+                          </Button>
+                        )}
+                      </span>
+                    }
+                  />
+                )}
               </div>
 
               {/* 选中的计算类型说明 */}

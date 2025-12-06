@@ -233,16 +233,17 @@ def _find_existing_qc_job(
     return job
 
 
-# 常见分子的 SMILES 和电荷信息（用作后备）
+# 常见分子的 SMILES、电荷和介电常数信息
+# dielectric: 介电常数，用于选择 PCM 溶剂
 MOLECULE_INFO_MAP = {
-    # 阳离子
+    # 阳离子（无介电常数）
     "Li": {"smiles": "[Li+]", "charge": 1},
     "Na": {"smiles": "[Na+]", "charge": 1},
     "K": {"smiles": "[K+]", "charge": 1},
     "Mg": {"smiles": "[Mg+2]", "charge": 2},
     "Ca": {"smiles": "[Ca+2]", "charge": 2},
     "Zn": {"smiles": "[Zn+2]", "charge": 2},
-    # 阴离子
+    # 阴离子（无介电常数）
     "PF6": {"smiles": "F[P-](F)(F)(F)(F)F", "charge": -1},
     "BF4": {"smiles": "F[B-](F)(F)F", "charge": -1},
     "TFSI": {"smiles": "FC(F)(F)S(=O)(=O)[N-]S(=O)(=O)C(F)(F)F", "charge": -1},
@@ -253,26 +254,85 @@ MOLECULE_INFO_MAP = {
     "OTf": {"smiles": "[O-]S(=O)(=O)C(F)(F)F", "charge": -1},
     "F": {"smiles": "[F-]", "charge": -1},
     "Cl": {"smiles": "[Cl-]", "charge": -1},
-    # 碳酸酯溶剂
-    "EC": {"smiles": "C1COC(=O)O1", "charge": 0},
-    "PC": {"smiles": "CC1COC(=O)O1", "charge": 0},
-    "DMC": {"smiles": "COC(=O)OC", "charge": 0},
-    "DEC": {"smiles": "CCOC(=O)OCC", "charge": 0},
-    "EMC": {"smiles": "CCOC(=O)OC", "charge": 0},
-    "FEC": {"smiles": "FC1COC(=O)O1", "charge": 0},
-    "VC": {"smiles": "C=C1COC(=O)O1", "charge": 0},
+    # 碳酸酯溶剂（含介电常数）
+    "EC": {"smiles": "C1COC(=O)O1", "charge": 0, "dielectric": 89.8},
+    "PC": {"smiles": "CC1COC(=O)O1", "charge": 0, "dielectric": 64.9},
+    "DMC": {"smiles": "COC(=O)OC", "charge": 0, "dielectric": 3.1},
+    "DEC": {"smiles": "CCOC(=O)OCC", "charge": 0, "dielectric": 2.8},
+    "EMC": {"smiles": "CCOC(=O)OC", "charge": 0, "dielectric": 3.0},
+    "FEC": {"smiles": "FC1COC(=O)O1", "charge": 0, "dielectric": 78.4},  # 近似 EC
+    "VC": {"smiles": "C=C1COC(=O)O1", "charge": 0, "dielectric": 126.0},
     # 醚类溶剂
-    "DME": {"smiles": "COCCOC", "charge": 0},
-    "DOL": {"smiles": "C1COCO1", "charge": 0},
-    "TEGDME": {"smiles": "COCCOCCOCCOCCOC", "charge": 0},
-    "DEGDME": {"smiles": "COCCOCCOC", "charge": 0},
+    "DME": {"smiles": "COCCOC", "charge": 0, "dielectric": 7.2},
+    "DOL": {"smiles": "C1COCO1", "charge": 0, "dielectric": 7.1},
+    "TEGDME": {"smiles": "COCCOCCOCCOCCOC", "charge": 0, "dielectric": 7.5},
+    "DEGDME": {"smiles": "COCCOCCOC", "charge": 0, "dielectric": 7.4},
     # 其他溶剂
-    "MPN": {"smiles": "CCCCC#N", "charge": 0},  # 3-Methoxypropionitrile
-    "AN": {"smiles": "CC#N", "charge": 0},      # Acetonitrile
-    "THF": {"smiles": "C1CCOC1", "charge": 0},
-    "DMSO": {"smiles": "CS(=O)C", "charge": 0},
-    "TTE": {"smiles": "FC(F)(F)C(F)(F)OCC(F)(F)F", "charge": 0},  # 1,1,2,2-tetrafluoroethyl-2,2,3,3-tetrafluoropropyl ether
+    "MPN": {"smiles": "CCCCC#N", "charge": 0, "dielectric": 36.0},
+    "AN": {"smiles": "CC#N", "charge": 0, "dielectric": 37.5},  # Acetonitrile
+    "THF": {"smiles": "C1CCOC1", "charge": 0, "dielectric": 7.6},
+    "DMSO": {"smiles": "CS(=O)C", "charge": 0, "dielectric": 46.7},
+    "TTE": {"smiles": "FC(F)(F)C(F)(F)OCC(F)(F)F", "charge": 0, "dielectric": 6.2},
+    # 水
+    "H2O": {"smiles": "O", "charge": 0, "dielectric": 78.4},
+    "Water": {"smiles": "O", "charge": 0, "dielectric": 78.4},
 }
+
+# Gaussian PCM 内置溶剂及其介电常数
+# 用于选择最接近混合电解液介电常数的溶剂
+GAUSSIAN_PCM_SOLVENTS = {
+    "Water": 78.4,
+    "DMSO": 46.7,
+    "Acetonitrile": 37.5,
+    "Methanol": 32.7,
+    "Ethanol": 24.5,
+    "Acetone": 20.7,
+    "Dichloromethane": 8.9,
+    "THF": 7.6,
+    "DiethylEther": 4.3,
+    "Chloroform": 4.8,
+    "Toluene": 2.4,
+    "Heptane": 1.9,
+}
+
+
+def _recommend_pcm_solvent(composition: Dict[str, int]) -> str:
+    """
+    根据 MD 配方推荐最佳 PCM 溶剂
+
+    计算加权平均介电常数，选择最接近的 Gaussian 内置溶剂
+    """
+    total_count = 0
+    weighted_dielectric = 0.0
+
+    for mol_name, count in composition.items():
+        if count <= 0:
+            continue
+        mol_info = MOLECULE_INFO_MAP.get(mol_name, {})
+        dielectric = mol_info.get("dielectric")
+        if dielectric:
+            weighted_dielectric += dielectric * count
+            total_count += count
+
+    if total_count == 0:
+        # 默认返回 Acetonitrile（适合大多数有机电解液）
+        return "Acetonitrile"
+
+    avg_dielectric = weighted_dielectric / total_count
+    logger.info(f"[PCM溶剂推荐] 配方加权平均介电常数: {avg_dielectric:.1f}")
+
+    # 找到最接近的 Gaussian 溶剂
+    best_solvent = "Acetonitrile"
+    min_diff = float('inf')
+
+    for solvent, eps in GAUSSIAN_PCM_SOLVENTS.items():
+        diff = abs(eps - avg_dielectric)
+        if diff < min_diff:
+            min_diff = diff
+            best_solvent = solvent
+
+    logger.info(f"[PCM溶剂推荐] 推荐溶剂: {best_solvent} (ε={GAUSSIAN_PCM_SOLVENTS[best_solvent]})")
+    return best_solvent
 
 
 def _get_molecule_info_from_md_job(db: Session, md_job: MDJob) -> Dict[str, Dict[str, Any]]:
@@ -713,6 +773,12 @@ def _plan_qc_tasks_for_calc_type(
         include_molecule = redox_options.get("include_molecule", True) if redox_options else True
         include_dimer = redox_options.get("include_dimer", True) if redox_options else True
 
+        # 【重要】Redox 计算需要溶液相任务进行热力学循环
+        # 如果用户选择了 gas，溶液相任务应该用默认的 pcm
+        redox_sol_model = solvent_model if solvent_model != "gas" else "pcm"
+        redox_sol_name = solvent_name if solvent_model != "gas" else "Water"
+        logger.info(f"[Redox规划] 溶液相模型: {redox_sol_model}/{redox_sol_name}")
+
         processed_species = set()
         first_structure_id = structures[0].id if structures else None
 
@@ -735,8 +801,8 @@ def _plan_qc_tasks_for_calc_type(
                         mol_states = [
                             ("neutral_gas", f"[分子] {mol_name} 中性-气相", lig_charge, "gas", None),
                             ("charged_gas", f"[分子] {mol_name} 氧化态-气相", lig_charge + 1, "gas", None),
-                            ("neutral_sol", f"[分子] {mol_name} 中性-溶液相", lig_charge, solvent_model, solvent_name),
-                            ("charged_sol", f"[分子] {mol_name} 氧化态-溶液相", lig_charge + 1, solvent_model, solvent_name),
+                            ("neutral_sol", f"[分子] {mol_name} 中性-溶液相", lig_charge, redox_sol_model, redox_sol_name),
+                            ("charged_sol", f"[分子] {mol_name} 氧化态-溶液相", lig_charge + 1, redox_sol_model, redox_sol_name),
                         ]
 
                         for state_suffix, desc, charge, sol_model, sol_name in mol_states:
@@ -774,8 +840,8 @@ def _plan_qc_tasks_for_calc_type(
                         dimer_states = [
                             ("neutral_gas", f"[Dimer] Li-{mol_name} 中性-气相", dimer_base_charge, "gas", None),
                             ("charged_gas", f"[Dimer] Li-{mol_name} 氧化态-气相", dimer_base_charge + 1, "gas", None),
-                            ("neutral_sol", f"[Dimer] Li-{mol_name} 中性-溶液相", dimer_base_charge, solvent_model, solvent_name),
-                            ("charged_sol", f"[Dimer] Li-{mol_name} 氧化态-溶液相", dimer_base_charge + 1, solvent_model, solvent_name),
+                            ("neutral_sol", f"[Dimer] Li-{mol_name} 中性-溶液相", dimer_base_charge, redox_sol_model, redox_sol_name),
+                            ("charged_sol", f"[Dimer] Li-{mol_name} 氧化态-溶液相", dimer_base_charge + 1, redox_sol_model, redox_sol_name),
                         ]
 
                         for state_suffix, desc, charge, sol_model, sol_name in dimer_states:
@@ -924,6 +990,82 @@ def _plan_qc_tasks_for_calc_type(
 # ============================================================================
 # API 端点
 # ============================================================================
+
+@router.get("/recommend-solvent/{md_job_id}")
+def recommend_pcm_solvent_for_md_job(
+    md_job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    根据 MD 任务的配方推荐最佳 PCM 溶剂
+
+    计算加权平均介电常数，选择最接近的 Gaussian 内置溶剂
+    """
+    md_job = _get_md_job_or_404(db, md_job_id, current_user)
+
+    # 从溶剂化结构获取配方
+    structures = _get_selected_structures(db, md_job_id, None, None)
+
+    if not structures:
+        return {
+            "recommended_solvent": "Acetonitrile",
+            "average_dielectric": 37.5,
+            "composition_analyzed": {},
+            "reason": "未找到溶剂化结构，使用默认溶剂"
+        }
+
+    # 合并所有结构的配方
+    combined_composition: Dict[str, int] = {}
+    for s in structures:
+        comp = s.composition or {}
+        for mol_name, count in comp.items():
+            if mol_name not in ["Li", "Na", "K", "Mg", "Ca", "Zn"]:  # 排除阳离子
+                combined_composition[mol_name] = combined_composition.get(mol_name, 0) + count
+
+    # 计算加权平均介电常数
+    total_count = 0
+    weighted_dielectric = 0.0
+    analyzed = {}
+
+    for mol_name, count in combined_composition.items():
+        if count <= 0:
+            continue
+        mol_info = MOLECULE_INFO_MAP.get(mol_name, {})
+        dielectric = mol_info.get("dielectric")
+        if dielectric:
+            weighted_dielectric += dielectric * count
+            total_count += count
+            analyzed[mol_name] = {"count": count, "dielectric": dielectric}
+
+    if total_count == 0:
+        return {
+            "recommended_solvent": "Acetonitrile",
+            "average_dielectric": 37.5,
+            "composition_analyzed": analyzed,
+            "reason": "配方中没有已知溶剂，使用默认溶剂"
+        }
+
+    avg_dielectric = weighted_dielectric / total_count
+
+    # 找到最接近的 Gaussian 溶剂
+    best_solvent = "Acetonitrile"
+    min_diff = float('inf')
+
+    for solvent, eps in GAUSSIAN_PCM_SOLVENTS.items():
+        diff = abs(eps - avg_dielectric)
+        if diff < min_diff:
+            min_diff = diff
+            best_solvent = solvent
+
+    return {
+        "recommended_solvent": best_solvent,
+        "recommended_dielectric": GAUSSIAN_PCM_SOLVENTS[best_solvent],
+        "average_dielectric": round(avg_dielectric, 1),
+        "composition_analyzed": analyzed,
+        "reason": f"配方加权平均介电常数 {avg_dielectric:.1f}，最接近 {best_solvent} (ε={GAUSSIAN_PCM_SOLVENTS[best_solvent]})"
+    }
+
 
 @router.post("/plan", response_model=ClusterAnalysisPlanResponse)
 def plan_cluster_analysis(

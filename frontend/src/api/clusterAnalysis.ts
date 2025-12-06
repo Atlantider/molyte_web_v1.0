@@ -181,6 +181,21 @@ export const CALC_TYPE_INFO: Record<ClusterCalcType, {
 // API 函数
 // ============================================================================
 
+export interface RecommendedSolventResponse {
+  recommended_solvent: string;
+  recommended_dielectric: number;
+  average_dielectric: number;
+  composition_analyzed: Record<string, { count: number; dielectric: number }>;
+  reason: string;
+}
+
+export async function recommendPCMSolvent(
+  mdJobId: number
+): Promise<RecommendedSolventResponse> {
+  const response = await apiClient.get(`/cluster-analysis/recommend-solvent/${mdJobId}`);
+  return response.data;
+}
+
 export async function planClusterAnalysis(
   request: ClusterAnalysisPlanRequest
 ): Promise<ClusterAnalysisPlanResponse> {
