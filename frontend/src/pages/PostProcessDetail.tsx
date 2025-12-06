@@ -2404,8 +2404,14 @@ export default function PostProcessDetail() {
                               dataIndex: 'qc_status',
                               key: 'qc_status',
                               width: 100,
-                              render: (status: string | null) => {
-                                if (!status) return <Tag>待创建</Tag>;
+                              render: (status: string | null, record: QCTaskInfo) => {
+                                if (!status) {
+                                  // local_reused 显示特殊标签
+                                  if (record.status === 'local_reused') {
+                                    return <Tag color="cyan">局部复用</Tag>;
+                                  }
+                                  return <Tag>待创建</Tag>;
+                                }
                                 const statusMap: Record<string, { color: string; text: string }> = {
                                   'COMPLETED': { color: 'success', text: '已完成' },
                                   'RUNNING': { color: 'processing', text: '运行中' },
@@ -2418,6 +2424,13 @@ export default function PostProcessDetail() {
                                 const cfg = statusMap[status] || { color: 'default', text: status };
                                 return <Tag color={cfg.color}>{cfg.text}</Tag>;
                               },
+                            },
+                            {
+                              title: 'Slurm ID',
+                              dataIndex: 'slurm_job_id',
+                              key: 'slurm_job_id',
+                              width: 80,
+                              render: (id: string | null) => id ? <Text code>{id}</Text> : '-',
                             },
                             {
                               title: '操作',

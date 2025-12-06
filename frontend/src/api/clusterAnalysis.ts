@@ -259,9 +259,10 @@ export interface QCTaskInfo {
   smiles: string;
   charge: number;
   multiplicity: number;
-  status: 'new' | 'reused';
+  status: 'new' | 'reused' | 'local_reused';
   qc_job_id: number | null;
   qc_status: string | null;
+  slurm_job_id?: string | null;
 }
 
 export interface QCStatus {

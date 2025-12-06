@@ -2080,52 +2080,78 @@ def get_cluster_analysis_qc_status(
     # 按计算类型分组任务
     tasks_by_calc_type = defaultdict(list)
 
-    # 从 planned_tasks 获取分组信息
+    # 构建 task_type -> planned_task 映射，用于获取描述信息
+    planned_by_task_type = {}
     for task in planned_tasks:
+        task_type = task.get("task_type", "")
         calc_type = task.get("calc_type", "UNKNOWN")
-        qc_job_id = task.get("existing_qc_job_id")
-        qc_job = qc_jobs_by_id.get(qc_job_id) if qc_job_id else None
+        # 用 (task_type, calc_type) 作为 key，支持同一 task_type 在不同 calc_type 中
+        key = (task_type, calc_type)
+        if key not in planned_by_task_type:
+            planned_by_task_type[key] = task
+
+    # 优先使用 linked_qc_jobs（实际 QC 任务）构建分组
+    processed_task_types = set()  # 已处理的 (task_type, calc_type)
+
+    for qc in linked_qc_jobs:
+        task_type = qc.task_type or ""
+
+        # 推断 calc_type
+        calc_type = "UNKNOWN"
+        if "dimer" in task_type.lower():
+            calc_type = "BINDING_PAIRWISE"
+        elif "cluster" in task_type.lower() or "ligand" in task_type.lower() or "ion" in task_type.lower():
+            calc_type = "BINDING_TOTAL"
+        elif "desolvation" in task_type.lower() or "cluster_minus" in task_type.lower():
+            calc_type = "DESOLVATION_STEPWISE"
+        elif "redox" in task_type.lower() or "oxidation" in task_type.lower():
+            calc_type = "REDOX"
+        elif "reorg" in task_type.lower():
+            calc_type = "REORGANIZATION"
+
+        # 尝试从 planned_tasks 获取描述信息
+        planned_task = planned_by_task_type.get((task_type, calc_type))
 
         task_info = {
-            "task_type": task.get("task_type", ""),
-            "name": task.get("name", ""),
-            "description": task.get("description", ""),
-            "smiles": task.get("smiles", ""),
-            "charge": task.get("charge", 0),
-            "multiplicity": task.get("multiplicity", 1),
-            "status": "reused" if task.get("status") == "reused" else "new",
-            "qc_job_id": qc_job_id,
-            "qc_status": qc_job.status.value if qc_job and hasattr(qc_job.status, 'value') else (qc_job.status if qc_job else None),
+            "task_type": task_type,
+            "name": qc.molecule_name or (planned_task.get("name", "") if planned_task else ""),
+            "description": planned_task.get("description", "") if planned_task else "",
+            "smiles": qc.smiles or "",
+            "charge": qc.charge or 0,
+            "multiplicity": qc.spin_multiplicity or 1,
+            "status": planned_task.get("status", "new") if planned_task else "new",
+            "qc_job_id": qc.id,
+            "qc_status": qc.status.value if hasattr(qc.status, 'value') else str(qc.status),
+            "slurm_job_id": qc.slurm_job_id,
         }
         tasks_by_calc_type[calc_type].append(task_info)
+        processed_task_types.add((task_type, calc_type))
 
-    # 处理没有在 planned_tasks 中的 linked_qc_jobs
-    for qc in linked_qc_jobs:
-        if qc.id not in task_by_qc_job_id:
-            # 尝试从 task_type 推断 calc_type
-            calc_type = "UNKNOWN"
-            task_type = qc.task_type or ""
-            if "cluster" in task_type.lower() or "ligand" in task_type.lower() or "ion" in task_type.lower():
-                calc_type = "BINDING_TOTAL"
-            elif "desolvation" in task_type.lower() or "cluster_minus" in task_type.lower():
-                calc_type = "DESOLVATION_STEPWISE"
-            elif "redox" in task_type.lower() or "oxidation" in task_type.lower():
-                calc_type = "REDOX"
-            elif "reorg" in task_type.lower():
-                calc_type = "REORGANIZATION"
+    # 补充 planned_tasks 中有但 linked_qc_jobs 中没有的任务（如 local_reused）
+    for task in planned_tasks:
+        task_type = task.get("task_type", "")
+        calc_type = task.get("calc_type", "UNKNOWN")
+        key = (task_type, calc_type)
+
+        if key not in processed_task_types:
+            # 这是 local_reused 或其他没有实际 QC 任务的计划任务
+            qc_job_id = task.get("existing_qc_job_id")
+            qc_job = qc_jobs_by_id.get(qc_job_id) if qc_job_id else None
 
             task_info = {
                 "task_type": task_type,
-                "name": qc.molecule_name or "",
-                "description": "",
-                "smiles": qc.smiles or "",
-                "charge": qc.charge or 0,
-                "multiplicity": qc.multiplicity or 1,
-                "status": "new",
-                "qc_job_id": qc.id,
-                "qc_status": qc.status.value if hasattr(qc.status, 'value') else str(qc.status),
+                "name": task.get("name", ""),
+                "description": task.get("description", ""),
+                "smiles": task.get("smiles", ""),
+                "charge": task.get("charge", 0),
+                "multiplicity": task.get("multiplicity", 1),
+                "status": task.get("status", "new"),
+                "qc_job_id": qc_job_id,
+                "qc_status": qc_job.status.value if qc_job and hasattr(qc_job.status, 'value') else None,
+                "slurm_job_id": None,
             }
             tasks_by_calc_type[calc_type].append(task_info)
+            processed_task_types.add(key)
 
     return {
         "job_id": job_id,
