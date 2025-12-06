@@ -263,6 +263,10 @@ export interface QCTaskInfo {
   qc_job_id: number | null;
   qc_status: string | null;
   slurm_job_id?: string | null;
+  functional?: string;
+  basis_set?: string;
+  solvent_model?: string;
+  solvent_name?: string;
 }
 
 export interface QCStatus {

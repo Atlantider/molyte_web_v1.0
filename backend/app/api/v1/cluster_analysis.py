@@ -2112,9 +2112,15 @@ def get_cluster_analysis_qc_status(
         # 尝试从 planned_tasks 获取描述信息
         planned_task = planned_by_task_type.get((task_type, calc_type))
 
+        # 优先使用 planned_task 的 description 作为 name
+        if planned_task and planned_task.get("description"):
+            name = planned_task.get("description", "")
+        else:
+            name = qc.molecule_name or ""
+
         task_info = {
             "task_type": task_type,
-            "name": qc.molecule_name or (planned_task.get("name", "") if planned_task else ""),
+            "name": name,
             "description": planned_task.get("description", "") if planned_task else "",
             "smiles": qc.smiles or "",
             "charge": qc.charge or 0,
@@ -2123,6 +2129,10 @@ def get_cluster_analysis_qc_status(
             "qc_job_id": qc.id,
             "qc_status": qc.status.value if hasattr(qc.status, 'value') else str(qc.status),
             "slurm_job_id": qc.slurm_job_id,
+            "functional": qc.functional,
+            "basis_set": qc.basis_set,
+            "solvent_model": qc.solvent_model,
+            "solvent_name": qc.solvent_name,
         }
         tasks_by_calc_type[calc_type].append(task_info)
         processed_task_types.add((task_type, calc_type))
@@ -2138,9 +2148,12 @@ def get_cluster_analysis_qc_status(
             qc_job_id = task.get("existing_qc_job_id")
             qc_job = qc_jobs_by_id.get(qc_job_id) if qc_job_id else None
 
+            # 优先使用 description 作为 name
+            name = task.get("description", "") or task.get("name", "")
+
             task_info = {
                 "task_type": task_type,
-                "name": task.get("name", ""),
+                "name": name,
                 "description": task.get("description", ""),
                 "smiles": task.get("smiles", ""),
                 "charge": task.get("charge", 0),

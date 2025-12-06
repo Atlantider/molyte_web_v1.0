@@ -2372,16 +2372,10 @@ export default function PostProcessDetail() {
                           scroll={{ x: 700 }}
                           columns={[
                             {
-                              title: 'Name',
+                              title: '任务名称',
                               dataIndex: 'name',
                               key: 'name',
-                              width: 180,
-                              ellipsis: true,
-                            },
-                            {
-                              title: '描述',
-                              dataIndex: 'description',
-                              key: 'description',
+                              width: 200,
                               ellipsis: true,
                             },
                             {
@@ -2398,6 +2392,31 @@ export default function PostProcessDetail() {
                               key: 'charge',
                               width: 60,
                               render: (charge: number) => charge > 0 ? `+${charge}` : charge,
+                            },
+                            {
+                              title: '泛函',
+                              dataIndex: 'functional',
+                              key: 'functional',
+                              width: 80,
+                              render: (val: string | undefined) => val ? <Text code>{val}</Text> : '-',
+                            },
+                            {
+                              title: '基组',
+                              dataIndex: 'basis_set',
+                              key: 'basis_set',
+                              width: 100,
+                              render: (val: string | undefined) => val ? <Text code>{val}</Text> : '-',
+                            },
+                            {
+                              title: '溶剂模型',
+                              dataIndex: 'solvent_model',
+                              key: 'solvent_model',
+                              width: 80,
+                              render: (val: string | undefined, record: QCTaskInfo) => {
+                                if (!val) return '-';
+                                if (val === 'gas') return <Tag>气相</Tag>;
+                                return <Tag color="blue">{val} ({record.solvent_name || '-'})</Tag>;
+                              },
                             },
                             {
                               title: 'QC 状态',
