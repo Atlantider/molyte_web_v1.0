@@ -2,7 +2,7 @@
  * Admin Dashboard Page
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Table, Tag, Progress, Spin, message, Typography, Space, theme } from 'antd';
+import { Card, Row, Col, Statistic, Table, Tag, Progress, Spin, message, Typography, Space, theme, Button, Tooltip } from 'antd';
 import {
   UserOutlined,
   RocketOutlined,
@@ -12,9 +12,10 @@ import {
   TeamOutlined,
   ControlOutlined,
   DatabaseOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import { Column, Pie } from '@ant-design/plots';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import AdminNav from '../../components/AdminNav';
 import {
   getGlobalStats,
@@ -31,6 +32,7 @@ const { Title, Text } = Typography;
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { token } = theme.useToken();
   const { mode } = useThemeStore();
   const isDark = mode === 'dark';
@@ -40,9 +42,10 @@ const AdminDashboard: React.FC = () => {
   const [cpuRanking, setCpuRanking] = useState<UserRanking[]>([]);
   const [jobRanking, setJobRanking] = useState<UserRanking[]>([]);
 
+  // 每次导航到此页面时刷新数据
   useEffect(() => {
     loadData();
-  }, []);
+  }, [location.pathname]);
 
   const loadData = async () => {
     setLoading(true);
