@@ -228,6 +228,15 @@ export async function getClusterAnalysisJob(jobId: number): Promise<AdvancedClus
   return response.data;
 }
 
+export async function cancelClusterAnalysisJob(jobId: number): Promise<{
+  message: string;
+  job_id: number;
+  cancelled_qc_count: number;
+}> {
+  const response = await apiClient.post(`/cluster-analysis/jobs/${jobId}/cancel`);
+  return response.data;
+}
+
 export async function planAddCalcTypes(
   jobId: number,
   additionalCalcTypes: ClusterCalcType[]

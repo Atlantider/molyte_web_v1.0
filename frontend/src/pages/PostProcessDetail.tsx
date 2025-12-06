@@ -31,6 +31,7 @@ import {
   theme,
   Switch,
   InputNumber,
+  Popconfirm,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -49,6 +50,8 @@ import {
   CalculatorOutlined,
   SettingOutlined,
   EyeOutlined,
+  StopOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -57,6 +60,7 @@ import {
   planClusterAnalysis,
   submitClusterAnalysis,
   getClusterAnalysisResults,
+  cancelClusterAnalysisJob,
   CALC_TYPE_INFO,
   type AdvancedClusterJob,
   type ClusterCalcType,
@@ -246,6 +250,7 @@ export default function PostProcessDetail() {
   const [planResult, setPlanResult] = useState<ClusterAnalysisPlanResponse | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   // REDOX 和 REORGANIZATION 子选项
   const [redoxOptions, setRedoxOptions] = useState({ include_molecule: true, include_dimer: true, include_cluster: false });
@@ -940,6 +945,22 @@ export default function PostProcessDetail() {
       message.error('提交任务失败');
     } finally {
       setSubmitLoading(false);
+    }
+  };
+
+  // 取消任务
+  const handleCancel = async () => {
+    if (!job) return;
+    setCancelLoading(true);
+    try {
+      const result = await cancelClusterAnalysisJob(job.id);
+      message.success(result.message);
+      loadJob(); // 重新加载任务状态
+    } catch (err: any) {
+      console.error('Failed to cancel:', err);
+      message.error(err.response?.data?.detail || '取消任务失败');
+    } finally {
+      setCancelLoading(false);
     }
   };
 
@@ -2114,26 +2135,55 @@ export default function PostProcessDetail() {
               </Space>
             </Col>
             <Col>
-              <Row gutter={16}>
-                <Col>
-                  <Statistic title="选中结构" value={job.selected_structures?.count || 0} />
-                </Col>
-                <Col>
-                  <Statistic
-                    title="QC 进度"
-                    value={job.qc_task_plan?.completed_qc_tasks || 0}
-                    suffix={`/ ${job.qc_task_plan?.total_qc_tasks || 0}`}
-                  />
-                </Col>
-                <Col>
-                  <Statistic
-                    title="总进度"
-                    value={job.progress}
-                    suffix="%"
-                    valueStyle={{ color: job.progress === 100 ? '#52c41a' : undefined }}
-                  />
-                </Col>
-              </Row>
+              <Space direction="vertical" align="end">
+                <Row gutter={16}>
+                  <Col>
+                    <Statistic title="选中结构" value={job.selected_structures?.count || 0} />
+                  </Col>
+                  <Col>
+                    <Statistic
+                      title="QC 进度"
+                      value={job.qc_task_plan?.completed_qc_tasks || 0}
+                      suffix={`/ ${job.qc_task_plan?.total_qc_tasks || 0}`}
+                    />
+                  </Col>
+                  <Col>
+                    <Statistic
+                      title="总进度"
+                      value={Math.round(job.progress * 10) / 10}
+                      suffix="%"
+                      valueStyle={{ color: job.progress === 100 ? '#52c41a' : undefined }}
+                    />
+                  </Col>
+                </Row>
+                <Space>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={loadJob}
+                    loading={loading}
+                  >
+                    刷新
+                  </Button>
+                  {['CREATED', 'SUBMITTED', 'RUNNING', 'WAITING_QC', 'CALCULATING'].includes(job.status) && (
+                    <Popconfirm
+                      title="确定要取消此任务吗？"
+                      description="取消后无法恢复，已完成的 QC 任务结果会保留"
+                      onConfirm={handleCancel}
+                      okText="确定取消"
+                      cancelText="返回"
+                      okButtonProps={{ danger: true }}
+                    >
+                      <Button
+                        danger
+                        icon={<StopOutlined />}
+                        loading={cancelLoading}
+                      >
+                        取消任务
+                      </Button>
+                    </Popconfirm>
+                  )}
+                </Space>
+              </Space>
             </Col>
           </Row>
 

@@ -1455,6 +1455,61 @@ def get_cluster_analysis_job(
     return job
 
 
+@router.post("/jobs/{job_id}/cancel")
+def cancel_cluster_analysis_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    取消 Cluster 高级计算任务
+
+    - 只能取消 CREATED、SUBMITTED、RUNNING、WAITING_QC、CALCULATING 状态的任务
+    - 会同时取消关联的 QC 任务
+    """
+    job = db.query(AdvancedClusterJobModel).filter(AdvancedClusterJobModel.id == job_id).first()
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"任务 {job_id} 不存在")
+
+    if job.user_id != current_user.id and current_user.role.value != 'admin':
+        raise HTTPException(status_code=403, detail="无权操作此任务")
+
+    # 检查状态
+    cancellable_statuses = ['CREATED', 'SUBMITTED', 'RUNNING', 'WAITING_QC', 'CALCULATING']
+    if job.status not in cancellable_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"任务状态为 {job.status}，无法取消"
+        )
+
+    # 更新任务状态
+    job.status = 'CANCELLED'
+    job.error_message = f"用户 {current_user.username} 手动取消"
+
+    # 取消关联的 QC 任务（只取消待处理的）
+    from app.models.qc import QCJob as QCJobModel, QCJobStatus
+    qc_jobs = db.query(QCJobModel).filter(
+        QCJobModel.cluster_analysis_job_id == job_id,
+        QCJobModel.status.in_([QCJobStatus.CREATED, QCJobStatus.QUEUED])
+    ).all()
+
+    cancelled_qc_count = 0
+    for qc_job in qc_jobs:
+        qc_job.status = QCJobStatus.CANCELLED
+        cancelled_qc_count += 1
+
+    db.commit()
+
+    logger.info(f"User {current_user.id} cancelled cluster analysis job {job_id}, cancelled {cancelled_qc_count} QC jobs")
+
+    return {
+        "message": f"任务已取消，同时取消了 {cancelled_qc_count} 个待处理的 QC 任务",
+        "job_id": job_id,
+        "cancelled_qc_count": cancelled_qc_count
+    }
+
+
 @router.post("/jobs/{job_id}/add-calc-types")
 def add_calc_types_to_job(
     job_id: int,

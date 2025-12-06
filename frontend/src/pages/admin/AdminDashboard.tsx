@@ -231,6 +231,12 @@ const AdminDashboard: React.FC = () => {
                     return val !== undefined ? `${val.toFixed(1)}h` : '';
                   },
                 }}
+                tooltip={{
+                  formatter: (datum: any) => ({
+                    name: 'CPU核时',
+                    value: `${datum.value?.toFixed(1)} h`,
+                  }),
+                }}
                 color="l(270) 0:#1677ff 1:#13c2c2"
                 columnStyle={{
                   radius: [8, 8, 0, 0],
@@ -316,7 +322,16 @@ const AdminDashboard: React.FC = () => {
         title="用户使用情况 Top 10"
         bordered={false}
         extra={
-          <a onClick={() => navigate('/workspace/admin/users')}>查看全部用户 →</a>
+          <Space>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={loadData}
+              loading={loading}
+            >
+              刷新
+            </Button>
+            <a onClick={() => navigate('/workspace/admin/users')}>查看全部用户 →</a>
+          </Space>
         }
         style={{
           borderRadius: '12px',
@@ -356,24 +371,28 @@ const AdminDashboard: React.FC = () => {
             {
               title: 'CPU 核时使用',
               key: 'cpu_usage',
-              render: (_: any, record: UserUsageStatsItem) => (
-                <div>
-                  <div style={{ marginBottom: '4px' }}>
-                    {record.used_cpu_hours.toFixed(1)} / {record.total_cpu_hours.toFixed(1)} h
+              render: (_: any, record: UserUsageStatsItem) => {
+                const percent = Math.round(record.usage_percentage * 100) / 100;
+                return (
+                  <div>
+                    <div style={{ marginBottom: '4px' }}>
+                      {record.used_cpu_hours.toFixed(1)} / {record.total_cpu_hours.toFixed(1)} h
+                    </div>
+                    <Progress
+                      percent={percent}
+                      size="small"
+                      format={(p) => `${p?.toFixed(1)}%`}
+                      strokeColor={
+                        percent > 80
+                          ? '#f5222d'
+                          : percent > 50
+                          ? '#fa8c16'
+                          : '#52c41a'
+                      }
+                    />
                   </div>
-                  <Progress
-                    percent={record.usage_percentage}
-                    size="small"
-                    strokeColor={
-                      record.usage_percentage > 80
-                        ? '#f5222d'
-                        : record.usage_percentage > 50
-                        ? '#fa8c16'
-                        : '#52c41a'
-                    }
-                  />
-                </div>
-              ),
+                );
+              },
             },
             {
               title: '任务统计',
