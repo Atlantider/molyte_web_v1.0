@@ -93,10 +93,10 @@ const AdminDashboard: React.FC = () => {
     { type: '失败', value: stats.failed_jobs },
   ].filter(item => item.value > 0);
 
-  // Prepare CPU ranking chart data
+  // Prepare CPU ranking chart data (格式化为1位小数避免显示过长)
   const cpuRankingData = cpuRanking.map(item => ({
     username: item.username,
-    value: item.metric_value,
+    value: Math.round(item.metric_value * 10) / 10,
   }));
 
   return (

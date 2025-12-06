@@ -61,12 +61,14 @@ import {
   submitClusterAnalysis,
   getClusterAnalysisResults,
   cancelClusterAnalysisJob,
+  getClusterAnalysisQCStatus,
   CALC_TYPE_INFO,
   type AdvancedClusterJob,
   type ClusterCalcType,
   type ClusterAnalysisPlanResponse,
   type CalcTypeRequirements,
   type PlannedQCTask,
+  type QCStatus,
 } from '../api/clusterAnalysis';
 import { getMDJobs, getMDJob, getSolvationStructures, autoSelectSolvationStructures, type SolvationStructure, type AutoSelectResponse } from '../api/jobs';
 import { previewDesolvationStructures, type DesolvationPreviewResponse } from '../api/desolvation';
@@ -236,6 +238,7 @@ export default function PostProcessDetail() {
   // 通用状态
   const [loading, setLoading] = useState(false);
   const [job, setJob] = useState<AdvancedClusterJob | null>(null);
+  const [qcStatus, setQcStatus] = useState<QCStatus | null>(null);
 
   // 创建模式状态
   const [currentStep, setCurrentStep] = useState(0);
@@ -662,8 +665,12 @@ export default function PostProcessDetail() {
     if (!id || isCreateMode) return;
     setLoading(true);
     try {
-      const data = await getClusterAnalysisJob(Number(id));
-      setJob(data);
+      const [jobData, qcStatusData] = await Promise.all([
+        getClusterAnalysisJob(Number(id)),
+        getClusterAnalysisQCStatus(Number(id)).catch(() => null),
+      ]);
+      setJob(jobData);
+      setQcStatus(qcStatusData);
     } catch (err) {
       console.error('Failed to load job:', err);
       message.error('加载任务详情失败');
@@ -2216,21 +2223,112 @@ export default function PostProcessDetail() {
           <ClusterAnalysisResultsPanel jobId={job.id} />
         )}
 
-        {/* 等待中提示 */}
+        {/* 运行中状态详情 */}
         {['SUBMITTED', 'RUNNING', 'WAITING_QC', 'CALCULATING'].includes(job.status) && (
-          <Card>
-            <div style={{ textAlign: 'center', padding: 40 }}>
-              <Spin size="large" />
-              <Title level={4} style={{ marginTop: 16 }}>任务运行中...</Title>
-              <Text type="secondary">QC 任务进度: {job.qc_task_plan?.completed_qc_tasks || 0} / {job.qc_task_plan?.total_qc_tasks || 0}</Text>
+          <Card title="任务运行状态" size="small">
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+              <Col span={6}>
+                <Statistic
+                  title="总 QC 任务"
+                  value={qcStatus?.total_qc_jobs || job.qc_task_plan?.total_qc_tasks || 0}
+                  prefix={<ExperimentOutlined />}
+                />
+              </Col>
+              <Col span={6}>
+                <Statistic
+                  title="已完成"
+                  value={qcStatus?.completed || job.qc_task_plan?.completed_qc_tasks || 0}
+                  valueStyle={{ color: '#52c41a' }}
+                  prefix={<CheckCircleOutlined />}
+                />
+              </Col>
+              <Col span={6}>
+                <Statistic
+                  title="运行中"
+                  value={qcStatus?.running || 0}
+                  valueStyle={{ color: '#1890ff' }}
+                  prefix={<SyncOutlined spin />}
+                />
+              </Col>
+              <Col span={6}>
+                <Statistic
+                  title="待处理"
+                  value={qcStatus?.pending || 0}
+                  valueStyle={{ color: '#faad14' }}
+                  prefix={<ClockCircleOutlined />}
+                />
+              </Col>
+            </Row>
+            <Progress
+              percent={Math.round(job.progress * 10) / 10}
+              status="active"
+              strokeColor={{ '0%': '#108ee9', '100%': '#87d068' }}
+            />
+            {qcStatus?.qc_jobs && qcStatus.qc_jobs.length > 0 && (
               <div style={{ marginTop: 16 }}>
-                <Progress
-                  percent={job.progress}
-                  status="active"
-                  strokeColor={{ '0%': '#108ee9', '100%': '#87d068' }}
+                <Divider orientation="left" style={{ margin: '12px 0' }}>QC 任务列表</Divider>
+                <Table
+                  dataSource={qcStatus.qc_jobs}
+                  rowKey="id"
+                  size="small"
+                  pagination={{ pageSize: 10 }}
+                  columns={[
+                    {
+                      title: 'ID',
+                      dataIndex: 'id',
+                      key: 'id',
+                      width: 60,
+                    },
+                    {
+                      title: '分子名称',
+                      dataIndex: 'molecule_name',
+                      key: 'molecule_name',
+                      ellipsis: true,
+                    },
+                    {
+                      title: '任务类型',
+                      dataIndex: 'task_type',
+                      key: 'task_type',
+                      width: 150,
+                    },
+                    {
+                      title: '状态',
+                      dataIndex: 'status',
+                      key: 'status',
+                      width: 100,
+                      render: (status: string) => {
+                        const statusMap: Record<string, { color: string; text: string }> = {
+                          'COMPLETED': { color: 'success', text: '已完成' },
+                          'RUNNING': { color: 'processing', text: '运行中' },
+                          'QUEUED': { color: 'warning', text: '排队中' },
+                          'SUBMITTED': { color: 'warning', text: '已提交' },
+                          'CREATED': { color: 'default', text: '待提交' },
+                          'FAILED': { color: 'error', text: '失败' },
+                          'CANCELLED': { color: 'default', text: '已取消' },
+                        };
+                        const cfg = statusMap[status] || { color: 'default', text: status };
+                        return <Tag color={cfg.color}>{cfg.text}</Tag>;
+                      },
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      width: 80,
+                      render: (_: unknown, record: { id: number }) => (
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<EyeOutlined />}
+                          onClick={() => navigate(`/workspace/liquid-electrolyte/qc/${record.id}`)}
+                        >
+                          详情
+                        </Button>
+                      ),
+                    },
+                  ]}
                 />
               </div>
-            </div>
+            )}
           </Card>
         )}
       </>
