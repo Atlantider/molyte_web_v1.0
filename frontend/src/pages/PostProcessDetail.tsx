@@ -248,7 +248,7 @@ export default function PostProcessDetail() {
   const [submitLoading, setSubmitLoading] = useState(false);
 
   // REDOX 和 REORGANIZATION 子选项
-  const [redoxOptions, setRedoxOptions] = useState({ include_molecule: true, include_dimer: true });
+  const [redoxOptions, setRedoxOptions] = useState({ include_molecule: true, include_dimer: true, include_cluster: false });
   const [reorganizationOptions, setReorganizationOptions] = useState({ include_molecule: true, include_cluster: true });
 
   // QC 配置
