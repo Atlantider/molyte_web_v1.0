@@ -164,37 +164,45 @@ def create_qc_job(
         创建的QC任务
     """
     # 检查是否可以跳过 SMILES 验证
-    # 条件：有 xyz_content、有 pdb_file、有 structure_id（cluster analysis 任务）、
-    # 或者是已知分子名称（可从 initial_salts 目录加载 PDB）
+    # 条件：
+    # 1. 有 xyz_content 或 initial_xyz（配置中已提供坐标，如溶剂化能计算传入的坐标）
+    # 2. 有 pdb_file（配置中提供 PDB 文件路径）
+    # 3. 是 Cluster Analysis 任务且有 structure_id（从 cluster 提取几何）
+    # 4. 是离子类型（阴离子、阳离子），通常有 xyz 坐标或可从 initial_salts 目录加载 PDB
     config = job_data.config or {}
     has_xyz = bool(config.get('initial_xyz') or config.get('xyz_content'))
     has_pdb = bool(config.get('pdb_file'))
     has_structure_id = bool(job_data.solvation_structure_id)  # cluster analysis 关联的结构
     is_cluster_task = bool(job_data.cluster_analysis_job_id)  # cluster analysis 创建的任务
 
-    # 判断是否是离子类型（SMILES 验证可能失败）
-    is_ion_type = job_data.molecule_name in ['Li+', 'Na+', 'K+', 'Li', 'Na', 'K'] or \
-                  (job_data.smiles and job_data.smiles in ['[Li+]', '[Na+]', '[K+]', '[Li]', '[Na]', '[K]'])
+    # 判断是否是离子类型（SMILES 验证可能失败，如 [PF6-] 等复杂阴离子）
+    is_ion = job_data.molecule_type in ['cation', 'anion'] if job_data.molecule_type else False
+    is_ion_name = job_data.molecule_name in ['Li+', 'Na+', 'K+', 'Li', 'Na', 'K', 'FSI', 'FSI-', 'PF6', 'PF6-', 'TFSI', 'TFSI-'] if job_data.molecule_name else False
+    is_ion_smiles = job_data.smiles in ['[Li+]', '[Na+]', '[K+]', '[Li]', '[Na]', '[K]'] if job_data.smiles else False
+    is_ion_type = is_ion or is_ion_name or is_ion_smiles
 
-    skip_smiles_validation = has_xyz or has_pdb or (is_cluster_task and has_structure_id)
+    # 综合判断是否跳过 SMILES 验证
+    # 优先级：有坐标 > cluster任务 > 离子类型（有名称可查 PDB）
+    skip_smiles_validation = (
+        has_xyz or                                    # 已提供 XYZ 坐标（如溶剂化能计算）
+        has_pdb or                                    # 已提供 PDB 文件
+        (is_cluster_task and has_structure_id) or    # Cluster Analysis 任务
+        (is_ion_type and job_data.molecule_name)     # 离子类型可通过名称加载 PDB
+    )
 
     # 验证SMILES是否有效
-    smiles_valid = True
     try:
         from rdkit import Chem
         from rdkit.Chem import AllChem
         mol = Chem.MolFromSmiles(job_data.smiles)
         if mol is None:
-            smiles_valid = False
             if skip_smiles_validation:
                 # 有其他坐标来源，跳过 SMILES 验证
                 logger.warning(
                     f"SMILES 无效 ({job_data.smiles})，但有其他坐标来源 "
-                    f"(xyz={has_xyz}, pdb={has_pdb}, structure_id={has_structure_id})，继续创建任务"
+                    f"(xyz={has_xyz}, pdb={has_pdb}, structure_id={has_structure_id}, "
+                    f"is_cluster_task={is_cluster_task}, is_ion={is_ion_type})，继续创建任务"
                 )
-            elif is_ion_type:
-                # 离子类型，降级为警告
-                logger.warning(f"离子 {job_data.molecule_name} 的 SMILES 验证失败，将使用预定义 PDB 文件")
             else:
                 raise HTTPException(
                     status_code=400,
@@ -217,8 +225,8 @@ def create_qc_job(
     except HTTPException:
         raise
     except Exception as e:
-        if skip_smiles_validation or is_ion_type:
-            logger.warning(f"SMILES 验证异常 ({job_data.smiles}): {e}，但有其他坐标来源，继续创建任务")
+        if skip_smiles_validation:
+            logger.warning(f"SMILES 验证异常 ({job_data.smiles}): {e}，有其他坐标来源，继续创建任务")
         else:
             raise HTTPException(
                 status_code=400,
