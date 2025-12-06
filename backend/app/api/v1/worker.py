@@ -493,10 +493,13 @@ async def update_job_status(
         valid_statuses = [s.value for s in QCJobStatus]
     elif job_type == "POSTPROCESS":
         valid_statuses = [s.value for s in JobStatus]
+    elif job_type == "CLUSTER_ANALYSIS":
+        from app.models.job import AdvancedClusterJobStatus
+        valid_statuses = [s.value for s in AdvancedClusterJobStatus]
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid job type: {job_type}. Valid types: MD, QC, POSTPROCESS"
+            detail=f"Invalid job type: {job_type}. Valid types: MD, QC, POSTPROCESS, CLUSTER_ANALYSIS"
         )
 
     if mapped_status not in valid_statuses:

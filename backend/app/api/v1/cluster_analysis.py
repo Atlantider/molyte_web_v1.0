@@ -262,6 +262,10 @@ MOLECULE_INFO_MAP = {
     "EMC": {"smiles": "CCOC(=O)OC", "charge": 0, "dielectric": 3.0},
     "FEC": {"smiles": "FC1COC(=O)O1", "charge": 0, "dielectric": 78.4},  # 近似 EC
     "VC": {"smiles": "C=C1COC(=O)O1", "charge": 0, "dielectric": 126.0},
+    # 氟化溶剂
+    "EFA": {"smiles": "CCOC(=O)CF", "charge": 0, "dielectric": 15.0},  # Ethyl Fluoroacetate
+    "FEMC": {"smiles": "CCOC(=O)OCC(F)(F)F", "charge": 0, "dielectric": 5.0},  # Fluoroethyl Methyl Carbonate
+    "DFEC": {"smiles": "FC1(F)COC(=O)O1", "charge": 0, "dielectric": 50.0},  # Difluoroethylene Carbonate
     # 醚类溶剂
     "DME": {"smiles": "COCCOC", "charge": 0, "dielectric": 7.2},
     "DOL": {"smiles": "C1COCO1", "charge": 0, "dielectric": 7.1},
