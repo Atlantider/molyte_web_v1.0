@@ -1046,7 +1046,8 @@ def _plan_qc_tasks_for_calc_type(
                             if existing:
                                 task = PlannedQCTask(
                                     task_type=reorg_task_type, description=desc, smiles=lig_smiles,
-                                    charge=charge, multiplicity=mult, status="reused",
+                                    charge=charge, multiplicity=mult, calc_mode=calc_mode,
+                                    status="reused",
                                     existing_qc_job_id=existing.id,
                                     existing_energy=existing.results[0].energy_au if existing.results else None
                                 )
@@ -1054,7 +1055,8 @@ def _plan_qc_tasks_for_calc_type(
                             else:
                                 task = PlannedQCTask(
                                     task_type=reorg_task_type, description=desc, smiles=lig_smiles,
-                                    charge=charge, multiplicity=mult, status="new"
+                                    charge=charge, multiplicity=mult, calc_mode=calc_mode,
+                                    status="new"
                                 )
                                 new_count += 1
                             planned_tasks.append(task)
@@ -1076,7 +1078,8 @@ def _plan_qc_tasks_for_calc_type(
                     # Cluster 任务从 MD 提取几何，不尝试全局复用（每个 cluster 几何不同）
                     task = PlannedQCTask(
                         task_type=task_type, description=desc, smiles=None,
-                        structure_id=s.id, charge=charge, multiplicity=mult, status="new"
+                        structure_id=s.id, charge=charge, multiplicity=mult,
+                        calc_mode=calc_mode, status="new"
                     )
                     new_count += 1
                     planned_tasks.append(task)
