@@ -60,6 +60,7 @@ import {
   type ClusterAnalysisResults,
   type QCStatus,
 } from '../api/clusterAnalysis';
+import { getPartitions, getSlurmSuggestion, type Partition } from '../api/qc';
 
 const { Text, Title, Paragraph } = Typography;
 const { Panel } = Collapse;
@@ -88,6 +89,10 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
   const [planLoading, setPlanLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [existingJobs, setExistingJobs] = useState<AdvancedClusterJob[]>([]);
+
+  // Slurm 队列状态
+  const [partitions, setPartitions] = useState<Partition[]>([]);
+  const [partitionsLoading, setPartitionsLoading] = useState(false);
   
   // QC 配置
   const [qcConfig, setQcConfig] = useState({
@@ -147,6 +152,44 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
     }
   }, [mdJobId]);
 
+  // 加载 Slurm 队列信息
+  const loadPartitions = useCallback(async () => {
+    setPartitionsLoading(true);
+    try {
+      const data = await getPartitions();
+      setPartitions(data);
+    } catch (error) {
+      console.error('加载队列信息失败:', error);
+      setPartitions([]);
+    } finally {
+      setPartitionsLoading(false);
+    }
+  }, []);
+
+  // 获取默认分区
+  const getDefaultPartition = () => {
+    if (partitions.length > 0) {
+      const upPartition = partitions.find(p => p.state === 'up');
+      return upPartition?.name || partitions[0].name;
+    }
+    return 'hpc128c';
+  };
+
+  // 获取推荐配置
+  const handleGetSuggestion = async () => {
+    try {
+      const suggestion = await getSlurmSuggestion({ job_type: 'qc' });
+      setQcConfig(prev => ({
+        ...prev,
+        slurm_partition: suggestion.partition,
+        slurm_cpus: suggestion.cpus_per_task,
+      }));
+      message.success(`已应用推荐配置: ${suggestion.reason}`);
+    } catch (error: any) {
+      message.error('获取推荐配置失败');
+    }
+  };
+
   // 加载推荐溶剂
   const loadRecommendedSolvent = useCallback(async () => {
     try {
@@ -167,7 +210,8 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
     loadStructures();
     loadExistingJobs();
     loadRecommendedSolvent();
-  }, [loadStructures, loadExistingJobs, loadRecommendedSolvent]);
+    loadPartitions();
+  }, [loadStructures, loadExistingJobs, loadRecommendedSolvent, loadPartitions]);
 
   // 规划计算
   const handlePlan = async () => {
@@ -761,19 +805,45 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
                 <Divider style={{ margin: '12px 0' }} />
                 <Row gutter={[16, 12]} align="middle">
                   <Col span={6}>
-                    <Text strong style={{ fontSize: 12 }}>Slurm 分区</Text>
+                    <Text strong style={{ fontSize: 12 }}>
+                      队列/分区
+                      <Tooltip title="显示实时队列状态和可用资源">
+                        <InfoCircleOutlined style={{ marginLeft: 4, fontSize: 11, color: '#999' }} />
+                      </Tooltip>
+                    </Text>
                     <Select
                       size="small"
                       style={{ width: '100%', marginTop: 4 }}
                       value={qcConfig.slurm_partition}
                       onChange={(value) => setQcConfig(prev => ({ ...prev, slurm_partition: value }))}
+                      loading={partitionsLoading}
+                      placeholder={partitions.length > 0 ? "选择队列" : "暂无可用队列"}
+                      disabled={partitions.length === 0}
                     >
-                      <Select.Option value="cpu">cpu</Select.Option>
-                      <Select.Option value="hpc128c">hpc128c</Select.Option>
-                      <Select.Option value="gpu">gpu</Select.Option>
+                      {partitions.length > 0 ? (
+                        partitions.map(p => (
+                          <Select.Option
+                            key={p.name}
+                            value={p.name}
+                            disabled={p.state !== 'up'}
+                          >
+                            <span style={{ color: p.state === 'up' ? 'inherit' : '#999' }}>
+                              {p.name} {p.state === 'up'
+                                ? `(可用 ${p.available_cpus}/${p.total_cpus} CPUs)`
+                                : '(不可用)'}
+                            </span>
+                          </Select.Option>
+                        ))
+                      ) : (
+                        <>
+                          <Select.Option value="cpu">cpu</Select.Option>
+                          <Select.Option value="hpc128c">hpc128c</Select.Option>
+                          <Select.Option value="gpu">gpu</Select.Option>
+                        </>
+                      )}
                     </Select>
                   </Col>
-                  <Col span={6}>
+                  <Col span={5}>
                     <Text strong style={{ fontSize: 12 }}>CPU 核心数</Text>
                     <Select
                       size="small"
@@ -785,10 +855,11 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
                       <Select.Option value={16}>16</Select.Option>
                       <Select.Option value={32}>32</Select.Option>
                       <Select.Option value={64}>64</Select.Option>
+                      <Select.Option value={128}>128</Select.Option>
                     </Select>
                   </Col>
-                  <Col span={6}>
-                    <Text strong style={{ fontSize: 12 }}>最大运行时间（分钟）</Text>
+                  <Col span={5}>
+                    <Text strong style={{ fontSize: 12 }}>时间限制（分钟）</Text>
                     <Select
                       size="small"
                       style={{ width: '100%', marginTop: 4 }}
@@ -800,13 +871,36 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
                       <Select.Option value={10080}>168 小时（7天）</Select.Option>
                     </Select>
                   </Col>
-                  <Col span={6}>
+                  <Col span={4}>
+                    <div style={{ marginTop: 18 }}>
+                      <Button
+                        size="small"
+                        icon={<ThunderboltOutlined />}
+                        onClick={handleGetSuggestion}
+                        style={{ width: '100%' }}
+                      >
+                        推荐配置
+                      </Button>
+                    </div>
+                  </Col>
+                  <Col span={4}>
                     <div style={{ marginTop: 18 }}>
                       <Tag color="purple">{qcConfig.slurm_partition}</Tag>
                       <Tag color="cyan">{qcConfig.slurm_cpus} CPUs</Tag>
                     </div>
                   </Col>
                 </Row>
+
+                {/* 队列状态提示 */}
+                {partitions.length === 0 && !partitionsLoading && (
+                  <Alert
+                    message="暂无可用队列"
+                    description="请联系管理员分配队列权限，或等待集群信息加载"
+                    type="warning"
+                    showIcon
+                    style={{ marginTop: 8, fontSize: 11 }}
+                  />
+                )}
 
                 {/* 溶剂推荐信息 */}
                 {solventRecommendation && qcConfig.solvent_model !== 'gas' && (

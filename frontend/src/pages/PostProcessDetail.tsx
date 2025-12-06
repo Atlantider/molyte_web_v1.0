@@ -2121,7 +2121,7 @@ export default function PostProcessDetail() {
                           <Select.Option key={p.name} value={p.name} disabled={p.state !== 'up'}>
                             <span style={{ color: p.state === 'up' ? 'inherit' : '#999' }}>
                               {p.name} {p.state === 'up'
-                                ? `(${p.available_cpus}/${p.total_cpus} CPUs)`
+                                ? `(可用 ${p.available_cpus}/${p.total_cpus} CPUs)`
                                 : '(不可用)'}
                             </span>
                           </Select.Option>
@@ -2129,6 +2129,7 @@ export default function PostProcessDetail() {
                       ) : (
                         <>
                           <Select.Option value="cpu">cpu</Select.Option>
+                          <Select.Option value="hpc128c">hpc128c</Select.Option>
                           <Select.Option value="gpu">gpu</Select.Option>
                         </>
                       )}
