@@ -5190,6 +5190,10 @@ echo "QC calculation completed"
             'cluster_analysis_job_id': cluster_job_id,
             'task_type': task_type,
             'solvation_structure_id': structure_id,
+            # Slurm 资源配置
+            'slurm_partition': qc_config.get('slurm_partition', 'cpu'),
+            'slurm_cpus': qc_config.get('slurm_cpus', 16),
+            'slurm_time': qc_config.get('slurm_time', 7200),
         }
 
         # 只有当 smiles 有值时才添加（cluster 类型任务没有 SMILES，使用 XYZ 结构）
