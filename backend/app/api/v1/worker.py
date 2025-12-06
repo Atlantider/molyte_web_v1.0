@@ -264,9 +264,10 @@ async def get_pending_jobs(
         return result
     
     elif job_type == "QC":
-        # 获取 SUBMITTED 或 CREATED 状态的 QC 任务（用户已提交或由 desolvation 创建，等待 Worker 处理）
+        # 获取 SUBMITTED、CREATED 或 QUEUED 状态的 QC 任务
+        # QUEUED 状态的任务可能是 Worker 获取后但未完成处理就重启了，需要重新处理
         jobs = db.query(QCJob).filter(
-            QCJob.status.in_([QCJobStatus.SUBMITTED, QCJobStatus.CREATED])
+            QCJob.status.in_([QCJobStatus.SUBMITTED, QCJobStatus.CREATED, QCJobStatus.QUEUED])
         ).order_by(QCJob.created_at).limit(limit).all()
 
         return [

@@ -756,6 +756,12 @@ class PollingWorker:
         self.logger.info(f"开始处理 QC 任务 {job_id}")
 
         try:
+            # 0. 检查任务是否已经在处理中（避免重复处理）
+            # 如果任务已经在 running_jobs 中，说明正在处理，跳过
+            if job_id in self.running_jobs:
+                self.logger.info(f"QC 任务 {job_id} 已在处理中，跳过")
+                return
+
             # 1. 立即更新任务状态为 QUEUED（表示 Worker 已接收，正在准备）
             self._update_job_status(job_id, 'QUEUED', 'qc')
 
