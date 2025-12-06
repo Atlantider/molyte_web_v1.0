@@ -3140,16 +3140,17 @@ def get_frame_count_endpoint(
 @router.get("/{job_id}/solvation/auto-select")
 def auto_select_solvation_structures(
     job_id: int,
+    mode: str = "top3",  # "top3" = 占比前3, "all" = 每种1个
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """
     自动挑选不同配位组成的溶剂化结构
 
-    策略：
-    1. 按配位组成分组（如 Li-2FSI-1DME-1DMC）
-    2. 每种组成只选一个代表性结构（选择该组中第一个出现的）
-    3. 返回所有不同组成的结构列表
+    Args:
+        mode: 选择模式
+            - "top3": 占比前3 - 选择出现频率最高的前3种组成
+            - "all": 每种1个 - 每种组成选一个代表性结构
     """
     from app.models.result import SolvationStructure
     from app.dependencies import check_job_permission
@@ -3187,19 +3188,25 @@ def auto_select_solvation_structures(
         )
         composition_groups[composition_key].append(structure)
 
-    # 按出现次数（占比）排序，选择占比最高的前 3 种组成
+    # 按出现次数（占比）排序
     sorted_groups = sorted(
         composition_groups.items(),
         key=lambda x: len(x[1]),  # 按组内结构数量排序
         reverse=True  # 数量多的在前
     )
 
-    # 选择占比最高的前 3 种组成
-    top_n = 3
-    top_groups = sorted_groups[:top_n]
+    # 根据模式选择组成
+    if mode == "top3":
+        # 占比前3：选择出现频率最高的前3种组成
+        top_n = 3
+        groups_to_select = sorted_groups[:top_n]
+    else:
+        # 每种1个：选择所有组成
+        top_n = len(sorted_groups)
+        groups_to_select = sorted_groups
 
     selected_structures = []
-    for composition_key, group in top_groups:
+    for composition_key, group in groups_to_select:
         # 选择第一个结构作为代表
         representative = group[0]
         selected_structures.append({
@@ -3223,7 +3230,8 @@ def auto_select_solvation_structures(
     return {
         "total_structures": len(structures),
         "unique_compositions": len(composition_groups),
-        "top_n_selected": top_n,
+        "mode": mode,
+        "selected_count": len(selected_structures),
         "selected_structures": selected_structures
     }
 

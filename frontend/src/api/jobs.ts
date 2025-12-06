@@ -319,9 +319,16 @@ export interface AutoSelectResponse {
 
 /**
  * 自动挑选不同配位组成的溶剂化结构
+ * @param jobId MD任务ID
+ * @param mode 选择模式: "top3" = 占比前3, "all" = 每种1个
  */
-export const autoSelectSolvationStructures = async (jobId: number): Promise<AutoSelectResponse> => {
-  const response = await client.get(`/jobs/${jobId}/solvation/auto-select`);
+export const autoSelectSolvationStructures = async (
+  jobId: number,
+  mode: 'top3' | 'all' = 'top3'
+): Promise<AutoSelectResponse> => {
+  const response = await client.get(`/jobs/${jobId}/solvation/auto-select`, {
+    params: { mode }
+  });
   return response.data;
 };
 

@@ -422,23 +422,39 @@ export default function PostProcessDetail() {
     return generateClusterName(s.center_ion, s.composition);
   }, []);
 
-  // 智能选择：占比前3的组成
-  const handleAutoSelect = useCallback(async () => {
+  // 智能选择：占比前3
+  const handleSelectTop3 = useCallback(async () => {
     if (!selectedMdJobId) return;
     setAutoSelectLoading(true);
     try {
-      const result = await autoSelectSolvationStructures(selectedMdJobId);
+      const result = await autoSelectSolvationStructures(selectedMdJobId, 'top3');
       const ids = result.selected_structures.map(s => s.id);
       setSelectedStructureIds(ids);
-      // 构建占比信息
       const percentages = result.selected_structures.map(
         (s: { percentage?: number; composition_key?: string }) =>
           `${s.composition_key?.split('-').slice(1).join('-') || '?'} (${s.percentage || 0}%)`
       ).join(', ');
-      message.success(`已选择占比前 ${ids.length} 的组成: ${percentages}`);
+      message.success(`占比前3: ${percentages}`);
     } catch (err) {
       console.error('Auto select failed:', err);
-      message.error('智能选择失败');
+      message.error('选择失败');
+    } finally {
+      setAutoSelectLoading(false);
+    }
+  }, [selectedMdJobId]);
+
+  // 智能选择：每种1个（全覆盖）
+  const handleSelectAll = useCallback(async () => {
+    if (!selectedMdJobId) return;
+    setAutoSelectLoading(true);
+    try {
+      const result = await autoSelectSolvationStructures(selectedMdJobId, 'all');
+      const ids = result.selected_structures.map(s => s.id);
+      setSelectedStructureIds(ids);
+      message.success(`每种1个: 已选择 ${ids.length} 种组成`);
+    } catch (err) {
+      console.error('Auto select failed:', err);
+      message.error('选择失败');
     } finally {
       setAutoSelectLoading(false);
     }
@@ -1498,8 +1514,13 @@ export default function PostProcessDetail() {
                   {/* 快速选择 */}
                   <Space wrap style={{ marginBottom: 12 }}>
                     <Tooltip title="选择出现频率最高的前3种配位组成">
-                      <Button size="small" icon={<BulbOutlined />} loading={autoSelectLoading} onClick={handleAutoSelect}>
+                      <Button size="small" icon={<BulbOutlined />} loading={autoSelectLoading} onClick={handleSelectTop3}>
                         占比前3
+                      </Button>
+                    </Tooltip>
+                    <Tooltip title="每种配位组成选1个代表性结构">
+                      <Button size="small" loading={autoSelectLoading} onClick={handleSelectAll}>
+                        每种1个
                       </Button>
                     </Tooltip>
                     <Button size="small" onClick={() => selectNPerGroup(3)}>每种3个</Button>
