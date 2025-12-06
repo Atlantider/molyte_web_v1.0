@@ -9,7 +9,7 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
 
 from app.database import get_db
 from app.models.user import User
@@ -160,14 +160,24 @@ def _find_existing_qc_job(
 
     # 策略 2：如果 SMILES 匹配不到，尝试用基础 molecule_name 匹配
     # 这对于 EC#1, EC#2 等同类型分子很有用
+    # 也支持匹配带前缀的名称，如 cluster_2_reorg_mol_EC_opt_neutral
     if not job and molecule_name:
         base_name = re.sub(r'#\d+$', '', molecule_name)
-        name_pattern = f"^{re.escape(base_name)}(#[0-9]+)?$"
+
+        # 模式 1：简单名称匹配（如 EC, EC#1）
+        simple_pattern = f"^{re.escape(base_name)}(#[0-9]+)?$"
+
+        # 模式 2：带前缀的复合名称匹配（如 cluster_2_reorg_mol_EC_opt_neutral）
+        # 匹配 *_{base_name}_* 或 *_{base_name}（结尾）
+        compound_pattern = f".*[_-]{re.escape(base_name)}([_-].*)?$"
 
         name_query = db.query(QCJob).options(
             joinedload(QCJob.results)
         ).filter(
-            QCJob.molecule_name.op('~')(name_pattern),
+            or_(
+                QCJob.molecule_name.op('~')(simple_pattern),
+                QCJob.molecule_name.op('~')(compound_pattern)
+            ),
             QCJob.charge == charge,
             QCJob.spin_multiplicity == multiplicity,
             QCJob.functional == functional,

@@ -252,10 +252,10 @@ export default function PostProcessDetail() {
   // QC 配置
   const [qcConfig, setQcConfig] = useState({
     functional: 'B3LYP',
-    basis_set: '6-31G(d)',
+    basis_set: '6-31G*',        // 使用 6-31G* 格式以匹配已有任务
     use_dispersion: true,
     charge_ion: 1,
-    solvent_model: 'smd',
+    solvent_model: 'gas',       // 默认气相，与已有任务匹配
     solvent: 'Water',
   });
 
@@ -1612,7 +1612,7 @@ export default function PostProcessDetail() {
                       value={qcConfig.basis_set}
                       onChange={(v) => setQcConfig(prev => ({ ...prev, basis_set: v }))}
                     >
-                      <Select.Option value="6-31G(d)">6-31G(d)</Select.Option>
+                      <Select.Option value="6-31G*">6-31G*</Select.Option>
                       <Select.Option value="6-31+G(d,p)">6-31+G(d,p)</Select.Option>
                       <Select.Option value="6-311++G(d,p)">6-311++G(d,p)</Select.Option>
                       <Select.Option value="def2-SVP">def2-SVP</Select.Option>
