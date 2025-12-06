@@ -968,18 +968,20 @@ export default function Jobs() {
                 showTotal: (total) => `共 ${total} 个任务`,
                 pageSizeOptions: ['10', '20', '50', '100'],
               }}
-              scroll={{ x: 1100 }}
+              scroll={{ x: 1300 }}
               columns={[
                 {
                   title: 'ID',
                   dataIndex: 'id',
                   key: 'id',
                   width: 60,
+                  fixed: 'left' as const,
                 },
                 {
                   title: '任务名称',
                   key: 'job_name',
                   width: 180,
+                  fixed: 'left' as const,
                   ellipsis: true,
                   render: (_: any, record: MDJob) => (
                     <a onClick={() => navigate(`/workspace/liquid-electrolyte/md/${record.id}`)}>
@@ -1046,9 +1048,17 @@ export default function Jobs() {
                   },
                 },
                 {
+                  title: '创建时间',
+                  dataIndex: 'created_at',
+                  key: 'created_at',
+                  width: 160,
+                  render: (time: string) => time ? new Date(time).toLocaleString('zh-CN') : '-',
+                },
+                {
                   title: '操作',
                   key: 'actions',
                   width: 200,
+                  fixed: 'right' as const,
                   render: (_: any, record: MDJob) => {
                     const canCancel = record.status === JobStatus.QUEUED || record.status === JobStatus.RUNNING;
                     const canResubmit = record.status === JobStatus.FAILED || record.status === JobStatus.CANCELLED || record.status === JobStatus.COMPLETED;

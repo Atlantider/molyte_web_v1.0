@@ -1199,19 +1199,21 @@ export default function Electrolytes() {
                 showTotal: (total) => `共 ${total} 个配方`,
                 pageSizeOptions: ['10', '20', '50', '100'],
               }}
-              scroll={{ x: 1200 }}
+              scroll={{ x: 1400 }}
               columns={[
                 {
                   title: 'ID',
                   dataIndex: 'id',
                   key: 'id',
                   width: 60,
+                  fixed: 'left' as const,
                 },
                 {
                   title: '配方名称',
                   dataIndex: 'name',
                   key: 'name',
                   width: 200,
+                  fixed: 'left' as const,
                   ellipsis: true,
                   render: (name: string, record: ElectrolyteSystem) => (
                     <a onClick={() => handleViewDetail(record)}>
@@ -1290,9 +1292,17 @@ export default function Electrolytes() {
                   },
                 },
                 {
+                  title: '创建时间',
+                  dataIndex: 'created_at',
+                  key: 'created_at',
+                  width: 160,
+                  render: (time: string) => time ? new Date(time).toLocaleString('zh-CN') : '-',
+                },
+                {
                   title: '操作',
                   key: 'actions',
                   width: 220,
+                  fixed: 'right' as const,
                   render: (_: any, record: ElectrolyteSystem) => (
                     <Space size={4}>
                       <Button type="link" size="small" style={{ padding: '0 4px' }} onClick={() => handleViewDetail(record)}>

@@ -213,6 +213,7 @@ const UserManagement: React.FC = () => {
       dataIndex: 'id',
       key: 'id',
       width: 50,
+      fixed: 'left' as const,
       sorter: (a: UserListItem, b: UserListItem) => a.id - b.id,
     },
     {
@@ -220,6 +221,7 @@ const UserManagement: React.FC = () => {
       dataIndex: 'username',
       key: 'username',
       width: 120,
+      fixed: 'left' as const,
       sorter: (a: UserListItem, b: UserListItem) => a.username.localeCompare(b.username),
       render: (text: string, record: UserListItem) => (
         <a onClick={() => navigate(`/workspace/admin/users/${record.id}`)}>
@@ -333,9 +335,17 @@ const UserManagement: React.FC = () => {
       },
     },
     {
+      title: '创建时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 160,
+      render: (time: string) => time ? new Date(time).toLocaleString('zh-CN') : '-',
+    },
+    {
       title: '操作',
       key: 'actions',
       width: 120,
+      fixed: 'right' as const,
       render: (_: any, record: UserListItem) => (
         <Space size={4}>
           <Button
@@ -543,7 +553,7 @@ const UserManagement: React.FC = () => {
           columns={columns}
           rowKey="id"
           loading={loading}
-          scroll={{ x: 1000 }}
+          scroll={{ x: 1200 }}
           pagination={{
             pageSize: 20,
             showSizeChanger: true,

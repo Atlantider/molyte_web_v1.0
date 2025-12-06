@@ -1020,6 +1020,7 @@ export default function QCJobs() {
       dataIndex: 'molecule_name',
       key: 'molecule_name',
       width: 150,
+      fixed: 'left',
       ellipsis: true,
     },
     {
