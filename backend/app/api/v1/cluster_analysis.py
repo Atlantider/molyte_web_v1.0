@@ -390,6 +390,32 @@ def _get_ligand_smiles_from_composition(
     return ligands
 
 
+def _get_solvent_from_task_type(task_type: str, qc_config: Dict[str, Any]) -> str:
+    """
+    从 task_type 推断溶剂模型
+
+    Redox/Reorg 任务有特定的溶剂后缀：
+    - *_neutral_gas, *_charged_gas -> gas
+    - *_neutral_sol, *_charged_sol -> 用户配置的溶剂模型
+    - *_opt_*, *_sp_* (reorg) -> gas（重组能通常在气相计算）
+
+    其他任务使用用户配置的溶剂模型
+    """
+    user_solvent = qc_config.get("solvent_model") or "gas"
+
+    if not task_type:
+        return user_solvent
+
+    # Redox 任务的溶剂后缀
+    if "_gas" in task_type:
+        return "gas"
+    elif "_sol" in task_type:
+        return user_solvent if user_solvent != "gas" else "pcm"
+
+    # 其他任务使用用户配置
+    return user_solvent
+
+
 def _plan_qc_tasks_for_calc_type(
     db: Session,
     calc_type: ClusterCalcType,
@@ -1083,13 +1109,26 @@ def plan_cluster_analysis(
             # 生成唯一键用于跨计算类型复用检测
             # 策略：
             # - cluster/intermediate 类型：用 structure_id 区分（不同 cluster 不复用）
-            # - ligand/dimer/ion 等类型：用 task_type + smiles + charge 匹配（可跨类型复用）
-            if task.task_type in ["cluster", "intermediate"]:
+            # - ligand/dimer/ion/redox/reorg 等类型：
+            #   用 smiles + charge + multiplicity + solvent 匹配（可跨类型复用）
+            #
+            # 跨类型复用规则：
+            # - ligand_EC (gas, charge=0) ↔ redox_mol_EC_neutral_gas (gas, charge=0)
+            # - ligand_EC (pcm, charge=0) ↔ redox_mol_EC_neutral_sol (pcm, charge=0)
+            # - dimer_Li-EC (gas, charge=1) ↔ redox_dimer_EC_neutral_gas (gas, charge=1)
+
+            # 获取溶剂模型（从 task_type 推断或使用默认值）
+            task_solvent = _get_solvent_from_task_type(task.task_type, qc_config)
+
+            if task.task_type and (task.task_type.startswith("cluster") or
+                                    task.task_type.startswith("intermediate") or
+                                    task.task_type.startswith("reorg_cluster")):
                 # 这些任务依赖具体的 cluster 结构，用 structure_id 区分
-                task_key = (task.task_type, None, task.structure_id, task.charge)
+                task_key = ("cluster", task.structure_id, task.charge, task.multiplicity, task_solvent)
             else:
-                # ligand_XX, dimer_XX, ion 等可以跨类型复用
-                task_key = (task.task_type, task.smiles, None, task.charge)
+                # ligand, dimer, ion, redox_mol, redox_dimer, reorg_mol 等可以跨类型复用
+                # 使用 smiles + charge + multiplicity + solvent 作为键
+                task_key = (task.smiles, task.charge, task.multiplicity, task_solvent)
 
             if task.status == "reused":
                 # 已经在数据库中找到复用（全局复用）
