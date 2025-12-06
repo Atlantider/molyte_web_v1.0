@@ -252,6 +252,18 @@ export async function planAddCalcTypes(
 // 结果查询 API
 // ============================================================================
 
+export interface QCTaskInfo {
+  task_type: string;
+  name: string;
+  description: string;
+  smiles: string;
+  charge: number;
+  multiplicity: number;
+  status: 'new' | 'reused';
+  qc_job_id: number | null;
+  qc_status: string | null;
+}
+
 export interface QCStatus {
   job_id: number;
   total_qc_jobs: number;
@@ -260,10 +272,13 @@ export interface QCStatus {
   pending: number;
   failed: number;
   all_completed: boolean;
+  calc_types?: string[];
+  tasks_by_calc_type?: Record<string, QCTaskInfo[]>;
   qc_jobs?: Array<{
     id: number;
     status: string;
     molecule_name: string;
+    task_type?: string;
   }>;
 }
 

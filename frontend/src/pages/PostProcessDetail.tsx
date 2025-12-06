@@ -69,6 +69,7 @@ import {
   type CalcTypeRequirements,
   type PlannedQCTask,
   type QCStatus,
+  type QCTaskInfo,
 } from '../api/clusterAnalysis';
 import { getMDJobs, getMDJob, getSolvationStructures, autoSelectSolvationStructures, type SolvationStructure, type AutoSelectResponse } from '../api/jobs';
 import { previewDesolvationStructures, type DesolvationPreviewResponse } from '../api/desolvation';
@@ -2223,113 +2224,170 @@ export default function PostProcessDetail() {
           <ClusterAnalysisResultsPanel jobId={job.id} />
         )}
 
-        {/* 运行中状态详情 */}
+        {/* 运行中状态详情 - 按计算类型分组展示 */}
         {['SUBMITTED', 'RUNNING', 'WAITING_QC', 'CALCULATING'].includes(job.status) && (
-          <Card title="任务运行状态" size="small">
-            <Row gutter={16} style={{ marginBottom: 16 }}>
-              <Col span={6}>
-                <Statistic
-                  title="总 QC 任务"
-                  value={qcStatus?.total_qc_jobs || job.qc_task_plan?.total_qc_tasks || 0}
-                  prefix={<ExperimentOutlined />}
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic
-                  title="已完成"
-                  value={qcStatus?.completed || job.qc_task_plan?.completed_qc_tasks || 0}
-                  valueStyle={{ color: '#52c41a' }}
-                  prefix={<CheckCircleOutlined />}
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic
-                  title="运行中"
-                  value={qcStatus?.running || 0}
-                  valueStyle={{ color: '#1890ff' }}
-                  prefix={<SyncOutlined spin />}
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic
-                  title="待处理"
-                  value={qcStatus?.pending || 0}
-                  valueStyle={{ color: '#faad14' }}
-                  prefix={<ClockCircleOutlined />}
-                />
-              </Col>
-            </Row>
-            <Progress
-              percent={Math.round(job.progress * 10) / 10}
-              status="active"
-              strokeColor={{ '0%': '#108ee9', '100%': '#87d068' }}
-            />
-            {qcStatus?.qc_jobs && qcStatus.qc_jobs.length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <Divider orientation="left" style={{ margin: '12px 0' }}>QC 任务列表</Divider>
-                <Table
-                  dataSource={qcStatus.qc_jobs}
-                  rowKey="id"
-                  size="small"
-                  pagination={{ pageSize: 10 }}
-                  columns={[
-                    {
-                      title: 'ID',
-                      dataIndex: 'id',
-                      key: 'id',
-                      width: 60,
-                    },
-                    {
-                      title: '分子名称',
-                      dataIndex: 'molecule_name',
-                      key: 'molecule_name',
-                      ellipsis: true,
-                    },
-                    {
-                      title: '任务类型',
-                      dataIndex: 'task_type',
-                      key: 'task_type',
-                      width: 150,
-                    },
-                    {
-                      title: '状态',
-                      dataIndex: 'status',
-                      key: 'status',
-                      width: 100,
-                      render: (status: string) => {
-                        const statusMap: Record<string, { color: string; text: string }> = {
-                          'COMPLETED': { color: 'success', text: '已完成' },
-                          'RUNNING': { color: 'processing', text: '运行中' },
-                          'QUEUED': { color: 'warning', text: '排队中' },
-                          'SUBMITTED': { color: 'warning', text: '已提交' },
-                          'CREATED': { color: 'default', text: '待提交' },
-                          'FAILED': { color: 'error', text: '失败' },
-                          'CANCELLED': { color: 'default', text: '已取消' },
-                        };
-                        const cfg = statusMap[status] || { color: 'default', text: status };
-                        return <Tag color={cfg.color}>{cfg.text}</Tag>;
-                      },
-                    },
-                    {
-                      title: '操作',
-                      key: 'action',
-                      width: 80,
-                      render: (_: unknown, record: { id: number }) => (
-                        <Button
-                          type="link"
-                          size="small"
-                          icon={<EyeOutlined />}
-                          onClick={() => navigate(`/workspace/liquid-electrolyte/qc/${record.id}`)}
-                        >
-                          详情
-                        </Button>
+          <>
+            {/* 进度概览 */}
+            <Card title="📊 任务进度概览" size="small" style={{ marginBottom: 16 }}>
+              <Row gutter={16} style={{ marginBottom: 16 }}>
+                <Col span={6}>
+                  <Statistic
+                    title="总 QC 任务"
+                    value={qcStatus?.total_qc_jobs || job.qc_task_plan?.total_qc_tasks || 0}
+                    prefix={<ExperimentOutlined />}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="已完成"
+                    value={qcStatus?.completed || job.qc_task_plan?.completed_qc_tasks || 0}
+                    valueStyle={{ color: '#52c41a' }}
+                    prefix={<CheckCircleOutlined />}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="运行中"
+                    value={qcStatus?.running || 0}
+                    valueStyle={{ color: '#1890ff' }}
+                    prefix={<SyncOutlined spin />}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="待处理"
+                    value={qcStatus?.pending || 0}
+                    valueStyle={{ color: '#faad14' }}
+                    prefix={<ClockCircleOutlined />}
+                  />
+                </Col>
+              </Row>
+              <Progress
+                percent={Math.round(job.progress * 10) / 10}
+                status="active"
+                strokeColor={{ '0%': '#108ee9', '100%': '#87d068' }}
+              />
+            </Card>
+
+            {/* 按计算类型分组的 QC 任务列表 */}
+            <Card
+              title={<><UnorderedListOutlined /> QC 任务详情 (按计算类型分组)</>}
+              size="small"
+            >
+              {qcStatus?.tasks_by_calc_type && Object.keys(qcStatus.tasks_by_calc_type).length > 0 ? (
+                <Collapse
+                  items={(qcStatus.calc_types || Object.keys(qcStatus.tasks_by_calc_type)).map(calcType => {
+                    const tasks = qcStatus.tasks_by_calc_type?.[calcType] || [];
+                    const info = CALC_TYPE_INFO[calcType as ClusterCalcType];
+                    const completedCount = tasks.filter(t => t.qc_status === 'COMPLETED').length;
+                    const runningCount = tasks.filter(t => t.qc_status === 'RUNNING').length;
+                    const pendingCount = tasks.filter(t => ['CREATED', 'SUBMITTED', 'QUEUED'].includes(t.qc_status || '')).length;
+                    const failedCount = tasks.filter(t => t.qc_status === 'FAILED').length;
+
+                    return {
+                      key: calcType,
+                      label: (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                          <span>
+                            {info?.icon} <Text strong>{info?.label || calcType}</Text>
+                            <Text type="secondary" style={{ marginLeft: 8 }}>({tasks.length} 个任务)</Text>
+                          </span>
+                          <span>
+                            {completedCount > 0 && <Tag color="success">完成 {completedCount}</Tag>}
+                            {runningCount > 0 && <Tag color="processing">运行 {runningCount}</Tag>}
+                            {pendingCount > 0 && <Tag color="warning">待处理 {pendingCount}</Tag>}
+                            {failedCount > 0 && <Tag color="error">失败 {failedCount}</Tag>}
+                          </span>
+                        </div>
                       ),
-                    },
-                  ]}
+                      children: (
+                        <Table<QCTaskInfo>
+                          dataSource={tasks}
+                          rowKey={(record: QCTaskInfo, index) => `${record.task_type}-${record.qc_job_id || index}`}
+                          size="small"
+                          pagination={false}
+                          scroll={{ x: 700 }}
+                          columns={[
+                            {
+                              title: 'Name',
+                              dataIndex: 'name',
+                              key: 'name',
+                              width: 180,
+                              ellipsis: true,
+                            },
+                            {
+                              title: '描述',
+                              dataIndex: 'description',
+                              key: 'description',
+                              ellipsis: true,
+                            },
+                            {
+                              title: 'SMILES',
+                              dataIndex: 'smiles',
+                              key: 'smiles',
+                              width: 120,
+                              ellipsis: true,
+                              render: (smiles: string) => smiles || '-',
+                            },
+                            {
+                              title: '电荷',
+                              dataIndex: 'charge',
+                              key: 'charge',
+                              width: 60,
+                              render: (charge: number) => charge > 0 ? `+${charge}` : charge,
+                            },
+                            {
+                              title: 'QC 状态',
+                              dataIndex: 'qc_status',
+                              key: 'qc_status',
+                              width: 100,
+                              render: (status: string | null) => {
+                                if (!status) return <Tag>待创建</Tag>;
+                                const statusMap: Record<string, { color: string; text: string }> = {
+                                  'COMPLETED': { color: 'success', text: '已完成' },
+                                  'RUNNING': { color: 'processing', text: '运行中' },
+                                  'QUEUED': { color: 'warning', text: '排队中' },
+                                  'SUBMITTED': { color: 'warning', text: '已提交' },
+                                  'CREATED': { color: 'default', text: '待提交' },
+                                  'FAILED': { color: 'error', text: '失败' },
+                                  'CANCELLED': { color: 'default', text: '已取消' },
+                                };
+                                const cfg = statusMap[status] || { color: 'default', text: status };
+                                return <Tag color={cfg.color}>{cfg.text}</Tag>;
+                              },
+                            },
+                            {
+                              title: '操作',
+                              key: 'action',
+                              width: 80,
+                              render: (_: unknown, record: QCTaskInfo) => (
+                                record.qc_job_id ? (
+                                  <Button
+                                    type="link"
+                                    size="small"
+                                    icon={<EyeOutlined />}
+                                    onClick={() => navigate(`/workspace/liquid-electrolyte/qc/${record.qc_job_id}`)}
+                                  >
+                                    详情
+                                  </Button>
+                                ) : <Text type="secondary">-</Text>
+                              ),
+                            },
+                          ]}
+                        />
+                      ),
+                    };
+                  })}
+                  defaultActiveKey={qcStatus?.calc_types || []}
                 />
-              </div>
-            )}
-          </Card>
+              ) : (
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <Spin />
+                  <div style={{ marginTop: 16 }}><Text type="secondary">加载任务列表中...</Text></div>
+                </div>
+              )}
+            </Card>
+          </>
         )}
       </>
     );

@@ -1952,7 +1952,7 @@ def get_cluster_analysis_qc_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """获取 Cluster 高级计算的 QC 任务状态"""
+    """获取 Cluster 高级计算的 QC 任务状态（含按计算类型分组）"""
     job = db.query(AdvancedClusterJobModel).filter(AdvancedClusterJobModel.id == job_id).first()
 
     if not job:
@@ -1977,6 +1977,13 @@ def get_cluster_analysis_qc_status(
     # 合并两种方式的 ID
     all_qc_job_ids = list(plan_qc_job_ids | linked_qc_job_ids)
 
+    # 构建 planned_tasks 的 qc_job_id 映射
+    planned_tasks = qc_task_plan.get("planned_qc_tasks", [])
+    task_by_qc_job_id = {}
+    for task in planned_tasks:
+        if task.get("existing_qc_job_id"):
+            task_by_qc_job_id[task["existing_qc_job_id"]] = task
+
     if not all_qc_job_ids:
         return {
             "job_id": job_id,
@@ -1986,12 +1993,15 @@ def get_cluster_analysis_qc_status(
             "pending": 0,
             "failed": 0,
             "all_completed": True,
+            "calc_types": job.calc_types or [],
+            "tasks_by_calc_type": {},
         }
 
     # 查询所有 QC 任务状态
     qc_jobs = db.query(QCJob).filter(QCJob.id.in_(all_qc_job_ids)).all()
+    qc_jobs_by_id = {qc.id: qc for qc in qc_jobs}
 
-    status_counts = {"COMPLETED": 0, "RUNNING": 0, "SUBMITTED": 0, "CREATED": 0, "FAILED": 0}
+    status_counts = {"COMPLETED": 0, "RUNNING": 0, "SUBMITTED": 0, "CREATED": 0, "FAILED": 0, "CANCELLED": 0, "QUEUED": 0}
     for qc_job in qc_jobs:
         status = qc_job.status.value if hasattr(qc_job.status, 'value') else str(qc_job.status)
         if status in status_counts:
@@ -1999,14 +2009,66 @@ def get_cluster_analysis_qc_status(
 
     all_completed = status_counts["COMPLETED"] == len(qc_jobs) and status_counts["FAILED"] == 0
 
+    # 按计算类型分组任务
+    tasks_by_calc_type = defaultdict(list)
+
+    # 从 planned_tasks 获取分组信息
+    for task in planned_tasks:
+        calc_type = task.get("calc_type", "UNKNOWN")
+        qc_job_id = task.get("existing_qc_job_id")
+        qc_job = qc_jobs_by_id.get(qc_job_id) if qc_job_id else None
+
+        task_info = {
+            "task_type": task.get("task_type", ""),
+            "name": task.get("name", ""),
+            "description": task.get("description", ""),
+            "smiles": task.get("smiles", ""),
+            "charge": task.get("charge", 0),
+            "multiplicity": task.get("multiplicity", 1),
+            "status": "reused" if task.get("status") == "reused" else "new",
+            "qc_job_id": qc_job_id,
+            "qc_status": qc_job.status.value if qc_job and hasattr(qc_job.status, 'value') else (qc_job.status if qc_job else None),
+        }
+        tasks_by_calc_type[calc_type].append(task_info)
+
+    # 处理没有在 planned_tasks 中的 linked_qc_jobs
+    for qc in linked_qc_jobs:
+        if qc.id not in task_by_qc_job_id:
+            # 尝试从 task_type 推断 calc_type
+            calc_type = "UNKNOWN"
+            task_type = qc.task_type or ""
+            if "cluster" in task_type.lower() or "ligand" in task_type.lower() or "ion" in task_type.lower():
+                calc_type = "BINDING_TOTAL"
+            elif "desolvation" in task_type.lower() or "cluster_minus" in task_type.lower():
+                calc_type = "DESOLVATION_STEPWISE"
+            elif "redox" in task_type.lower() or "oxidation" in task_type.lower():
+                calc_type = "REDOX"
+            elif "reorg" in task_type.lower():
+                calc_type = "REORGANIZATION"
+
+            task_info = {
+                "task_type": task_type,
+                "name": qc.molecule_name or "",
+                "description": "",
+                "smiles": qc.smiles or "",
+                "charge": qc.charge or 0,
+                "multiplicity": qc.multiplicity or 1,
+                "status": "new",
+                "qc_job_id": qc.id,
+                "qc_status": qc.status.value if hasattr(qc.status, 'value') else str(qc.status),
+            }
+            tasks_by_calc_type[calc_type].append(task_info)
+
     return {
         "job_id": job_id,
         "total_qc_jobs": len(qc_jobs),
         "completed": status_counts["COMPLETED"],
         "running": status_counts["RUNNING"],
-        "pending": status_counts["SUBMITTED"] + status_counts["CREATED"],
+        "pending": status_counts["SUBMITTED"] + status_counts["CREATED"] + status_counts["QUEUED"],
         "failed": status_counts["FAILED"],
         "all_completed": all_completed,
+        "calc_types": job.calc_types or [],
+        "tasks_by_calc_type": dict(tasks_by_calc_type),
         "qc_jobs": [
             {
                 "id": qc.id,
