@@ -91,11 +91,13 @@ const AuditLogs: React.FC = () => {
       dataIndex: 'id',
       key: 'id',
       width: 80,
+      fixed: 'left' as const,
     },
     {
       title: '操作',
       dataIndex: 'action',
       key: 'action',
+      fixed: 'left' as const,
       render: (action: string) => (
         <Tag color={actionColorMap[action] || 'default'}>{action}</Tag>
       ),
@@ -134,6 +136,7 @@ const AuditLogs: React.FC = () => {
       title: '详情',
       dataIndex: 'details',
       key: 'details',
+      fixed: 'right' as const,
       render: (details: any) => (
         <div style={{ maxWidth: '300px', overflow: 'auto' }}>
           <pre style={{ margin: 0, fontSize: '12px' }}>

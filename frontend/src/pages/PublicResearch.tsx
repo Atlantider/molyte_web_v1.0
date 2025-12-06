@@ -165,6 +165,7 @@ export default function PublicResearch() {
       dataIndex: 'job_id',
       key: 'job_id',
       width: 100,
+      fixed: 'left' as const,
       render: (id: number) => <Text strong>#{id}</Text>,
     },
     {
@@ -172,6 +173,7 @@ export default function PublicResearch() {
       dataIndex: 'system_name',
       key: 'system_name',
       width: 200,
+      fixed: 'left' as const,
     },
     {
       title: '阳离子',

@@ -175,6 +175,7 @@ export default function Research() {
       dataIndex: 'job_name',
       key: 'job_name',
       width: 200,
+      fixed: 'left' as const,
       sorter: (a: ElectrolyteSearchResult, b: ElectrolyteSearchResult) =>
         (a.job_name || '').localeCompare(b.job_name || ''),
       render: (name: string, record: ElectrolyteSearchResult) => (
