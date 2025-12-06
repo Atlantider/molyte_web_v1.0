@@ -1244,9 +1244,15 @@ export default function PostProcessDetail() {
 
       return (
         <div style={{ padding: '24px 48px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
-          {/* 返回按钮 */}
-          <Button type="link" onClick={() => setCurrentStep(1)} style={{ marginBottom: 16, padding: 0 }}>
-            ← 返回修改配置
+          {/* 返回按钮 - 更醒目的样式 */}
+          <Button
+            type="primary"
+            ghost
+            icon={<ArrowLeftOutlined />}
+            onClick={() => setCurrentStep(1)}
+            style={{ marginBottom: 16 }}
+          >
+            返回修改配置
           </Button>
 
           {planResult ? (
