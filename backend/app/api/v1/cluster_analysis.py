@@ -1371,18 +1371,78 @@ def submit_cluster_analysis(
     # QC 配置
     qc_config = request.qc_config.model_dump() if request.qc_config else {}
 
-    # 规划 QC 任务
+    # 子选项（从请求中获取或使用默认值）
+    redox_opts = request.redox_options.model_dump() if request.redox_options else None
+    reorg_opts = request.reorganization_options.model_dump() if request.reorganization_options else None
+
+    # 规划 QC 任务（与 /plan 接口相同的跨计算类型复用逻辑）
     all_planned_tasks = []
     reused_qc_jobs = []
 
-    for calc_type in request.calc_types:
-        req = _plan_qc_tasks_for_calc_type(db, calc_type, structures, qc_config, mol_info_from_db)
+    # 跨计算类型复用追踪：记录本次请求中已规划的任务
+    planned_in_request: Dict[tuple, PlannedQCTask] = {}
+
+    # 按固定顺序处理计算类型，确保复用关系可预测
+    calc_type_order = [
+        ClusterCalcType.BINDING_TOTAL,
+        ClusterCalcType.BINDING_PAIRWISE,
+        ClusterCalcType.DESOLVATION_STEPWISE,
+        ClusterCalcType.DESOLVATION_FULL,
+        ClusterCalcType.REDOX,
+        ClusterCalcType.REORGANIZATION,
+    ]
+    sorted_calc_types = [ct for ct in calc_type_order if ct in request.calc_types]
+
+    for calc_type in sorted_calc_types:
+        req = _plan_qc_tasks_for_calc_type(
+            db, calc_type, structures, qc_config, mol_info_from_db,
+            redox_options=redox_opts,
+            reorganization_options=reorg_opts
+        )
+
         for task in req.required_qc_tasks:
-            task_dict = task.model_dump()
-            task_dict["calc_type"] = calc_type.value
-            all_planned_tasks.append(task_dict)
-            if task.existing_qc_job_id:
-                reused_qc_jobs.append(task.existing_qc_job_id)
+            # 生成唯一键用于跨计算类型复用检测
+            task_key = _generate_task_reuse_key(task, qc_config)
+
+            if task.status == "reused":
+                # 已经在数据库中找到复用（全局复用）
+                task_dict = task.model_dump()
+                task_dict["calc_type"] = calc_type.value
+                task_dict["description"] = f"{task.description}【全局复用】"
+                all_planned_tasks.append(task_dict)
+                if task.existing_qc_job_id:
+                    reused_qc_jobs.append(task.existing_qc_job_id)
+            elif task_key in planned_in_request:
+                # 本次请求中已经规划过（局部复用 - 跨计算类型）
+                first_task = planned_in_request[task_key]
+                task_dict = task.model_dump()
+                task_dict["calc_type"] = calc_type.value
+                task_dict["status"] = "local_reused"
+                task_dict["description"] = f"{task.description}【局部复用自 {first_task.task_type}】"
+                task_dict["reuse_from_task_type"] = first_task.task_type
+                all_planned_tasks.append(task_dict)
+            else:
+                # 新任务，记录到追踪表
+                planned_in_request[task_key] = task
+                task_dict = task.model_dump()
+                task_dict["calc_type"] = calc_type.value
+                all_planned_tasks.append(task_dict)
+                if task.existing_qc_job_id:
+                    reused_qc_jobs.append(task.existing_qc_job_id)
+
+    # 统计任务数量
+    # new: 需要创建的新 QC 任务
+    # reused: 从数据库复用的（已完成的）QC 任务
+    # local_reused: 本次请求中跨计算类型复用的任务（不需要额外创建）
+    new_tasks_count = len([t for t in all_planned_tasks if t.get("status") == "new"])
+    reused_tasks_count = len([t for t in all_planned_tasks if t.get("status") == "reused"])
+    local_reused_count = len([t for t in all_planned_tasks if t.get("status") == "local_reused"])
+
+    # total_qc_tasks = 需要创建的新任务 + 从数据库复用的任务（不包括局部复用，因为它们会复用同次请求中的任务）
+    unique_tasks_count = new_tasks_count + reused_tasks_count
+
+    logger.info(f"[提交] 规划任务统计: total={len(all_planned_tasks)}, new={new_tasks_count}, "
+                f"reused={reused_tasks_count}, local_reused={local_reused_count}, unique={unique_tasks_count}")
 
     # 创建任务
     job = AdvancedClusterJobModel(
@@ -1399,8 +1459,10 @@ def submit_cluster_analysis(
             "planned_qc_tasks": all_planned_tasks,
             "reused_qc_jobs": list(set(reused_qc_jobs)),
             "new_qc_jobs": [],
-            "total_qc_tasks": len(all_planned_tasks),
-            "completed_qc_tasks": len([t for t in all_planned_tasks if t["status"] == "reused"])
+            "total_qc_tasks": unique_tasks_count,  # 只计算需要创建的唯一任务
+            "completed_qc_tasks": reused_tasks_count,  # 从数据库复用的任务视为已完成
+            "total_planned_tasks": len(all_planned_tasks),  # 保留总计划数用于 UI 显示
+            "local_reused_count": local_reused_count  # 局部复用数
         },
         results={},
         progress=0.0

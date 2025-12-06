@@ -132,6 +132,9 @@ class ClusterAnalysisSubmitRequest(BaseModel):
     composition_keys: Optional[List[str]] = Field(None, description="选中的 composition_key 列表")
     calc_types: List[ClusterCalcType] = Field(..., description="选中的计算类型")
     qc_config: Optional[QCConfig] = Field(default_factory=QCConfig, description="QC 计算配置")
+    # 子选项（与 PlanRequest 保持一致）
+    redox_options: Optional[RedoxOptions] = Field(default_factory=RedoxOptions, description="REDOX 子选项")
+    reorganization_options: Optional[ReorganizationOptions] = Field(default_factory=ReorganizationOptions, description="REORGANIZATION 子选项")
 
 
 class AdvancedClusterJobResponse(BaseModel):
