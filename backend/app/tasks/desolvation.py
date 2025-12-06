@@ -533,10 +533,10 @@ def _phase2_calculate_desolvation(
         QCResult.qc_job_id == cluster_qc_job_id
     ).first()
 
-    if not cluster_result or cluster_result.total_energy is None:
+    if not cluster_result or cluster_result.energy_au is None:
         raise ValueError(f"Cluster QC result not found or missing energy")
 
-    e_cluster = cluster_result.total_energy
+    e_cluster = cluster_result.energy_au
     logger.info(f"E_cluster = {e_cluster:.6f} A.U.")
 
     per_ligand_results = []
@@ -565,10 +565,10 @@ def _phase2_calculate_desolvation(
                 QCResult.qc_job_id == ligand_qc_job_id
             ).first()
 
-            if not ligand_result or ligand_result.total_energy is None:
+            if not ligand_result or ligand_result.energy_au is None:
                 raise ValueError(f"Ligand QC result not found for {ligand_type}")
 
-            e_ligand = ligand_result.total_energy
+            e_ligand = ligand_result.energy_au
 
             # 获取 E_cluster_minus
             # 优先使用类型映射（等价配体优化）
@@ -585,10 +585,10 @@ def _phase2_calculate_desolvation(
                 QCResult.qc_job_id == cluster_minus_qc_job_id
             ).first()
 
-            if not cluster_minus_result or cluster_minus_result.total_energy is None:
+            if not cluster_minus_result or cluster_minus_result.energy_au is None:
                 raise ValueError(f"Cluster_minus QC result not found for ligand {ligand_label}")
 
-            e_cluster_minus = cluster_minus_result.total_energy
+            e_cluster_minus = cluster_minus_result.energy_au
 
             # 计算 ΔE_i = E_cluster - (E_cluster_minus + E_ligand)
             delta_e_au = e_cluster - (e_cluster_minus + e_ligand)
@@ -621,10 +621,10 @@ def _phase2_calculate_desolvation(
             QCResult.qc_job_id == center_ion_job_id
         ).first()
 
-        if not center_ion_result or center_ion_result.total_energy is None:
+        if not center_ion_result or center_ion_result.energy_au is None:
             raise ValueError("Center ion QC result not found or missing energy")
 
-        e_ion = center_ion_result.total_energy
+        e_ion = center_ion_result.energy_au
         logger.info(f"E_ion = {e_ion:.6f} A.U.")
 
         # 计算所有配体能量之和
@@ -645,10 +645,10 @@ def _phase2_calculate_desolvation(
                     QCResult.qc_job_id == ligand_qc_job_id
                 ).first()
 
-                if not ligand_result or ligand_result.total_energy is None:
+                if not ligand_result or ligand_result.energy_au is None:
                     raise ValueError(f"Ligand QC result not found for {ligand_type}")
 
-                ligand_energies[ligand_key] = ligand_result.total_energy
+                ligand_energies[ligand_key] = ligand_result.energy_au
 
             total_ligand_energy += ligand_energies[ligand_key]
 
