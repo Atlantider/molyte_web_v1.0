@@ -1165,6 +1165,8 @@ def plan_cluster_analysis(
     redox_opts = request.redox_options.model_dump() if request.redox_options else None
     reorg_opts = request.reorganization_options.model_dump() if request.reorganization_options else None
 
+    logger.info(f"[规划] redox_opts={redox_opts}, reorg_opts={reorg_opts}")
+
     # 为每个计算类型规划 QC 任务
     calc_requirements = []
     warnings = []
@@ -1173,7 +1175,21 @@ def plan_cluster_analysis(
     # key = (task_type_base, smiles, charge) -> 第一次出现的任务信息
     planned_in_request: Dict[tuple, PlannedQCTask] = {}
 
-    for calc_type in request.calc_types:
+    # 【重要】按固定顺序处理计算类型，确保复用关系可预测
+    # 顺序：Binding -> Desolvation -> Redox -> Reorganization
+    # 这样 Reorganization 可以复用 Binding 的 Ligand 和 Redox 的氧化态
+    calc_type_order = [
+        ClusterCalcType.BINDING_TOTAL,
+        ClusterCalcType.BINDING_PAIRWISE,
+        ClusterCalcType.DESOLVATION_STEPWISE,
+        ClusterCalcType.DESOLVATION_FULL,
+        ClusterCalcType.REDOX,
+        ClusterCalcType.REORGANIZATION,
+    ]
+    sorted_calc_types = [ct for ct in calc_type_order if ct in request.calc_types]
+    logger.info(f"[规划] 原始顺序={request.calc_types}, 排序后={sorted_calc_types}")
+
+    for calc_type in sorted_calc_types:
         req = _plan_qc_tasks_for_calc_type(
             db, calc_type, structures, qc_config, mol_info_from_db,
             redox_options=redox_opts,

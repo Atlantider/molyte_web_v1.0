@@ -1166,43 +1166,67 @@ export default function PostProcessDetail() {
                 <Text type="secondary" style={{ fontSize: 12 }}>{req.description}</Text>
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                {/* REDOX 子选项 */}
+                {/* REDOX 子选项 - 修改后需要重新规划 */}
                 {req.calc_type === 'REDOX' && (
                   <>
-                    <Checkbox
-                      checked={redoxOptions.include_molecule}
-                      onChange={(e) => { e.stopPropagation(); setRedoxOptions({ ...redoxOptions, include_molecule: e.target.checked }); }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Text style={{ fontSize: 11 }}>Molecule</Text>
-                    </Checkbox>
-                    <Checkbox
-                      checked={redoxOptions.include_dimer}
-                      onChange={(e) => { e.stopPropagation(); setRedoxOptions({ ...redoxOptions, include_dimer: e.target.checked }); }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Text style={{ fontSize: 11 }}>Li-Dimer</Text>
-                    </Checkbox>
+                    <Tooltip title="修改后需点击'返回修改配置'重新规划">
+                      <Checkbox
+                        checked={redoxOptions.include_molecule}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setRedoxOptions({ ...redoxOptions, include_molecule: e.target.checked });
+                          message.info('请点击"返回修改配置"按钮重新生成规划');
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Text style={{ fontSize: 11 }}>Molecule</Text>
+                      </Checkbox>
+                    </Tooltip>
+                    <Tooltip title="修改后需点击'返回修改配置'重新规划">
+                      <Checkbox
+                        checked={redoxOptions.include_dimer}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setRedoxOptions({ ...redoxOptions, include_dimer: e.target.checked });
+                          message.info('请点击"返回修改配置"按钮重新生成规划');
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Text style={{ fontSize: 11 }}>Li-Dimer</Text>
+                      </Checkbox>
+                    </Tooltip>
                     <span style={{ width: 1, height: 16, background: token.colorBorder, margin: '0 4px' }} />
                   </>
                 )}
-                {/* REORGANIZATION 子选项 */}
+                {/* REORGANIZATION 子选项 - 修改后需要重新规划 */}
                 {req.calc_type === 'REORGANIZATION' && (
                   <>
-                    <Checkbox
-                      checked={reorganizationOptions.include_molecule}
-                      onChange={(e) => { e.stopPropagation(); setReorganizationOptions({ ...reorganizationOptions, include_molecule: e.target.checked }); }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Text style={{ fontSize: 11 }}>Molecule</Text>
-                    </Checkbox>
-                    <Checkbox
-                      checked={reorganizationOptions.include_cluster}
-                      onChange={(e) => { e.stopPropagation(); setReorganizationOptions({ ...reorganizationOptions, include_cluster: e.target.checked }); }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Text style={{ fontSize: 11 }}>Cluster</Text>
-                    </Checkbox>
+                    <Tooltip title="修改后需点击'返回修改配置'重新规划">
+                      <Checkbox
+                        checked={reorganizationOptions.include_molecule}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setReorganizationOptions({ ...reorganizationOptions, include_molecule: e.target.checked });
+                          message.info('请点击"返回修改配置"按钮重新生成规划');
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Text style={{ fontSize: 11 }}>Molecule</Text>
+                      </Checkbox>
+                    </Tooltip>
+                    <Tooltip title="修改后需点击'返回修改配置'重新规划">
+                      <Checkbox
+                        checked={reorganizationOptions.include_cluster}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setReorganizationOptions({ ...reorganizationOptions, include_cluster: e.target.checked });
+                          message.info('请点击"返回修改配置"按钮重新生成规划');
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Text style={{ fontSize: 11 }}>Cluster</Text>
+                      </Checkbox>
+                    </Tooltip>
                     <span style={{ width: 1, height: 16, background: token.colorBorder, margin: '0 4px' }} />
                   </>
                 )}
@@ -1630,6 +1654,48 @@ export default function PostProcessDetail() {
                         }}>
                           {info.formula}
                         </div>
+                        {/* REDOX 子选项 */}
+                        {opt.value === 'REDOX' && isSelected && (
+                          <div style={{ marginTop: 8, marginLeft: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}
+                               onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={redoxOptions.include_molecule}
+                              onChange={(e) => setRedoxOptions({ ...redoxOptions, include_molecule: e.target.checked })}
+                            >
+                              <Text style={{ fontSize: 12 }}>分子 Redox</Text>
+                            </Checkbox>
+                            <Checkbox
+                              checked={redoxOptions.include_dimer}
+                              onChange={(e) => setRedoxOptions({ ...redoxOptions, include_dimer: e.target.checked })}
+                            >
+                              <Text style={{ fontSize: 12 }}>Li-Dimer Redox</Text>
+                            </Checkbox>
+                            <Checkbox
+                              checked={redoxOptions.include_cluster}
+                              onChange={(e) => setRedoxOptions({ ...redoxOptions, include_cluster: e.target.checked })}
+                            >
+                              <Text style={{ fontSize: 12 }}>Cluster Redox</Text>
+                            </Checkbox>
+                          </div>
+                        )}
+                        {/* REORGANIZATION 子选项 */}
+                        {opt.value === 'REORGANIZATION' && isSelected && (
+                          <div style={{ marginTop: 8, marginLeft: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}
+                               onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={reorganizationOptions.include_molecule}
+                              onChange={(e) => setReorganizationOptions({ ...reorganizationOptions, include_molecule: e.target.checked })}
+                            >
+                              <Text style={{ fontSize: 12 }}>分子重组能</Text>
+                            </Checkbox>
+                            <Checkbox
+                              checked={reorganizationOptions.include_cluster}
+                              onChange={(e) => setReorganizationOptions({ ...reorganizationOptions, include_cluster: e.target.checked })}
+                            >
+                              <Text style={{ fontSize: 12 }}>Cluster 重组能</Text>
+                            </Checkbox>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
