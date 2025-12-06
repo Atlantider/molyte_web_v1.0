@@ -60,7 +60,7 @@ import {
   type ClusterAnalysisResults,
   type QCStatus,
 } from '../api/clusterAnalysis';
-import { getPartitions, getSlurmSuggestion, type Partition } from '../api/qc';
+import { getPartitions, getSlurmSuggestion, type PartitionInfo } from '../api/slurm';
 
 const { Text, Title, Paragraph } = Typography;
 const { Panel } = Collapse;
@@ -91,7 +91,7 @@ export default function ClusterAnalysisPlannerPanel({ mdJobId }: Props) {
   const [existingJobs, setExistingJobs] = useState<AdvancedClusterJob[]>([]);
 
   // Slurm 队列状态
-  const [partitions, setPartitions] = useState<Partition[]>([]);
+  const [partitions, setPartitions] = useState<PartitionInfo[]>([]);
   const [partitionsLoading, setPartitionsLoading] = useState(false);
   
   // QC 配置
