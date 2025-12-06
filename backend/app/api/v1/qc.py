@@ -164,35 +164,60 @@ def create_qc_job(
         创建的QC任务
     """
     # 验证SMILES是否有效
-    try:
-        from rdkit import Chem
-        from rdkit.Chem import AllChem
-        mol = Chem.MolFromSmiles(job_data.smiles)
-        if mol is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"无效的SMILES: {job_data.smiles}。请检查分子结构是否正确。"
-            )
-        # 尝试生成3D坐标以验证分子可以被处理
-        mol = Chem.AddHs(mol)
-        result = AllChem.EmbedMolecule(mol, randomSeed=42)
-        if result == -1:
-            # 尝试使用随机坐标方法
-            result = AllChem.EmbedMolecule(mol, useRandomCoords=True, maxAttempts=100, randomSeed=42)
-        if result == -1:
-            # 某些特殊分子（如PF6-）的UFF力场不支持，需要手动处理
-            # 这里只发出警告，不阻止创建任务
-            # 实际的3D坐标会在任务执行时通过其他方法生成
-            logger.warning(f"无法使用RDKit自动生成3D坐标: {job_data.smiles}，将在任务执行时尝试其他方法")
-    except ImportError:
-        logger.warning("RDKit not available, skipping SMILES validation")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"SMILES验证失败: {str(e)}"
-        )
+    # 对于离子（阴离子、阳离子），允许跳过 SMILES 验证
+    # 因为某些离子的 SMILES 表示（如 [PF6-]）在 RDKit 中无法生成 3D 坐标
+    # 但可以通过名称从 initial_salts 目录中的 PDB 文件获取坐标
+    is_ion = job_data.molecule_type in ['cation', 'anion']
+
+    # 检查是否有 PDB 文件可用（通过 config 中的 xyz_content 或 pdb_file）
+    has_coordinates = False
+    if job_data.config:
+        has_coordinates = bool(job_data.config.get('xyz_content') or job_data.config.get('pdb_file'))
+
+    # 对于离子，如果有坐标或名称，可以跳过 SMILES 验证
+    skip_smiles_validation = is_ion and (has_coordinates or job_data.molecule_name)
+
+    if not skip_smiles_validation:
+        try:
+            from rdkit import Chem
+            from rdkit.Chem import AllChem
+            mol = Chem.MolFromSmiles(job_data.smiles)
+            if mol is None:
+                # 对于离子，即使 SMILES 无效，也允许创建任务（使用名称匹配）
+                if is_ion:
+                    logger.warning(f"离子 {job_data.molecule_name} 的 SMILES 无效: {job_data.smiles}，将使用名称匹配或 PDB 文件")
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"无效的SMILES: {job_data.smiles}。请检查分子结构是否正确。"
+                    )
+            else:
+                # 尝试生成3D坐标以验证分子可以被处理
+                mol = Chem.AddHs(mol)
+                result = AllChem.EmbedMolecule(mol, randomSeed=42)
+                if result == -1:
+                    # 尝试使用随机坐标方法
+                    result = AllChem.EmbedMolecule(mol, useRandomCoords=True, maxAttempts=100, randomSeed=42)
+                if result == -1:
+                    # 某些特殊分子（如PF6-）的UFF力场不支持，需要手动处理
+                    # 这里只发出警告，不阻止创建任务
+                    # 实际的3D坐标会在任务执行时通过其他方法生成
+                    logger.warning(f"无法使用RDKit自动生成3D坐标: {job_data.smiles}，将在任务执行时尝试其他方法")
+        except ImportError:
+            logger.warning("RDKit not available, skipping SMILES validation")
+        except HTTPException:
+            raise
+        except Exception as e:
+            # 对于离子，降级为警告而不是错误
+            if is_ion:
+                logger.warning(f"离子 {job_data.molecule_name} 的 SMILES 验证失败: {e}，将使用名称匹配或 PDB 文件")
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"SMILES验证失败: {str(e)}"
+                )
+    else:
+        logger.info(f"跳过离子 {job_data.molecule_name} 的 SMILES 验证，将使用名称或坐标")
 
     # 提取溶剂模型和溶剂名称
     solvent_model = 'gas'
