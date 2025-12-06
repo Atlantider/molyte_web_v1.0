@@ -693,6 +693,7 @@ export default function PostProcessDetail() {
         basis_set: recommendedBasis,
         use_dispersion: true,
         solvent_model: 'pcm',
+        solvent: prev.solvent || 'Water',
       }));
       setRecommendReason(`Redox/重组能推荐 B3LYP/${recommendedBasis} + PCM溶剂 ${basisReason}`);
     } else if (selectedCalcTypes.length > 0) {
@@ -701,8 +702,10 @@ export default function PostProcessDetail() {
         functional: 'B3LYP',
         basis_set: recommendedBasis,
         use_dispersion: true,
+        solvent_model: 'pcm',
+        solvent: prev.solvent || 'Water',
       }));
-      setRecommendReason(`Binding 推荐 B3LYP-D3BJ/${recommendedBasis} ${basisReason}`);
+      setRecommendReason(`Binding 推荐 B3LYP-D3BJ/${recommendedBasis} + PCM溶剂 ${basisReason}`);
     }
   }, [useSmartRecommend, selectedStructureIds, selectedCalcTypes, structures]);
 
@@ -1677,6 +1680,7 @@ export default function PostProcessDetail() {
                                 basis_set: recommendedBasis,
                                 use_dispersion: true,
                                 solvent_model: 'pcm',
+                                solvent: prev.solvent || 'Water',
                               }));
                               setRecommendReason(`Redox/重组能推荐 B3LYP/${recommendedBasis} + PCM溶剂 ${basisReason}`);
                             } else {
@@ -1685,8 +1689,10 @@ export default function PostProcessDetail() {
                                 functional: 'B3LYP',
                                 basis_set: recommendedBasis,
                                 use_dispersion: true,
+                                solvent_model: 'pcm',
+                                solvent: prev.solvent || 'Water',
                               }));
-                              setRecommendReason(`Binding 推荐 B3LYP-D3BJ/${recommendedBasis} ${basisReason}`);
+                              setRecommendReason(`Binding 推荐 B3LYP-D3BJ/${recommendedBasis} + PCM溶剂 ${basisReason}`);
                             }
                           } else {
                             setRecommendReason('');
