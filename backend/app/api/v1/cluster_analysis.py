@@ -116,108 +116,53 @@ def _find_existing_qc_job(
     solvent_name: str = None,
     molecule_type: str = None,
     molecule_name: str = None,
-    calc_mode: str = None  # 区分 opt / sp 等计算类型（通过 molecule_name 后缀匹配）
+    calc_mode: str = None,
+    task_type: str = None,
+    xyz_content: str = None,
+    structure_id: int = None,
+    md_job_id: int = None
 ) -> Optional[QCJob]:
     """
     查找已有的、相同配置的 QC 任务（全平台复用）
 
+    增强版复用策略（按优先级）：
+    1. 坐标指纹匹配 - 相同几何结构的分子（最高优先级）
+    2. Structure ID 匹配 - 同一 MD 任务 + 同一结构 ID 的 cluster
+    3. 标准化名称匹配 - 阴离子等优先使用名称
+    4. SMILES 精确匹配 - 作为补充
+    5. 跨计算类型复用 - ligand ↔ redox_mol_neutral_gas 等
+
     复用条件：
-    - 相同 SMILES（分子结构）或相同基础 molecule_name（忽略 #数字 后缀）
     - 相同电荷和自旋多重度
     - 相同计算参数（泛函、基组 - 支持等价基组匹配）
     - 相同溶剂模型配置
-    - 相同计算类型（opt / sp，通过 molecule_name 后缀匹配）
     - 任务已完成且未删除
     - 【重要】必须有有效的能量结果（energy_au 不为 NULL）
 
     注意：
-    - 不限制用户，实现全平台复用
-    - calc_mode 用于区分 opt 和 sp 计算（重组能需要区分）
+    - 阴离子（PF6, FSI, TFSI 等）的 SMILES 可能不可靠，优先使用名称匹配
+    - Cluster 类型使用 structure_id + md_job_id 匹配，不进行全局复用
     - 如果是复用任务，会追溯到根任务验证结果有效性
     """
-    import re
-    from sqlalchemy.orm import joinedload
-    from app.utils.qc_reuse import find_root_job_with_result, validate_job_for_reuse
+    from app.utils.qc_reuse import find_reusable_qc_job_enhanced
 
-    # 获取等价基组列表
-    equivalent_basis_sets = _normalize_basis_set(basis_set)
-
-    # 策略 1：先尝试 SMILES 精确匹配
-    query = db.query(QCJob).options(
-        joinedload(QCJob.results)
-    ).filter(
-        QCJob.smiles == smiles,
-        QCJob.charge == charge,
-        QCJob.spin_multiplicity == multiplicity,
-        QCJob.functional == functional,
-        QCJob.basis_set.in_(equivalent_basis_sets),  # 支持等价基组匹配
-        QCJob.solvent_model == solvent_model,
-        QCJob.status == QCJobStatus.COMPLETED,
-        QCJob.is_deleted == False
+    # 使用增强版复用函数
+    job = find_reusable_qc_job_enhanced(
+        db=db,
+        smiles=smiles,
+        molecule_name=molecule_name or "",
+        charge=charge,
+        spin_multiplicity=multiplicity,
+        functional=functional,
+        basis_set=basis_set,
+        solvent_model=solvent_model,
+        solvent_name=solvent_name,
+        task_type=task_type,
+        calc_mode=calc_mode,
+        xyz_content=xyz_content,
+        structure_id=structure_id,
+        md_job_id=md_job_id
     )
-
-    if solvent_model != "gas" and solvent_name:
-        query = query.filter(QCJob.solvent_name == solvent_name)
-
-    if molecule_type:
-        query = query.filter(QCJob.molecule_type == molecule_type)
-
-    # 如果指定了 calc_mode，通过 molecule_name 后缀来过滤
-    if calc_mode:
-        if calc_mode == "opt":
-            query = query.filter(
-                QCJob.molecule_name.ilike("%_opt_%"),
-                ~QCJob.molecule_name.ilike("%_sp_%")
-            )
-        elif calc_mode == "sp":
-            query = query.filter(QCJob.molecule_name.ilike("%_sp_%"))
-
-    # 按完成时间降序，获取候选任务
-    candidates = query.order_by(desc(QCJob.finished_at)).limit(10).all()
-
-    # 验证候选任务是否有有效结果
-    job = None
-    for candidate in candidates:
-        is_valid, root_job, reason = validate_job_for_reuse(db, candidate)
-        if is_valid:
-            job = root_job if root_job else candidate
-            logger.debug(f"[全局复用-SMILES匹配] 任务 {candidate.id} 验证通过: {reason}")
-            break
-        else:
-            logger.debug(f"[全局复用-SMILES匹配] 任务 {candidate.id} 不可用: {reason}")
-
-    # 策略 2：如果 SMILES 匹配不到，尝试用基础 molecule_name 匹配
-    if not job and molecule_name:
-        base_name = re.sub(r'#\d+$', '', molecule_name)
-        simple_pattern = f"^{re.escape(base_name)}(#[0-9]+)?$"
-
-        name_query = db.query(QCJob).options(
-            joinedload(QCJob.results)
-        ).filter(
-            QCJob.molecule_name.op('~')(simple_pattern),
-            QCJob.charge == charge,
-            QCJob.spin_multiplicity == multiplicity,
-            QCJob.functional == functional,
-            QCJob.basis_set.in_(equivalent_basis_sets),
-            QCJob.solvent_model == solvent_model,
-            QCJob.status == QCJobStatus.COMPLETED,
-            QCJob.is_deleted == False
-        )
-
-        if solvent_model != "gas" and solvent_name:
-            name_query = name_query.filter(QCJob.solvent_name == solvent_name)
-
-        name_candidates = name_query.order_by(desc(QCJob.finished_at)).limit(10).all()
-
-        for candidate in name_candidates:
-            is_valid, root_job, reason = validate_job_for_reuse(db, candidate)
-            if is_valid:
-                job = root_job if root_job else candidate
-                logger.debug(f"[全局复用-名称匹配] 任务 {candidate.id} 验证通过: {reason}, "
-                            f"'{molecule_name}' matches '{candidate.molecule_name}'")
-                break
-            else:
-                logger.debug(f"[全局复用-名称匹配] 任务 {candidate.id} 不可用: {reason}")
 
     if job:
         # 获取实际能量值
@@ -227,8 +172,8 @@ def _find_existing_qc_job(
                 if r.energy_au is not None:
                     energy = r.energy_au
                     break
-        logger.info(f"[全局复用] 找到可用任务 {job.id}: {smiles}, charge={charge}, "
-                   f"solvent={solvent_model}/{solvent_name}, energy={energy}")
+        logger.info(f"[增强复用] 找到可用任务 {job.id}: {molecule_name or smiles}, "
+                   f"charge={charge}, solvent={solvent_model}, energy={energy}")
 
     return job
 
@@ -535,8 +480,9 @@ def _plan_qc_tasks_for_calc_type(
         existing = _find_existing_qc_job(
             db, li_smiles, 1, 1, functional, basis_set,
             solvent_model, solvent_name,
-            molecule_type=None,  # 不限制 molecule_type，靠 SMILES 匹配
-            molecule_name="Li+"  # 传入名称用于回退匹配
+            molecule_type=None,
+            molecule_name="Li+",
+            task_type="ion"  # 传入任务类型用于跨类型复用
         )
         if existing:
             task = PlannedQCTask(
@@ -624,7 +570,8 @@ def _plan_qc_tasks_for_calc_type(
             db, li_smiles, 1, 1, functional, basis_set,
             solvent_model, solvent_name,
             molecule_type=None,
-            molecule_name="Li+"
+            molecule_name="Li+",
+            task_type="ion"
         )
         if existing:
             task = PlannedQCTask(
@@ -657,7 +604,8 @@ def _plan_qc_tasks_for_calc_type(
             db, li_smiles, 1, 1, functional, basis_set,
             solvent_model, solvent_name,
             molecule_type=None,
-            molecule_name="Li+"
+            molecule_name="Li+",
+            task_type="ion"
         )
         if existing:
             task = PlannedQCTask(
@@ -695,7 +643,8 @@ def _plan_qc_tasks_for_calc_type(
             db, li_smiles, 1, 1, functional, basis_set,
             solvent_model, solvent_name,
             molecule_type=None,
-            molecule_name="Li+"
+            molecule_name="Li+",
+            task_type="ion"
         )
         if existing:
             task = PlannedQCTask(
@@ -810,19 +759,21 @@ def _plan_qc_tasks_for_calc_type(
                         ]
 
                         for state_suffix, desc, charge, sol_model, sol_name in mol_states:
-                            task_type = f"redox_mol_{mol_name}_{state_suffix}"
+                            redox_task_type = f"redox_mol_{mol_name}_{state_suffix}"
                             mult = 1 if (charge - lig_charge) % 2 == 0 else 2
 
                             # 全局复用：不传 molecule_type，通过 SMILES 或 molecule_name 匹配
+                            # 传入 task_type 用于跨类型复用（ligand ↔ redox_mol_neutral_gas）
                             existing = _find_existing_qc_job(
                                 db, lig_smiles, charge, mult, functional, basis_set, sol_model, sol_name,
-                                molecule_type=None,  # 不限制 molecule_type
-                                molecule_name=mol_name  # 传入基础名称用于回退匹配
+                                molecule_type=None,
+                                molecule_name=mol_name,
+                                task_type=redox_task_type  # 用于跨类型复用
                             )
 
                             if existing:
                                 task = PlannedQCTask(
-                                    task_type=task_type, description=desc, smiles=lig_smiles,
+                                    task_type=redox_task_type, description=desc, smiles=lig_smiles,
                                     charge=charge, multiplicity=mult, status="reused",
                                     existing_qc_job_id=existing.id,
                                     existing_energy=existing.results[0].energy_au if existing.results else None
@@ -830,7 +781,7 @@ def _plan_qc_tasks_for_calc_type(
                                 reused_count += 1
                             else:
                                 task = PlannedQCTask(
-                                    task_type=task_type, description=desc, smiles=lig_smiles,
+                                    task_type=redox_task_type, description=desc, smiles=lig_smiles,
                                     charge=charge, multiplicity=mult, status="new"
                                 )
                                 new_count += 1
@@ -849,7 +800,7 @@ def _plan_qc_tasks_for_calc_type(
                         ]
 
                         for state_suffix, desc, charge, sol_model, sol_name in dimer_states:
-                            task_type = f"redox_dimer_{mol_name}_{state_suffix}"
+                            dimer_task_type = f"redox_dimer_{mol_name}_{state_suffix}"
                             mult = 1 if charge == dimer_base_charge else 2
 
                             # 全局复用：不限制 molecule_type，通过 SMILES 或 molecule_name 匹配
@@ -857,13 +808,14 @@ def _plan_qc_tasks_for_calc_type(
                             dimer_name = f"Li-{mol_name}"
                             existing = _find_existing_qc_job(
                                 db, dimer_smiles, charge, mult, functional, basis_set, sol_model, sol_name,
-                                molecule_type=None,  # 不限制 molecule_type
-                                molecule_name=dimer_name  # 传入 dimer 名称用于回退匹配
+                                molecule_type=None,
+                                molecule_name=dimer_name,
+                                task_type=dimer_task_type  # 用于跨类型复用
                             )
 
                             if existing:
                                 task = PlannedQCTask(
-                                    task_type=task_type, description=desc, smiles=dimer_smiles,
+                                    task_type=dimer_task_type, description=desc, smiles=dimer_smiles,
                                     charge=charge, multiplicity=mult, status="reused",
                                     existing_qc_job_id=existing.id,
                                     existing_energy=existing.results[0].energy_au if existing.results else None,
@@ -872,7 +824,7 @@ def _plan_qc_tasks_for_calc_type(
                                 reused_count += 1
                             else:
                                 task = PlannedQCTask(
-                                    task_type=task_type, description=desc, smiles=dimer_smiles,
+                                    task_type=dimer_task_type, description=desc, smiles=dimer_smiles,
                                     charge=charge, multiplicity=mult, status="new",
                                     structure_id=first_structure_id
                                 )
@@ -923,20 +875,21 @@ def _plan_qc_tasks_for_calc_type(
                             (f"reorg_mol_{mol_name}_sp_neutral_at_charged", f"[分子] {mol_name} 中性态@氧化几何", lig_charge, 1, "sp"),
                         ]
 
-                        for task_type, desc, charge, mult, calc_mode in mol_tasks:
+                        for reorg_task_type, desc, charge, mult, calc_mode in mol_tasks:
                             # 全局复用：不限制 molecule_type，通过 SMILES 或 molecule_name 匹配
                             # 必须区分 opt 和 sp 计算类型
                             existing = _find_existing_qc_job(
                                 db, lig_smiles, charge, mult, functional, basis_set,
                                 solvent_model, solvent_name,
-                                molecule_type=None,  # 不限制 molecule_type
-                                molecule_name=mol_name,  # 传入基础名称用于回退匹配
-                                calc_mode=calc_mode  # 区分 opt 和 sp
+                                molecule_type=None,
+                                molecule_name=mol_name,
+                                calc_mode=calc_mode,
+                                task_type=reorg_task_type  # 用于跨类型复用
                             )
 
                             if existing:
                                 task = PlannedQCTask(
-                                    task_type=task_type, description=desc, smiles=lig_smiles,
+                                    task_type=reorg_task_type, description=desc, smiles=lig_smiles,
                                     charge=charge, multiplicity=mult, status="reused",
                                     existing_qc_job_id=existing.id,
                                     existing_energy=existing.results[0].energy_au if existing.results else None
@@ -944,7 +897,7 @@ def _plan_qc_tasks_for_calc_type(
                                 reused_count += 1
                             else:
                                 task = PlannedQCTask(
-                                    task_type=task_type, description=desc, smiles=lig_smiles,
+                                    task_type=reorg_task_type, description=desc, smiles=lig_smiles,
                                     charge=charge, multiplicity=mult, status="new"
                                 )
                                 new_count += 1
