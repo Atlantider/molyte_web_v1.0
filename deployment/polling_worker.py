@@ -206,6 +206,9 @@ class PollingWorker:
             running_jobs = response.json()
             self.logger.info(f"API 返回运行中的任务: {len(running_jobs)} 个")
 
+            # 用于收集需要检查状态的任务
+            jobs_to_check = []
+
             for job in running_jobs:
                 job_id = job['id']
                 job_type = job.get('type', 'MD').lower()
@@ -217,6 +220,7 @@ class PollingWorker:
 
                 # 检查 Slurm 任务是否仍在运行
                 if slurm_job_id in running_slurm_jobs.values():
+                    # 任务仍在运行，恢复追踪
                     self.running_jobs[job_id] = {
                         'type': job_type,
                         'slurm_job_id': slurm_job_id,
@@ -225,11 +229,64 @@ class PollingWorker:
                         'resp_cpu_hours': 0.0
                     }
                     self.logger.info(f"恢复追踪任务 {job_id} (Slurm: {slurm_job_id})")
+                else:
+                    # 任务不在 Slurm 队列中，可能已完成或失败，需要检查状态
+                    self.logger.info(f"任务 {job_id} (Slurm: {slurm_job_id}) 不在队列中，检查状态...")
+                    jobs_to_check.append({
+                        'job_id': job_id,
+                        'job_type': job_type,
+                        'slurm_job_id': slurm_job_id,
+                        'work_dir': work_dir
+                    })
 
             self.logger.info(f"恢复了 {len(self.running_jobs)} 个运行中的任务")
 
+            # 检查并更新已完成/失败的任务
+            if jobs_to_check:
+                self.logger.info(f"检查 {len(jobs_to_check)} 个可能已完成的任务...")
+                self._check_and_update_completed_jobs(jobs_to_check)
+
         except Exception as e:
             self.logger.error(f"恢复运行中任务失败: {e}", exc_info=True)
+
+    def _check_and_update_completed_jobs(self, jobs_to_check: List[Dict]):
+        """检查并更新已完成/失败的任务状态"""
+        for job_info in jobs_to_check:
+            try:
+                job_id = job_info['job_id']
+                job_type = job_info['job_type']
+                slurm_job_id = job_info['slurm_job_id']
+                work_dir = job_info['work_dir']
+
+                # 检查 Slurm 任务状态
+                status = self._check_slurm_status(slurm_job_id)
+
+                if status == 'COMPLETED':
+                    self.logger.info(f"任务 {job_id} (Slurm: {slurm_job_id}) 已完成，开始处理结果...")
+                    # 临时添加到 running_jobs 以便 _handle_job_completion 可以处理
+                    temp_job_info = {
+                        'type': job_type,
+                        'slurm_job_id': slurm_job_id,
+                        'work_dir': work_dir,
+                        'start_time': time.time(),
+                        'resp_cpu_hours': 0.0
+                    }
+                    self._handle_job_completion(job_id, temp_job_info)
+
+                elif status == 'FAILED':
+                    self.logger.error(f"任务 {job_id} (Slurm: {slurm_job_id}) 失败")
+                    error_msg = self._get_job_failure_reason(slurm_job_id, work_dir)
+                    self._update_job_status(job_id, 'FAILED', job_type, error_message=error_msg)
+
+                elif status == 'CANCELLED':
+                    self.logger.info(f"任务 {job_id} (Slurm: {slurm_job_id}) 已取消")
+                    self._update_job_status(job_id, 'CANCELLED', job_type, error_message="任务被取消")
+
+                else:
+                    self.logger.warning(f"任务 {job_id} (Slurm: {slurm_job_id}) 状态未知: {status}")
+
+            except Exception as e:
+                self.logger.error(f"检查任务 {job_info.get('job_id')} 状态失败: {e}", exc_info=True)
 
     def _recover_from_local_dirs(self, running_slurm_jobs: Dict[str, str]):
         """从本地工作目录恢复任务追踪"""
