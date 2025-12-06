@@ -740,8 +740,8 @@ export default function PostProcessDetail() {
 
   // 当 REDOX/REORGANIZATION 子选项变化时，自动重新规划（仅在 Step 2 时）
   // 使用 useRef 来记录上一次的选项值，避免初始化时触发
-  const prevRedoxOptionsRef = React.useRef(redoxOptions);
-  const prevReorgOptionsRef = React.useRef(reorganizationOptions);
+  const prevRedoxOptionsRef = useRef(redoxOptions);
+  const prevReorgOptionsRef = useRef(reorganizationOptions);
 
   useEffect(() => {
     // 只有在 Step 2 且已有规划结果时才自动重新规划
