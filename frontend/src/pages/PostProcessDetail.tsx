@@ -1584,12 +1584,18 @@ export default function PostProcessDetail() {
                     showIcon
                   />
                 )}
+              </Card>
+            </Col>
 
-                {/* QC 计算参数配置 */}
-                <Divider style={{ margin: '12px 0 8px' }}>
-                  <Space size={4}><SettingOutlined /> 计算参数</Space>
-                </Divider>
-                <Row gutter={[8, 8]}>
+            {/* 右栏：计算参数 + 分析预览 */}
+            <Col span={6} style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12 }}>
+              {/* 计算参数配置 */}
+              <Card
+                size="small"
+                title={<Space><SettingOutlined /> 计算参数</Space>}
+                bodyStyle={{ padding: 12 }}
+              >
+                <Row gutter={[8, 6]}>
                   <Col span={12}>
                     <Text type="secondary" style={{ fontSize: 11 }}>泛函</Text>
                     <Select
@@ -1657,15 +1663,13 @@ export default function PostProcessDetail() {
                   </Col>
                 </Row>
               </Card>
-            </Col>
 
-            {/* 右栏：实时预览 */}
-            <Col span={6} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              {/* 分析预览 */}
               <Card
                 size="small"
                 title={<Space><CalculatorOutlined /> 分析预览</Space>}
                 bodyStyle={{ padding: 12 }}
-                style={{ height: '100%' }}
+                style={{ flex: 1 }}
               >
                 {/* 选择统计 - 更紧凑 */}
                 <Row gutter={8} style={{ marginBottom: 12 }}>
