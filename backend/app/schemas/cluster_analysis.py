@@ -84,7 +84,8 @@ class PlannedQCTask(BaseModel):
     structure_id: Optional[int] = Field(None, description="关联的结构 ID")
     charge: int = Field(0, description="电荷")
     multiplicity: int = Field(1, description="多重度")
-    
+    calc_mode: str = Field("opt", description="计算模式: opt (几何优化) / sp (单点能量)")
+
     # 复用状态
     status: str = Field("new", description="状态: new/reused/pending")
     existing_qc_job_id: Optional[int] = Field(None, description="已有的 QC 任务 ID（复用时）")

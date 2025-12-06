@@ -42,6 +42,7 @@ export interface PlannedQCTask {
   structure_id?: number;
   charge: number;
   multiplicity: number;
+  calc_mode: 'opt' | 'sp';  // 计算模式: opt (几何优化) / sp (单点能量)
   status: 'new' | 'reused' | 'local_reused' | 'pending';
   existing_qc_job_id?: number;
   existing_energy?: number;

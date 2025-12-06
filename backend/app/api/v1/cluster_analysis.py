@@ -524,6 +524,7 @@ def _plan_qc_tasks_for_calc_type(
     if calc_type in [ClusterCalcType.BINDING_TOTAL, ClusterCalcType.DESOLVATION_STEPWISE,
                      ClusterCalcType.DESOLVATION_FULL]:
         # 这些计算需要 cluster 和 ligand 能量
+        # 所有任务都使用 opt 模式（需要优化到平衡几何）
 
         # 1. Cluster 任务 (每个结构一个)
         first_structure_id = None  # 记录第一个结构 ID，用于配体提取
@@ -537,6 +538,7 @@ def _plan_qc_tasks_for_calc_type(
                 structure_id=s.id,
                 charge=charge_ion,  # Li+ 带 +1
                 multiplicity=1,
+                calc_mode="opt",  # 几何优化
                 status="new"
             )
             planned_tasks.append(task)
@@ -555,6 +557,7 @@ def _plan_qc_tasks_for_calc_type(
                 smiles=lig["smiles"],
                 charge=lig["charge"],
                 multiplicity=1,
+                calc_mode="opt",  # 几何优化
                 status="new",
                 structure_id=first_structure_id  # 关联到源 cluster
             )
@@ -569,6 +572,7 @@ def _plan_qc_tasks_for_calc_type(
             solvent_model, solvent_name,
             molecule_type=None,
             molecule_name="Li+",
+            calc_mode="opt",  # ion 也需要优化
             task_type="ion"  # 传入任务类型用于跨类型复用
         )
         if existing:
@@ -578,6 +582,7 @@ def _plan_qc_tasks_for_calc_type(
                 smiles=li_smiles,
                 charge=1,
                 multiplicity=1,
+                calc_mode="opt",
                 status="reused",
                 existing_qc_job_id=existing.id,
                 existing_energy=existing.results[0].energy_au if existing.results else None
@@ -590,6 +595,7 @@ def _plan_qc_tasks_for_calc_type(
                 smiles=li_smiles,
                 charge=1,
                 multiplicity=1,
+                calc_mode="opt",
                 status="new"
             )
             new_count += 1
@@ -604,6 +610,7 @@ def _plan_qc_tasks_for_calc_type(
         #   - Li·EC₂ (移除1个DMC)
         #   - Li·EC (移除1个EC和1个DMC)
         #   - Li (裸离子，需要 ion 任务)
+        # 所有任务都使用 opt 模式
 
         from itertools import product
 
@@ -646,6 +653,7 @@ def _plan_qc_tasks_for_calc_type(
                     structure_id=s.id,
                     charge=charge_ion,
                     multiplicity=1,
+                    calc_mode="opt",  # 几何优化
                     status="new"
                 )
                 planned_tasks.append(task)
@@ -658,6 +666,7 @@ def _plan_qc_tasks_for_calc_type(
             solvent_model, solvent_name,
             molecule_type=None,
             molecule_name="Li+",
+            calc_mode="opt",
             task_type="ion"
         )
         if existing:
@@ -667,6 +676,7 @@ def _plan_qc_tasks_for_calc_type(
                 smiles=li_smiles,
                 charge=1,
                 multiplicity=1,
+                calc_mode="opt",
                 status="reused",
                 existing_qc_job_id=existing.id,
                 existing_energy=existing.results[0].energy_au if existing.results else None
@@ -679,6 +689,7 @@ def _plan_qc_tasks_for_calc_type(
                 smiles=li_smiles,
                 charge=1,
                 multiplicity=1,
+                calc_mode="opt",
                 status="new"
             )
             new_count += 1
@@ -692,6 +703,7 @@ def _plan_qc_tasks_for_calc_type(
             solvent_model, solvent_name,
             molecule_type=None,
             molecule_name="Li+",
+            calc_mode="opt",
             task_type="ion"
         )
         if existing:
@@ -701,6 +713,7 @@ def _plan_qc_tasks_for_calc_type(
                 smiles=li_smiles,
                 charge=1,
                 multiplicity=1,
+                calc_mode="opt",
                 status="reused",
                 existing_qc_job_id=existing.id,
                 existing_energy=existing.results[0].energy_au if existing.results else None
@@ -713,6 +726,7 @@ def _plan_qc_tasks_for_calc_type(
                 smiles=li_smiles,
                 charge=1,
                 multiplicity=1,
+                calc_mode="opt",
                 status="new"
             )
             new_count += 1
@@ -723,6 +737,7 @@ def _plan_qc_tasks_for_calc_type(
         # 1. Li+ 离子能量
         # 2. 各配体能量（从 cluster 中提取的实际几何结构）
         # 3. Li-配体二聚体（从 cluster 中提取 Li+ 和某个配体的组合）
+        # 所有任务都使用 opt 模式
 
         # 1. Li+ 离子（全局可复用）
         li_smiles = "[Li+]"
@@ -731,6 +746,7 @@ def _plan_qc_tasks_for_calc_type(
             solvent_model, solvent_name,
             molecule_type=None,
             molecule_name="Li+",
+            calc_mode="opt",
             task_type="ion"
         )
         if existing:
@@ -740,6 +756,7 @@ def _plan_qc_tasks_for_calc_type(
                 smiles=li_smiles,
                 charge=1,
                 multiplicity=1,
+                calc_mode="opt",
                 status="reused",
                 existing_qc_job_id=existing.id,
                 existing_energy=existing.results[0].energy_au if existing.results else None
@@ -748,7 +765,7 @@ def _plan_qc_tasks_for_calc_type(
         else:
             task = PlannedQCTask(
                 task_type="ion", description="Li+ 离子", smiles=li_smiles,
-                charge=1, multiplicity=1, status="new"
+                charge=1, multiplicity=1, calc_mode="opt", status="new"
             )
             new_count += 1
         planned_tasks.append(task)
@@ -779,6 +796,7 @@ def _plan_qc_tasks_for_calc_type(
                             smiles=lig_smiles,
                             charge=lig_charge,
                             multiplicity=1,
+                            calc_mode="opt",  # 几何优化
                             status="new",
                             structure_id=s.id  # 关联到源 cluster，用于提取几何结构
                         )
@@ -793,6 +811,7 @@ def _plan_qc_tasks_for_calc_type(
                             smiles=f"[Li+].{lig_smiles}",  # 仅用于标识，实际几何从 cluster 提取
                             charge=dimer_charge,
                             multiplicity=1,
+                            calc_mode="opt",  # 几何优化
                             status="new",
                             structure_id=s.id  # 关联到源 cluster
                         )
@@ -801,14 +820,15 @@ def _plan_qc_tasks_for_calc_type(
 
     if calc_type == ClusterCalcType.REDOX:
         # Redox 计算包含两部分（可通过 redox_options 控制）：
-        # A. 单独配体分子的 Redox（4 个单点）
-        # B. Li-配体 Dimer 的 Redox（4 个单点，从 cluster 提取几何）
+        # A. 单独配体分子的 Redox（4 个优化）
+        # B. Li-配体 Dimer 的 Redox（4 个优化，从 cluster 提取几何）
         #
         # 每个物种需要 4 个计算（热力学循环）：
-        # 1. 中性态-气相 (neutral_gas)
-        # 2. 氧化态-气相 (charged_gas)
-        # 3. 中性态-溶液相 (neutral_sol)
-        # 4. 氧化态-溶液相 (charged_sol)
+        # 1. 中性态-气相 (neutral_gas)  - opt
+        # 2. 氧化态-气相 (charged_gas)  - opt
+        # 3. 中性态-溶液相 (neutral_sol) - opt
+        # 4. 氧化态-溶液相 (charged_sol) - opt
+        # 注意：传统热力学循环方法，每个电子态独立优化
 
         include_molecule = redox_options.get("include_molecule", True) if redox_options else True
         include_dimer = redox_options.get("include_dimer", True) if redox_options else True
@@ -837,7 +857,7 @@ def _plan_qc_tasks_for_calc_type(
                     if lig_charge is None:
                         lig_charge = MOLECULE_INFO_MAP.get(mol_name, {}).get("charge", 0)
 
-                    # A. 单独配体分子的 Redox（4 个状态）
+                    # A. 单独配体分子的 Redox（4 个状态，都使用 opt）
                     if include_molecule:
                         mol_states = [
                             ("neutral_gas", f"[分子] {mol_name} 中性-气相", lig_charge, "gas", None),
@@ -856,13 +876,15 @@ def _plan_qc_tasks_for_calc_type(
                                 db, lig_smiles, charge, mult, functional, basis_set, sol_model, sol_name,
                                 molecule_type=None,
                                 molecule_name=mol_name,
+                                calc_mode="opt",  # Redox 传统方法使用 opt
                                 task_type=redox_task_type  # 用于跨类型复用
                             )
 
                             if existing:
                                 task = PlannedQCTask(
                                     task_type=redox_task_type, description=desc, smiles=lig_smiles,
-                                    charge=charge, multiplicity=mult, status="reused",
+                                    charge=charge, multiplicity=mult, calc_mode="opt",
+                                    status="reused",
                                     existing_qc_job_id=existing.id,
                                     existing_energy=existing.results[0].energy_au if existing.results else None
                                 )
@@ -870,12 +892,13 @@ def _plan_qc_tasks_for_calc_type(
                             else:
                                 task = PlannedQCTask(
                                     task_type=redox_task_type, description=desc, smiles=lig_smiles,
-                                    charge=charge, multiplicity=mult, status="new"
+                                    charge=charge, multiplicity=mult, calc_mode="opt",
+                                    status="new"
                                 )
                                 new_count += 1
                             planned_tasks.append(task)
 
-                    # B. Li-配体 Dimer 的 Redox（4 个状态，从 cluster 提取几何）
+                    # B. Li-配体 Dimer 的 Redox（4 个状态，从 cluster 提取几何，都使用 opt）
                     if include_dimer:
                         dimer_base_charge = charge_ion + lig_charge  # Li+ + 配体电荷
                         dimer_smiles = f"[Li+].{lig_smiles}"
@@ -898,13 +921,15 @@ def _plan_qc_tasks_for_calc_type(
                                 db, dimer_smiles, charge, mult, functional, basis_set, sol_model, sol_name,
                                 molecule_type=None,
                                 molecule_name=dimer_name,
+                                calc_mode="opt",
                                 task_type=dimer_task_type  # 用于跨类型复用
                             )
 
                             if existing:
                                 task = PlannedQCTask(
                                     task_type=dimer_task_type, description=desc, smiles=dimer_smiles,
-                                    charge=charge, multiplicity=mult, status="reused",
+                                    charge=charge, multiplicity=mult, calc_mode="opt",
+                                    status="reused",
                                     existing_qc_job_id=existing.id,
                                     existing_energy=existing.results[0].energy_au if existing.results else None,
                                     structure_id=first_structure_id
@@ -913,13 +938,14 @@ def _plan_qc_tasks_for_calc_type(
                             else:
                                 task = PlannedQCTask(
                                     task_type=dimer_task_type, description=desc, smiles=dimer_smiles,
-                                    charge=charge, multiplicity=mult, status="new",
+                                    charge=charge, multiplicity=mult, calc_mode="opt",
+                                    status="new",
                                     structure_id=first_structure_id
                                 )
                                 new_count += 1
                             planned_tasks.append(task)
 
-        # C. 整个 Cluster 的 Redox（4 个状态，从 MD 提取几何）
+        # C. 整个 Cluster 的 Redox（4 个状态，从 MD 提取几何，都使用 opt）
         if include_cluster:
             for s in structures:
                 cluster_charge = charge_ion  # cluster 电荷（通常是 Li+ 的 +1）
@@ -944,6 +970,7 @@ def _plan_qc_tasks_for_calc_type(
                         structure_id=s.id,
                         charge=charge,
                         multiplicity=mult,
+                        calc_mode="opt",  # Redox 传统方法使用 opt
                         status="new"
                     )
                     new_count += 1
