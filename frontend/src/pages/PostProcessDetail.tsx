@@ -257,7 +257,7 @@ export default function PostProcessDetail() {
     basis_set: '6-31G*',        // 使用 6-31G* 格式以匹配已有任务
     use_dispersion: true,
     charge_ion: 1,
-    solvent_model: 'gas',       // 默认气相，与已有任务匹配
+    solvent_model: 'pcm',       // 默认 PCM 溶剂模型（电解液计算需要溶液环境）
     solvent: 'Water',
     custom_eps: 78.4,           // 自定义介电常数
     custom_eps_inf: 1.78,       // 自定义光学介电常数
@@ -692,9 +692,9 @@ export default function PostProcessDetail() {
         functional: 'B3LYP',
         basis_set: recommendedBasis,
         use_dispersion: true,
-        solvent_model: 'gas',
+        solvent_model: 'pcm',
       }));
-      setRecommendReason(`Redox/重组能推荐 B3LYP/${recommendedBasis} + 气相 ${basisReason}`);
+      setRecommendReason(`Redox/重组能推荐 B3LYP/${recommendedBasis} + PCM溶剂 ${basisReason}`);
     } else if (selectedCalcTypes.length > 0) {
       setQcConfig(prev => ({
         ...prev,
@@ -1676,9 +1676,9 @@ export default function PostProcessDetail() {
                                 functional: 'B3LYP',
                                 basis_set: recommendedBasis,
                                 use_dispersion: true,
-                                solvent_model: 'gas',
+                                solvent_model: 'pcm',
                               }));
-                              setRecommendReason(`Redox/重组能推荐 B3LYP/${recommendedBasis} + 气相 ${basisReason}`);
+                              setRecommendReason(`Redox/重组能推荐 B3LYP/${recommendedBasis} + PCM溶剂 ${basisReason}`);
                             } else {
                               setQcConfig(prev => ({
                                 ...prev,
