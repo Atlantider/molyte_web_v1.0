@@ -80,6 +80,31 @@ def _get_selected_structures(
     return structures
 
 
+def _normalize_basis_set(basis_set: str) -> list:
+    """
+    规范化基组名称，返回所有等价的基组名称列表
+    例如：6-31G(d) 和 6-31G* 是等价的
+    """
+    equivalents = {
+        # Pople 基组等价形式
+        "6-31G(d)": ["6-31G(d)", "6-31G*"],
+        "6-31G*": ["6-31G(d)", "6-31G*"],
+        "6-31G(d,p)": ["6-31G(d,p)", "6-31G**"],
+        "6-31G**": ["6-31G(d,p)", "6-31G**"],
+        "6-31+G(d)": ["6-31+G(d)", "6-31+G*"],
+        "6-31+G*": ["6-31+G(d)", "6-31+G*"],
+        "6-31+G(d,p)": ["6-31+G(d,p)", "6-31+G**"],
+        "6-31+G**": ["6-31+G(d,p)", "6-31+G**"],
+        "6-311G(d,p)": ["6-311G(d,p)", "6-311G**"],
+        "6-311G**": ["6-311G(d,p)", "6-311G**"],
+        "6-311+G(d,p)": ["6-311+G(d,p)", "6-311+G**"],
+        "6-311+G**": ["6-311+G(d,p)", "6-311+G**"],
+        "6-311++G(d,p)": ["6-311++G(d,p)", "6-311++G**"],
+        "6-311++G**": ["6-311++G(d,p)", "6-311++G**"],
+    }
+    return equivalents.get(basis_set, [basis_set])
+
+
 def _find_existing_qc_job(
     db: Session,
     smiles: str,
@@ -98,7 +123,7 @@ def _find_existing_qc_job(
     复用条件：
     - 相同 SMILES（分子结构）或相同基础 molecule_name（忽略 #数字 后缀）
     - 相同电荷和自旋多重度
-    - 相同计算参数（泛函、基组）
+    - 相同计算参数（泛函、基组 - 支持等价基组匹配）
     - 相同溶剂模型配置
     - 任务已完成且未删除
 
@@ -106,6 +131,10 @@ def _find_existing_qc_job(
     """
     import re
     from sqlalchemy.orm import joinedload
+    from sqlalchemy import or_
+
+    # 获取等价基组列表
+    equivalent_basis_sets = _normalize_basis_set(basis_set)
 
     # 策略 1：先尝试 SMILES 精确匹配
     query = db.query(QCJob).options(
@@ -115,7 +144,7 @@ def _find_existing_qc_job(
         QCJob.charge == charge,
         QCJob.spin_multiplicity == multiplicity,
         QCJob.functional == functional,
-        QCJob.basis_set == basis_set,
+        QCJob.basis_set.in_(equivalent_basis_sets),  # 支持等价基组匹配
         QCJob.solvent_model == solvent_model,
         QCJob.status == QCJobStatus.COMPLETED,
         QCJob.is_deleted == False
@@ -142,7 +171,7 @@ def _find_existing_qc_job(
             QCJob.charge == charge,
             QCJob.spin_multiplicity == multiplicity,
             QCJob.functional == functional,
-            QCJob.basis_set == basis_set,
+            QCJob.basis_set.in_(equivalent_basis_sets),  # 支持等价基组匹配
             QCJob.solvent_model == solvent_model,
             QCJob.status == QCJobStatus.COMPLETED,
             QCJob.is_deleted == False
