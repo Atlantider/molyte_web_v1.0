@@ -793,19 +793,22 @@ def find_existing_molecule_qc_job(
         # 非气相时必须匹配 solvent_name
         query = query.filter(QCJob.solvent_name == solvent_name)
 
-    existing_job = query.first()
+    # 获取候选任务列表
+    candidates = query.limit(10).all()
 
-    if existing_job:
-        # 验证是否有有效的能量结果
-        result = db.query(QCResult).filter(
-            QCResult.qc_job_id == existing_job.id,
-            QCResult.total_energy.isnot(None)
-        ).first()
+    # 使用统一的复用验证逻辑
+    from app.utils.qc_reuse import validate_job_for_reuse
 
-        if result:
-            logger.info(f"Found existing completed QC job {existing_job.id} for {molecule_name} "
-                       f"(base_name={base_name}, charge={charge}, solvent={solvent_model}/{solvent_name})")
-            return existing_job
+    for candidate in candidates:
+        is_valid, root_job, reason = validate_job_for_reuse(db, candidate)
+        if is_valid:
+            result_job = root_job if root_job else candidate
+            logger.info(f"Found existing completed QC job {result_job.id} for {molecule_name} "
+                       f"(base_name={base_name}, charge={charge}, solvent={solvent_model}/{solvent_name}), "
+                       f"验证: {reason}")
+            return result_job
+        else:
+            logger.debug(f"QC job {candidate.id} 不可复用: {reason}")
 
     return None
 

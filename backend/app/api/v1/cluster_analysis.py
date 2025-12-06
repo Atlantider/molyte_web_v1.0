@@ -128,13 +128,16 @@ def _find_existing_qc_job(
     - 相同溶剂模型配置
     - 相同计算类型（opt / sp，通过 molecule_name 后缀匹配）
     - 任务已完成且未删除
+    - 【重要】必须有有效的能量结果（energy_au 不为 NULL）
 
     注意：
     - 不限制用户，实现全平台复用
     - calc_mode 用于区分 opt 和 sp 计算（重组能需要区分）
+    - 如果是复用任务，会追溯到根任务验证结果有效性
     """
     import re
     from sqlalchemy.orm import joinedload
+    from app.utils.qc_reuse import find_root_job_with_result, validate_job_for_reuse
 
     # 获取等价基组列表
     equivalent_basis_sets = _normalize_basis_set(basis_set)
@@ -160,27 +163,32 @@ def _find_existing_qc_job(
         query = query.filter(QCJob.molecule_type == molecule_type)
 
     # 如果指定了 calc_mode，通过 molecule_name 后缀来过滤
-    # 因为很多任务的 task_type 字段是 NULL，我们只能靠 molecule_name 来区分
     if calc_mode:
         if calc_mode == "opt":
-            # 优化任务：名称包含 _opt_ 但不包含 _sp_
             query = query.filter(
                 QCJob.molecule_name.ilike("%_opt_%"),
                 ~QCJob.molecule_name.ilike("%_sp_%")
             )
         elif calc_mode == "sp":
-            # 单点任务：名称包含 _sp_
             query = query.filter(QCJob.molecule_name.ilike("%_sp_%"))
 
-    job = query.order_by(desc(QCJob.finished_at)).first()
+    # 按完成时间降序，获取候选任务
+    candidates = query.order_by(desc(QCJob.finished_at)).limit(10).all()
+
+    # 验证候选任务是否有有效结果
+    job = None
+    for candidate in candidates:
+        is_valid, root_job, reason = validate_job_for_reuse(db, candidate)
+        if is_valid:
+            job = root_job if root_job else candidate
+            logger.debug(f"[全局复用-SMILES匹配] 任务 {candidate.id} 验证通过: {reason}")
+            break
+        else:
+            logger.debug(f"[全局复用-SMILES匹配] 任务 {candidate.id} 不可用: {reason}")
 
     # 策略 2：如果 SMILES 匹配不到，尝试用基础 molecule_name 匹配
-    # 这对于 EC#1, EC#2 等同类型分子很有用
-    # 注意：不再使用宽泛的 compound_pattern，只匹配简单名称
     if not job and molecule_name:
         base_name = re.sub(r'#\d+$', '', molecule_name)
-
-        # 只匹配简单名称（如 EC, EC#1, Li-PF6, Li-PF6#1）
         simple_pattern = f"^{re.escape(base_name)}(#[0-9]+)?$"
 
         name_query = db.query(QCJob).options(
@@ -190,7 +198,7 @@ def _find_existing_qc_job(
             QCJob.charge == charge,
             QCJob.spin_multiplicity == multiplicity,
             QCJob.functional == functional,
-            QCJob.basis_set.in_(equivalent_basis_sets),  # 支持等价基组匹配
+            QCJob.basis_set.in_(equivalent_basis_sets),
             QCJob.solvent_model == solvent_model,
             QCJob.status == QCJobStatus.COMPLETED,
             QCJob.is_deleted == False
@@ -199,18 +207,28 @@ def _find_existing_qc_job(
         if solvent_model != "gas" and solvent_name:
             name_query = name_query.filter(QCJob.solvent_name == solvent_name)
 
-        # calc_mode 过滤不适用于简单名称匹配（如 EC, Li-PF6）
-        # 这些简单名称的任务通常是 Binding 计算，本身就是优化任务
+        name_candidates = name_query.order_by(desc(QCJob.finished_at)).limit(10).all()
 
-        job = name_query.order_by(desc(QCJob.finished_at)).first()
-
-        if job:
-            logger.debug(f"[全局复用-名称匹配] 找到已有 QC 任务 {job.id}: "
-                        f"'{molecule_name}' matches '{job.molecule_name}'")
+        for candidate in name_candidates:
+            is_valid, root_job, reason = validate_job_for_reuse(db, candidate)
+            if is_valid:
+                job = root_job if root_job else candidate
+                logger.debug(f"[全局复用-名称匹配] 任务 {candidate.id} 验证通过: {reason}, "
+                            f"'{molecule_name}' matches '{candidate.molecule_name}'")
+                break
+            else:
+                logger.debug(f"[全局复用-名称匹配] 任务 {candidate.id} 不可用: {reason}")
 
     if job:
-        logger.debug(f"[全局复用] 找到已有 QC 任务 {job.id}: {smiles}, charge={charge}, "
-                     f"solvent={solvent_model}/{solvent_name}, energy={job.results[0].energy_au if job.results else 'N/A'}")
+        # 获取实际能量值
+        energy = None
+        if job.results:
+            for r in job.results:
+                if r.energy_au is not None:
+                    energy = r.energy_au
+                    break
+        logger.info(f"[全局复用] 找到可用任务 {job.id}: {smiles}, charge={charge}, "
+                   f"solvent={solvent_model}/{solvent_name}, energy={energy}")
 
     return job
 

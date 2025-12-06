@@ -293,43 +293,57 @@ def create_qc_job(
     if existing_job:
         # 找到完全相同参数的任务
         if existing_job.status == QCJobStatusModel.COMPLETED:
-            # 已完成的任务：创建复用任务，直接返回（不需要重新计算）
-            logger.info(f"Reusing completed QC job {existing_job.id} for '{job_data.molecule_name}' (smiles: {job_data.smiles[:30]}...)")
+            # 已完成的任务：验证是否有有效结果后再复用
+            from app.utils.qc_reuse import validate_job_for_reuse, find_root_job_with_result, copy_result_for_reused_job
 
-            # 构建配置
-            config = job_data.config or {}
-            config["accuracy_level"] = job_data.accuracy_level.value if job_data.accuracy_level else "standard"
-            config["auto_spin"] = job_data.auto_spin
-            if job_data.solvent_config:
-                config["solvent_config"] = job_data.solvent_config.model_dump()
-            config["reused_from"] = existing_job.id
+            is_valid, root_job, reason = validate_job_for_reuse(db, existing_job)
+            if not is_valid:
+                logger.warning(f"任务 {existing_job.id} 不可复用: {reason}，将创建新任务")
+                existing_job = None  # 清空，走新建流程
+            else:
+                # 使用根任务作为复用源
+                source_job = root_job if root_job else existing_job
+                logger.info(f"Reusing completed QC job {source_job.id} for '{job_data.molecule_name}' (smiles: {job_data.smiles[:30]}...)")
 
-            # 创建复用任务
-            db_job = QCJob(
-                user_id=current_user.id,
-                md_job_id=job_data.md_job_id,
-                molecule_name=job_data.molecule_name,
-                smiles=job_data.smiles,
-                molecule_type=job_data.molecule_type,
-                basis_set=job_data.basis_set,
-                functional=job_data.functional,
-                charge=job_data.charge,
-                spin_multiplicity=job_data.spin_multiplicity,
-                solvent_model=solvent_model,
-                solvent_name=solvent_name,
-                accuracy_level=job_data.accuracy_level.value if job_data.accuracy_level else "standard",
-                config=config,
-                status=QCJobStatusModel.COMPLETED,  # 直接标记为已完成
-                is_reused=True,
-                reused_from_job_id=existing_job.id,
-                finished_at=existing_job.finished_at  # 使用原任务的完成时间
-            )
-            db.add(db_job)
-            db.commit()
-            db.refresh(db_job)
+                # 构建配置
+                config = job_data.config or {}
+                config["accuracy_level"] = job_data.accuracy_level.value if job_data.accuracy_level else "standard"
+                config["auto_spin"] = job_data.auto_spin
+                if job_data.solvent_config:
+                    config["solvent_config"] = job_data.solvent_config.model_dump()
+                config["reused_from"] = source_job.id
 
-            logger.info(f"Created reused QC job {db_job.id} from job {existing_job.id}")
-            return db_job
+                # 创建复用任务
+                db_job = QCJob(
+                    user_id=current_user.id,
+                    md_job_id=job_data.md_job_id,
+                    molecule_name=job_data.molecule_name,
+                    smiles=job_data.smiles,
+                    molecule_type=job_data.molecule_type,
+                    basis_set=job_data.basis_set,
+                    functional=job_data.functional,
+                    charge=job_data.charge,
+                    spin_multiplicity=job_data.spin_multiplicity,
+                    solvent_model=solvent_model,
+                    solvent_name=solvent_name,
+                    accuracy_level=job_data.accuracy_level.value if job_data.accuracy_level else "standard",
+                    config=config,
+                    status=QCJobStatusModel.COMPLETED,  # 直接标记为已完成
+                    is_reused=True,
+                    reused_from_job_id=source_job.id,  # 直接指向根任务
+                    finished_at=source_job.finished_at  # 使用根任务的完成时间
+                )
+                db.add(db_job)
+                db.flush()  # 获取 db_job.id
+
+                # 【关键修复】复制能量结果到新任务
+                copy_result_for_reused_job(db, source_job, db_job)
+
+                db.commit()
+                db.refresh(db_job)
+
+                logger.info(f"Created reused QC job {db_job.id} from job {source_job.id} with copied result")
+                return db_job
         else:
             # 未完成的任务：直接返回已有任务（让用户看到进度）
             logger.info(f"Returning existing QC job {existing_job.id} for '{job_data.molecule_name}' (status: {existing_job.status})")
@@ -471,37 +485,53 @@ def create_qc_jobs_batch(
 
         if existing_job:
             if existing_job.status == QCJobStatusModel.COMPLETED:
-                # 复用已完成的任务：创建一个新的复用任务
-                logger.info(f"Batch: Reusing completed QC job {existing_job.id} for '{mol_data.molecule_name}'")
-                config["reused_from"] = existing_job.id
-                db_job = QCJob(
-                    user_id=current_user.id,
-                    md_job_id=md_job_id,
-                    molecule_name=mol_data.molecule_name,
-                    smiles=mol_data.smiles,
-                    molecule_type=mol_data.molecule_type,
-                    basis_set=basis_set,
-                    functional=functional,
-                    charge=mol_data.charge,
-                    spin_multiplicity=mol_data.spin_multiplicity,
-                    solvent_model=solvent_model,
-                    solvent_name=solvent_name,
-                    config=config,
-                    status=QCJobStatusModel.COMPLETED,
-                    is_reused=True,
-                    reused_from_job_id=existing_job.id,
-                    finished_at=existing_job.finished_at
-                )
-                db.add(db_job)
-                created_jobs.append(db_job)
-                reused_count += 1
-            else:
+                # 验证任务是否有有效结果
+                from app.utils.qc_reuse import validate_job_for_reuse, copy_result_for_reused_job
+
+                is_valid, root_job, reason = validate_job_for_reuse(db, existing_job)
+                if not is_valid:
+                    logger.warning(f"Batch: 任务 {existing_job.id} 不可复用: {reason}，将创建新任务")
+                    existing_job = None  # 清空，走新建流程
+                else:
+                    source_job = root_job if root_job else existing_job
+                    logger.info(f"Batch: Reusing completed QC job {source_job.id} for '{mol_data.molecule_name}'")
+                    config["reused_from"] = source_job.id
+                    db_job = QCJob(
+                        user_id=current_user.id,
+                        md_job_id=md_job_id,
+                        molecule_name=mol_data.molecule_name,
+                        smiles=mol_data.smiles,
+                        molecule_type=mol_data.molecule_type,
+                        basis_set=basis_set,
+                        functional=functional,
+                        charge=mol_data.charge,
+                        spin_multiplicity=mol_data.spin_multiplicity,
+                        solvent_model=solvent_model,
+                        solvent_name=solvent_name,
+                        config=config,
+                        status=QCJobStatusModel.COMPLETED,
+                        is_reused=True,
+                        reused_from_job_id=source_job.id,  # 直接指向根任务
+                        finished_at=source_job.finished_at
+                    )
+                    db.add(db_job)
+                    db.flush()  # 获取 db_job.id
+
+                    # 【关键修复】复制能量结果到新任务
+                    copy_result_for_reused_job(db, source_job, db_job)
+
+                    created_jobs.append(db_job)
+                    reused_count += 1
+
+            if existing_job and existing_job.status != QCJobStatusModel.COMPLETED:
                 # 未完成的重复任务：直接返回已有任务（让用户看到进度）
                 logger.info(f"Batch: Returning existing QC job {existing_job.id} for '{mol_data.molecule_name}' "
                            f"(status: {existing_job.status})")
                 created_jobs.append(existing_job)
                 skipped_count += 1
-            continue
+
+            if existing_job:
+                continue
         # ======== 查重逻辑结束 ========
 
         db_job = QCJob(

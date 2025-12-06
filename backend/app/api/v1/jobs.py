@@ -856,41 +856,55 @@ def _create_qc_jobs_for_md(db: Session, md_job: MDJob, system: ElectrolyteSystem
                             existing_job = None  # 参数不完全匹配，不复用
 
                     if existing_job:
-                        # 如果找到已完成的任务，复用结果
+                        # 如果找到已完成的任务，验证后复用结果
                         if existing_job.status == QCJobStatus.COMPLETED:
-                            logger.info(f"Reusing completed QC job {existing_job.id} for '{mol_name}' "
-                                       f"(smiles: {smiles[:30]}..., functional: {functional}, basis: {basis_set})")
-                            # 创建一个复用任务，直接标记为已完成
-                            qc_job = QCJob(
-                                user_id=user.id,
-                                md_job_id=md_job.id,
-                                molecule_name=job_mol_name,
-                                smiles=smiles,
-                                molecule_type=mol_type,
-                                basis_set=params["basis_set"],
-                                functional=params["functional"],
-                                charge=charge,
-                                spin_multiplicity=spin_multiplicity,
-                                solvent_model=params["solvent_model"],  # ✅ 添加溶剂模型字段
-                                solvent_name=params["solvent_name"] if params["solvent_model"] != "gas" else None,  # ✅ 添加溶剂名称字段
-                                status=QCJobStatus.COMPLETED,
-                                is_reused=True,
-                                reused_from_job_id=existing_job.id,
-                                config={
-                                    "accuracy_level": getattr(qc_options, 'accuracy_level', 'standard'),
-                                    "solvent_model": params["solvent_model"],
-                                    "solvent_name": params["solvent_name"] if params["solvent_model"] != "gas" else None,
-                                    "solvent_config": solvent_config,
-                                    "recommendation_reason": params["recommendation_reason"],
-                                    "auto_params": getattr(qc_options, 'use_recommended_params', True),
-                                    "reused_from": existing_job.id,
-                                }
-                            )
-                            db.add(qc_job)
-                            db.commit()
-                            db.refresh(qc_job)
-                            continue  # 跳过创建新任务
-                        else:
+                            from app.utils.qc_reuse import validate_job_for_reuse, copy_result_for_reused_job
+
+                            is_valid, root_job, reason = validate_job_for_reuse(db, existing_job)
+                            if not is_valid:
+                                logger.warning(f"任务 {existing_job.id} 不可复用: {reason}，将创建新任务")
+                                existing_job = None  # 清空，走新建流程
+                            else:
+                                source_job = root_job if root_job else existing_job
+                                logger.info(f"Reusing completed QC job {source_job.id} for '{mol_name}' "
+                                           f"(smiles: {smiles[:30]}..., functional: {functional}, basis: {basis_set})")
+                                # 创建一个复用任务，直接标记为已完成
+                                qc_job = QCJob(
+                                    user_id=user.id,
+                                    md_job_id=md_job.id,
+                                    molecule_name=job_mol_name,
+                                    smiles=smiles,
+                                    molecule_type=mol_type,
+                                    basis_set=params["basis_set"],
+                                    functional=params["functional"],
+                                    charge=charge,
+                                    spin_multiplicity=spin_multiplicity,
+                                    solvent_model=params["solvent_model"],
+                                    solvent_name=params["solvent_name"] if params["solvent_model"] != "gas" else None,
+                                    status=QCJobStatus.COMPLETED,
+                                    is_reused=True,
+                                    reused_from_job_id=source_job.id,  # 直接指向根任务
+                                    config={
+                                        "accuracy_level": getattr(qc_options, 'accuracy_level', 'standard'),
+                                        "solvent_model": params["solvent_model"],
+                                        "solvent_name": params["solvent_name"] if params["solvent_model"] != "gas" else None,
+                                        "solvent_config": solvent_config,
+                                        "recommendation_reason": params["recommendation_reason"],
+                                        "auto_params": getattr(qc_options, 'use_recommended_params', True),
+                                        "reused_from": source_job.id,
+                                    }
+                                )
+                                db.add(qc_job)
+                                db.flush()  # 获取 qc_job.id
+
+                                # 【关键修复】复制能量结果到新任务
+                                copy_result_for_reused_job(db, source_job, qc_job)
+
+                                db.commit()
+                                db.refresh(qc_job)
+                                continue  # 跳过创建新任务
+
+                        if existing_job and existing_job.status != QCJobStatus.COMPLETED:
                             # 存在相同参数的任务但未完成，跳过创建
                             logger.info(f"Skipping duplicate QC job for '{mol_name}' "
                                        f"(existing job {existing_job.id} status: {existing_job.status})")
