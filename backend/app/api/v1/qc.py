@@ -309,7 +309,12 @@ def create_qc_job(
                        f"task_type={job_data.task_type}")
 
     # 策略 1：先尝试 SMILES 精确匹配（仅当有 SMILES 时）
-    if not existing_job and job_data.smiles:
+    # 【重要】对于 Cluster Analysis 任务（有 task_type），跳过策略 1 和策略 2
+    # 不同 task_type 的任务（如 ligand_EC vs redox_mol_EC_neutral_gas）不应该被合并
+    # 它们虽然 SMILES 相同，但语义上是不同的计算任务
+    is_cluster_analysis_task = bool(job_data.task_type)
+
+    if not existing_job and job_data.smiles and not is_cluster_analysis_task:
         duplicate_query = db.query(QCJob).filter(
             QCJob.smiles == job_data.smiles,
             QCJob.functional == job_data.functional,
@@ -324,7 +329,8 @@ def create_qc_job(
     # 策略 2：如果 SMILES 匹配不到，尝试用基础 molecule_name 匹配
     # 这对于 cluster 类型或没有标准 SMILES 的分子很有用
     # 例如：EC#1 和 EC#2 应该能复用（如果其他参数相同）
-    if not existing_job and job_data.molecule_name:
+    # 【重要】对于 Cluster Analysis 任务，同样跳过此策略
+    if not existing_job and job_data.molecule_name and not is_cluster_analysis_task:
         base_name = get_base_molecule_name(job_data.molecule_name)
         # 查找 molecule_name 匹配基础名称的任务
         name_query = db.query(QCJob).filter(

@@ -4901,6 +4901,11 @@ echo "QC calculation completed"
             for job in waiting_jobs:
                 job_id = job['id']
 
+                # 首先检查是否有缺少的 QC 任务需要创建
+                missing_created = self._create_missing_cluster_qc_jobs(job)
+                if missing_created > 0:
+                    self.logger.info(f"Cluster 任务 {job_id}: 补充创建了 {missing_created} 个缺少的 QC 任务")
+
                 # 检查 QC 任务状态
                 qc_status = self._check_cluster_analysis_qc_status(job_id)
 
@@ -4922,6 +4927,74 @@ echo "QC calculation completed"
 
         except Exception as e:
             self.logger.error(f"检查 WAITING_QC 任务失败: {e}", exc_info=True)
+
+    def _create_missing_cluster_qc_jobs(self, job: Dict) -> int:
+        """
+        检查并创建缺少的 QC 任务
+
+        当 Worker 在创建 QC 任务时中断（如网络错误、超时等），
+        可能只创建了部分任务。此方法检查计划任务和已创建任务的差异，
+        并补充创建缺少的任务。
+
+        Returns:
+            创建的任务数量
+        """
+        job_id = job['id']
+        md_job_id = job.get('md_job_id')
+        config = job.get('config', {})
+        qc_task_plan = job.get('qc_task_plan', {})
+
+        if not qc_task_plan:
+            return 0
+
+        planned_tasks = qc_task_plan.get('planned_qc_tasks', [])
+        if not planned_tasks:
+            return 0
+
+        try:
+            # 获取已创建的 QC 任务类型
+            endpoint = f"{self.api_base_url}/cluster-analysis/jobs/{job_id}/qc-jobs"
+            response = requests.get(
+                endpoint,
+                headers=self.api_headers,
+                timeout=self.config['api']['timeout']
+            )
+
+            if response.status_code != 200:
+                self.logger.warning(f"获取 Cluster 任务 {job_id} 的 QC 任务列表失败: {response.status_code}")
+                return 0
+
+            existing_qc_jobs = response.json()
+            existing_types = set(qc.get('task_type') for qc in existing_qc_jobs if qc.get('task_type'))
+
+            # 找出缺少的任务
+            missing_tasks = [
+                t for t in planned_tasks
+                if t.get('status') == 'new' and t.get('task_type') not in existing_types
+            ]
+
+            if not missing_tasks:
+                return 0
+
+            self.logger.info(f"Cluster 任务 {job_id}: 发现 {len(missing_tasks)} 个缺少的 QC 任务，开始补充创建")
+
+            # 创建缺少的任务
+            created_count = 0
+            for task in missing_tasks:
+                try:
+                    qc_job_id = self._create_qc_job_for_cluster_analysis(
+                        job_id, md_job_id, task, config.get('qc_config', {})
+                    )
+                    if qc_job_id:
+                        created_count += 1
+                except Exception as e:
+                    self.logger.error(f"补充创建 QC 任务失败 (type={task.get('task_type')}): {e}")
+
+            return created_count
+
+        except Exception as e:
+            self.logger.error(f"检查缺少的 QC 任务失败: {e}", exc_info=True)
+            return 0
 
     def _check_waiting_desolvation_jobs_via_api(self):
         """
@@ -5044,9 +5117,22 @@ echo "QC calculation completed"
         charge = task.get('charge', 0)
         multiplicity = task.get('multiplicity', 1)
 
-        # 获取溶剂配置
-        solvent_model = qc_config.get('solvent_model') or 'gas'
-        solvent_name = qc_config.get('solvent') or qc_config.get('solvent_name')
+        # 根据 task_type 的后缀决定溶剂配置
+        # - *_gas 或 *_neutral_gas 或 *_charged_gas → 气相（无溶剂）
+        # - *_sol 或 *_neutral_sol 或 *_charged_sol → 使用配置的溶剂模型
+        # - 其他任务（cluster, ligand, dimer, ion, cluster_minus 等）→ 使用默认配置
+        if task_type.endswith('_gas'):
+            # 气相计算，不使用溶剂
+            solvent_model = 'gas'
+            solvent_name = None
+        elif task_type.endswith('_sol'):
+            # 溶剂相计算，使用配置的溶剂模型
+            solvent_model = qc_config.get('solvent_model') or 'pcm'
+            solvent_name = qc_config.get('solvent') or qc_config.get('solvent_name')
+        else:
+            # 其他任务使用默认配置（通常是 ligand, dimer, ion, cluster 等 binding 类计算）
+            solvent_model = qc_config.get('solvent_model') or 'gas'
+            solvent_name = qc_config.get('solvent') or qc_config.get('solvent_name')
 
         # 构建溶剂配置对象（符合 QCJobCreate schema）
         solvent_config = None
