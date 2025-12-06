@@ -1083,7 +1083,8 @@ export default function PostProcessDetail() {
           title: 'Name',
           dataIndex: 'task_type',
           key: 'task_type',
-          width: 200,
+          width: 180,
+          fixed: 'left',
           render: (taskType: string) => {
             // 从 task_type 提取英文名称
             if (taskType === 'cluster') return <Tag color="purple">Cluster</Tag>;
@@ -1147,6 +1148,7 @@ export default function PostProcessDetail() {
           title: '描述',
           dataIndex: 'description',
           key: 'description',
+          width: 280,
           ellipsis: true,
           render: (desc: string) => (
             <Tooltip title={desc}>
@@ -1158,34 +1160,37 @@ export default function PostProcessDetail() {
           title: 'SMILES',
           dataIndex: 'smiles',
           key: 'smiles',
-          width: 140,
+          width: 130,
+          ellipsis: true,
           render: (smiles: string) => smiles ? (
             <Tooltip title={smiles}>
-              <Text code style={{ fontSize: 10 }}>{smiles.length > 18 ? smiles.slice(0, 18) + '...' : smiles}</Text>
+              <Text code style={{ fontSize: 10 }}>{smiles.length > 15 ? smiles.slice(0, 15) + '...' : smiles}</Text>
             </Tooltip>
-          ) : '-',
+          ) : <Text type="secondary">-</Text>,
         },
         {
           title: '电荷',
           dataIndex: 'charge',
           key: 'charge',
-          width: 50,
+          width: 55,
           align: 'center',
-          render: (c: number) => c > 0 ? `+${c}` : c,
+          render: (c: number) => <Text strong style={{ color: c > 0 ? '#52c41a' : c < 0 ? '#ff4d4f' : undefined }}>{c > 0 ? `+${c}` : c}</Text>,
         },
         {
           title: '多重度',
           dataIndex: 'multiplicity',
           key: 'multiplicity',
-          width: 55,
+          width: 60,
           align: 'center',
+          render: (m: number) => <Text type="secondary">{m}</Text>,
         },
         {
           title: '状态',
           dataIndex: 'status',
           key: 'status',
-          width: 95,
+          width: 100,
           align: 'center',
+          fixed: 'right',
           render: (status: string) => {
             if (status === 'reused') {
               return <Tag color="success" icon={<CheckCircleOutlined />}>全局复用</Tag>;
@@ -1324,7 +1329,8 @@ export default function PostProcessDetail() {
               rowKey={(record, index) => `${record.task_type}-${record.smiles || record.structure_id}-${index}`}
               size="small"
               pagination={false}
-              scroll={{ y: 300 }}
+              scroll={{ x: 800, y: 300 }}
+              tableLayout="fixed"
               rowClassName={(record) =>
                 record.status === 'reused' ? 'row-reused' :
                 record.status === 'local_reused' ? 'row-local-reused' : 'row-new'
